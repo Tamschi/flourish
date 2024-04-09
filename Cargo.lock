@@ -33,6 +33,9 @@ dependencies = [
 [[package]]
 name = "pollinate"
 version = "0.0.0"
+dependencies = [
+ "pin-project",
+]
 
 [[package]]
 name = "proc-macro2"

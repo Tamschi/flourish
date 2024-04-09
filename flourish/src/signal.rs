@@ -1,28 +1,25 @@
 use std::{
     borrow::Borrow,
     cell::UnsafeCell,
-    mem::MaybeUninit,
     ops::Deref,
     pin::Pin,
-    sync::{Arc, OnceLock, RwLock, RwLockReadGuard},
+    sync::{Arc, RwLock, RwLockReadGuard},
 };
 
-use pin_project::{pin_project, pinned_drop};
-use pollinate::{GetPinNonNullExt, SelfHandle};
-
-#[pin_project(PinnedDrop)]
-pub struct Signal<F: Send + FnMut() -> T, T: Send> {
-    handle: OnceLock<SelfHandle>,
-    #[pin]
-    state: UnsafeCell<SignalState<F, T>>,
-}
+use pin_project::pin_project;
+use pollinate::{
+    slot::{Slot, Token},
+    Source,
+};
 
 #[pin_project]
-struct SignalState<F, T> {
-    state: UnsafeCell<F>,
-    /// Sadly, this cannot be created poisoned (which would simplify the code).
-    cache: MaybeUninit<RwLock<T>>,
-}
+pub struct Signal<F: Send + FnMut() -> T, T: Send>(
+    #[pin] Source<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>>,
+);
+
+#[pin_project]
+struct ForceSyncUnpin<T>(T);
+unsafe impl<T> Sync for ForceSyncUnpin<T> {}
 
 pub struct SignalGuard<'a, T>(RwLockReadGuard<'a, T>);
 
@@ -30,6 +27,12 @@ impl<'a, T> Deref for SignalGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
+        self.borrow()
+    }
+}
+
+impl<'a, T> Borrow<T> for SignalGuard<'a, T> {
+    fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
@@ -43,14 +46,7 @@ impl<F: Send + FnMut() -> T, T: Send> Signal<F, T> {
     }
 
     pub fn new_raw(f: F) -> Self {
-        Self {
-            handle: OnceLock::new(),
-            state: SignalState {
-                state: f.into(),
-                cache: MaybeUninit::uninit().into(),
-            }
-            .into(),
-        }
+        Self(Source::new(ForceSyncUnpin(f.into())))
     }
 
     pub fn get(self: Pin<&Self>) -> T
@@ -71,8 +67,7 @@ impl<F: Send + FnMut() -> T, T: Send> Signal<F, T> {
     where
         T: Sync,
     {
-        self.touch();
-        SignalGuard(unsafe { (&*self.state.get()).cache.assume_init_ref().read().unwrap() })
+        SignalGuard(unsafe { self.touch().read().unwrap() })
     }
 
     pub fn get_exclusive(self: Pin<&Self>) -> T
@@ -86,56 +81,38 @@ impl<F: Send + FnMut() -> T, T: Send> Signal<F, T> {
     where
         T: Clone,
     {
-        self.touch();
-        unsafe {
-            (&*self.state.get())
-                .cache
-                .assume_init_ref()
-                .write()
-                .unwrap()
-                .clone()
-        }
+        unsafe { self.touch().write().unwrap().clone() }
     }
 
-    fn touch(self: Pin<&Self>) {
-        pollinate::tag(self.handle.get_or_init(|| unsafe {
-            pollinate::init(
-                self.project_ref().state.get_pin_non_null(),
-                SignalState::init,
-                SignalState::eval,
-            )
-        }));
+    fn touch(self: Pin<&Self>) -> &RwLock<T> {
+        self.0.tag();
+        unsafe {
+            self.project_ref()
+                .0
+                .project_or_init(|f, cache| unsafe { Self::init(f, cache) }, Some(Self::eval))
+                .1
+                .project_ref()
+                .0
+        }
     }
 }
 
 /// # Safety
 ///
-/// These are the only functions that access `self.state`.
+/// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<F: Send + FnMut() -> T, T: Send> SignalState<F, T> {
-    unsafe extern "C" fn init(self: Pin<&mut Self>) {
-        let value = (&mut *self.state.get())();
-        self.project().cache.write(RwLock::new(value));
+impl<F: Send + FnMut() -> T, T: Send> Signal<F, T> {
+    unsafe fn init<'a>(
+        f: Pin<&'a ForceSyncUnpin<UnsafeCell<F>>>,
+        cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
+    ) -> Token<'a> {
+        cache.write(unsafe { ForceSyncUnpin(f.project_ref().0.get_mut()().into()) })
     }
 
-    unsafe extern "C" fn eval(self: Pin<&Self>) {
-        *self.cache.assume_init_ref().write().unwrap() = (&mut *self.state.get())();
-    }
-
-    unsafe fn drop_cached(&mut self) {
-        self.cache.assume_init_drop();
-    }
-}
-
-#[pinned_drop]
-impl<F: Send + FnMut() -> T, T: Send> PinnedDrop for Signal<F, T> {
-    fn drop(mut self: Pin<&mut Self>) {
-        if self.handle.take().map(drop).is_some() {
-            unsafe {
-                // SAFETY: By [`pollinate::init`]'s guarantees,
-                // the inner pointer is discarded once `self.handle` is dropped.
-                self.state.get_mut().drop_cached()
-            }
-        }
+    unsafe extern "C" fn eval(
+        f: Pin<&ForceSyncUnpin<UnsafeCell<F>>>,
+        cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
+    ) {
+        *cache.project_ref().0.write().unwrap() = f.project_ref().0.get_mut()();
     }
 }
