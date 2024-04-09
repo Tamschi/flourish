@@ -1,0 +1,9 @@
+# See <https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository>.
+blank_issues_enabled: false
+contact_links:
+  - name: Discuss anything else
+    url: https://github.com/Tamschi/flourish-pollinate/discussions
+    about: For questions, ideas or general discussion, please use the Discussions tab linked here.
+  - name: Show me your project
+    url: https://github.com/Tamschi/flourish-pollinate/discussions/categories/show-and-tell
+    about: I'd love to hear about your projects using this crate here!
