@@ -11,7 +11,7 @@ use pin_project::{pin_project, pinned_drop};
 use pollinate::{GetPinNonNullExt, SelfHandle};
 
 #[pin_project(PinnedDrop)]
-pub struct Signal<F: Send + FnMut() -> T, T: Send + Sync> {
+pub struct Signal<F: Send + FnMut() -> T, T: Send> {
     handle: OnceLock<SelfHandle>,
     #[pin]
     state: UnsafeCell<SignalState<F, T>>,
@@ -35,9 +35,9 @@ impl<'a, T> Deref for SignalGuard<'a, T> {
 }
 
 /// TODO: Safety documentation.
-unsafe impl<F: Send + FnMut() -> T, T: Send + Sync> Sync for Signal<F, T> {}
+unsafe impl<F: Send + FnMut() -> T, T: Send> Sync for Signal<F, T> {}
 
-impl<F: Send + FnMut() -> T, T: Send + Sync> Signal<F, T> {
+impl<F: Send + FnMut() -> T, T: Send> Signal<F, T> {
     pub fn new(f: F) -> Pin<Arc<Self>> {
         Arc::pin(Self::new_raw(f))
     }
@@ -55,19 +55,49 @@ impl<F: Send + FnMut() -> T, T: Send + Sync> Signal<F, T> {
 
     pub fn get(self: Pin<&Self>) -> T
     where
-        T: Copy,
+        T: Sync + Copy,
     {
         *self.read()
     }
 
     pub fn get_clone(self: Pin<&Self>) -> T
     where
-        T: Clone,
+        T: Sync + Clone,
     {
         self.read().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> SignalGuard<'a, T> {
+    pub fn read<'a>(self: Pin<&'a Self>) -> SignalGuard<'a, T>
+    where
+        T: Sync,
+    {
+        self.touch();
+        SignalGuard(unsafe { (&*self.state.get()).cache.assume_init_ref().read().unwrap() })
+    }
+
+    pub fn get_exclusive(self: Pin<&Self>) -> T
+    where
+        T: Copy,
+    {
+        self.get_clone_exclusive()
+    }
+
+    pub fn get_clone_exclusive(self: Pin<&Self>) -> T
+    where
+        T: Clone,
+    {
+        self.touch();
+        unsafe {
+            (&*self.state.get())
+                .cache
+                .assume_init_ref()
+                .write()
+                .unwrap()
+                .clone()
+        }
+    }
+
+    fn touch(self: Pin<&Self>) {
         pollinate::tag(self.handle.get_or_init(|| unsafe {
             pollinate::init(
                 self.project_ref().state.get_pin_non_null(),
@@ -75,7 +105,6 @@ impl<F: Send + FnMut() -> T, T: Send + Sync> Signal<F, T> {
                 SignalState::eval,
             )
         }));
-        SignalGuard(unsafe { (&*self.state.get()).cache.assume_init_ref().read().unwrap() })
     }
 }
 
@@ -83,7 +112,7 @@ impl<F: Send + FnMut() -> T, T: Send + Sync> Signal<F, T> {
 ///
 /// These are the only functions that access `self.state`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<F: Send + FnMut() -> T, T: Send + Sync> SignalState<F, T> {
+impl<F: Send + FnMut() -> T, T: Send> SignalState<F, T> {
     unsafe extern "C" fn init(self: Pin<&mut Self>) {
         let value = (&mut *self.state.get())();
         self.project().cache.write(RwLock::new(value));
@@ -99,7 +128,7 @@ impl<F: Send + FnMut() -> T, T: Send + Sync> SignalState<F, T> {
 }
 
 #[pinned_drop]
-impl<F: Send + FnMut() -> T, T: Send + Sync> PinnedDrop for Signal<F, T> {
+impl<F: Send + FnMut() -> T, T: Send> PinnedDrop for Signal<F, T> {
     fn drop(mut self: Pin<&mut Self>) {
         if self.handle.take().map(drop).is_some() {
             unsafe {
