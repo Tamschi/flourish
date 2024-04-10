@@ -13,3 +13,10 @@ pub use subscription::{Subscription, SubscriptionGuard};
 pub mod __ {
     pub use super::{signal::__::*, subscription::__::*};
 }
+
+#[macro_export]
+macro_rules! shadow_clone {
+    ($($ident:ident),*$(,)?) => {
+		let ($($ident),*) = ($(::std::clone::Clone::clone(&$ident)),*);
+	};
+}

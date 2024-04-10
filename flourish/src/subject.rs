@@ -105,11 +105,11 @@ impl<T> Subject<T> {
     //     Pin::new(&self.source).update(|_, _| update(&mut *self.value.write().unwrap()))
     // }
 
-    fn set_blocking(&self, new_value: T) {
+    pub fn set_blocking(&self, new_value: T) {
         self.update_blocking(|value| *value = new_value);
     }
 
-    fn update_blocking(&self, update: impl FnOnce(&mut T)) {
+    pub fn update_blocking(&self, update: impl FnOnce(&mut T)) {
         Pin::new(&self.source).update_blocking(|_, _| update(&mut *self.value.write().unwrap()))
     }
 
