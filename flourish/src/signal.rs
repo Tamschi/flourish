@@ -1,145 +1,169 @@
 use std::{
     borrow::Borrow,
-    cell::UnsafeCell,
+    cell::Cell,
+    marker::PhantomData,
+    mem::MaybeUninit,
     ops::Deref,
-    pin::Pin,
-    sync::{Arc, RwLock, RwLockReadGuard},
+    ptr::NonNull,
+    sync::{RwLock, RwLockReadGuard},
 };
 
 use pin_project::pin_project;
-use pollinate::{
-    slot::{Slot, Token},
-    Source,
-};
+use servo_arc::Arc;
 
-#[pin_project]
-#[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub struct Signal<F: Send + FnMut() -> T, T: Send>(
-    #[pin] Source<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>>,
+use crate::raw::RawSignal;
+
+#[derive(Debug)]
+pub struct Signal<T: Send + ?Sized>(
+    /// In theory it's possible to store an invalid `*const T` here,
+    /// in order to store pointer metadata, which would allow working with unsized type, maybe.
+    NonNull<SignalHeader<T>>,
 );
 
-#[pin_project]
-struct ForceSyncUnpin<T>(T);
-unsafe impl<T> Sync for ForceSyncUnpin<T> {}
+unsafe impl<T: Send + ?Sized> Send for Signal<T> {}
+unsafe impl<T: Send + ?Sized> Sync for Signal<T> {}
 
-pub struct SignalGuard<'a, T>(RwLockReadGuard<'a, T>);
-
-impl<'a, T> Deref for SignalGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.borrow()
+impl<T: Send + ?Sized> Clone for Signal<T> {
+    fn clone(&self) -> Self {
+        Self(unsafe {
+            // SAFETY: `Arc` uses enough `repr(C)` to increment the reference without the actual type.
+            NonNull::new_unchecked(
+                Arc::into_raw(Arc::from_raw_addrefed(self.0.as_ptr().cast_const())).cast_mut(),
+            )
+        })
     }
 }
 
-impl<'a, T> Borrow<T> for SignalGuard<'a, T> {
+impl<T: Send + ?Sized> Drop for Signal<T> {
+    fn drop(&mut self) {
+        // I think this is synchronised by dropping the Arc.
+        let address = unsafe { self.0.as_ptr().read() }.0;
+        unsafe { address.as_ref().drop_arc() };
+    }
+}
+
+pub struct SignalGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+
+impl<'a, T: ?Sized> Deref for SignalGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<'a, T: ?Sized> Borrow<T> for SignalGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
 
-/// TODO: Safety documentation.
-unsafe impl<F: Send + FnMut() -> T, T: Send> Sync for Signal<F, T> {}
-
-impl<F: Send + FnMut() -> T, T: Send> Signal<F, T> {
-    pub fn new(f: F) -> Pin<Arc<Self>> {
-        Arc::pin(Self::new_raw(f))
+impl<T: Send + ?Sized> Signal<T> {
+    pub fn new<F: Send + FnMut() -> T>(f: F) -> Self
+    where
+        T: Sized,
+    {
+        let arc = Arc::new(SignalDataFull {
+            anchor: SignalDataAnchor(PhantomData),
+            header: Cell::new(MaybeUninit::uninit()),
+            signal: RawSignal::new(f),
+        });
+        unsafe {
+            arc.header
+                .set(MaybeUninit::new(SignalHeader(NonNull::new_unchecked(
+                    &arc.anchor as &dyn AtSignalDataAddress<T> as *const _ as *mut _,
+                ))))
+        };
+        Self(unsafe { NonNull::new_unchecked(Arc::into_raw(arc).cast_mut().cast()) })
     }
 
-    pub fn new_raw(f: F) -> Self {
-        Self(Source::new(ForceSyncUnpin(f.into())))
-    }
-
-    pub fn get(self: Pin<&Self>) -> T
+    pub fn get(&self) -> T
     where
         T: Sync + Copy,
     {
         *self.read()
     }
 
-    pub fn get_clone(self: Pin<&Self>) -> T
+    pub fn get_clone(&self) -> T
     where
         T: Sync + Clone,
     {
         self.read().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> SignalGuard<'a, T>
+    pub fn read<'a>(&'a self) -> SignalGuard<'a, T>
     where
         T: Sync,
     {
-        SignalGuard(unsafe { self.touch().read().unwrap() })
+        SignalGuard(self.touch().read().unwrap())
     }
 
-    pub fn get_exclusive(self: Pin<&Self>) -> T
+    pub fn get_exclusive(&self) -> T
     where
         T: Copy,
     {
         self.get_clone_exclusive()
     }
 
-    pub fn get_clone_exclusive(self: Pin<&Self>) -> T
+    pub fn get_clone_exclusive(&self) -> T
     where
         T: Clone,
     {
-        unsafe { self.touch().write().unwrap().clone() }
+        self.touch().write().unwrap().clone()
     }
 
-    fn touch(self: Pin<&Self>) -> &RwLock<T> {
-        self.0.tag();
-        unsafe {
-            self.project_ref()
-                .0
-                .project_or_init(|f, cache| unsafe { Self::init(f, cache) }, Some(Self::eval))
-                .1
-                .project_ref()
-                .0
-        }
+    fn touch(&self) -> &RwLock<T> {
+        let address = unsafe { self.0.as_ptr().read() }.0;
+        unsafe { address.as_ref().touch() }
     }
 
-    pub(crate) fn pull(self: Pin<&Self>) -> &RwLock<T> {
-        unsafe {
-            self.project_ref()
-                .0
-                .pull_or_init(|f, cache| unsafe { Self::init(f, cache) }, Some(Self::eval))
-                .1
-                .project_ref()
-                .0
-        }
+    pub(crate) fn pull(&self) -> &RwLock<T> {
+        let address = unsafe { self.0.as_ptr().read() }.0;
+        unsafe { address.as_ref().pull() }
     }
 }
 
-/// # Safety
-///
-/// These are the only functions that access `cache`.
-/// Externally synchronised through guarantees on [`pollinate::init`].
-impl<F: Send + FnMut() -> T, T: Send> Signal<F, T> {
-    unsafe fn init<'a>(
-        f: Pin<&'a ForceSyncUnpin<UnsafeCell<F>>>,
-        cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
-    ) -> Token<'a> {
-        cache.write(ForceSyncUnpin((&mut *f.project_ref().0.get())().into()))
-    }
+/// FIXME: Once pointer-metadata is available, shrink this.
+#[derive(Debug, Clone, Copy)]
+struct SignalHeader<T: Send + ?Sized>(NonNull<dyn AtSignalDataAddress<T>>);
 
-    unsafe extern "C" fn eval(
-        f: Pin<&ForceSyncUnpin<UnsafeCell<F>>>,
-        cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
-    ) {
-        *cache.project_ref().0.write().unwrap() = (&mut *f.project_ref().0.get())();
-    }
+trait AtSignalDataAddress<T: Send + ?Sized> {
+    unsafe fn drop_arc(&self);
+    fn touch(&self) -> &RwLock<T>;
+    fn pull(&self) -> &RwLock<T>;
 }
 
-pub mod __ {
-    #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-    pub fn must_use_signal<T>(t: T) -> T {
-        t
-    }
+#[pin_project]
+#[repr(C)]
+struct SignalDataFull<T: Send, F: Send + ?Sized + FnMut() -> T> {
+    anchor: SignalDataAnchor<T, F>,
+    header: Cell<MaybeUninit<SignalHeader<T>>>,
+    #[pin]
+    signal: RawSignal<T, F>,
 }
 
-#[macro_export]
-macro_rules! signal {
-    {$(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::Signal::new_raw(|| $f));
-		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
-	)*};
+/// MUST BE A ZST
+struct SignalDataAnchor<T: Send, F: Send + ?Sized + FnMut() -> T>(
+    PhantomData<*const SignalDataFull<T, F>>,
+);
+
+/// TODO: This definitely has wrong provenance.
+impl<T: Send, F: Send + FnMut() -> T> AtSignalDataAddress<T> for SignalDataAnchor<T, F> {
+    /// # Safety
+    ///
+    /// `Self` is a ZST, so it's not actually dereferenced.
+    ///
+    unsafe fn drop_arc(&self) {
+        drop(Arc::<SignalDataFull<T, F>>::from_raw(
+            (self as *const Self).cast(),
+        ))
+    }
+
+    fn touch(&self) -> &RwLock<T> {
+        todo!()
+    }
+
+    fn pull(&self) -> &RwLock<T> {
+        todo!()
+    }
 }

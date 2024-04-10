@@ -1,4 +1,6 @@
-use flourish::{shadow_clone, signal, subscription, Signal, Subject, Subscription};
+use flourish::{
+    raw::RawSubject, shadow_clone, signal, subscription, Signal, Subject, Subscription,
+};
 
 #[test]
 fn use_constructors() {
@@ -14,9 +16,9 @@ fn use_constructors() {
     });
     let aa = Signal::new({
         shadow_clone!(c, d);
-        move || c.as_ref().get() + d.as_ref().get()
+        move || c.get() + d.get()
     }); //TODO: Make this a cacheless signal.
-    let sub = Subscription::new(move || println!("{}", aa.as_ref().get())); // 2
+    let sub = Subscription::new(move || println!("{}", aa.get())); // 2
     b.set_blocking(2); // 2
     a.set_blocking(0); // 0
     drop(sub);
@@ -26,15 +28,15 @@ fn use_constructors() {
     b.set_blocking(3);
     a.set_blocking(5);
 
-    let _sub_c = Subscription::new(move || println!("{}", c.as_ref().get())); // 8
-    let _sub_d = Subscription::new(move || println!("{}", d.as_ref().get())); // 2
+    let _sub_c = Subscription::new(move || println!("{}", c.get())); // 8
+    let _sub_d = Subscription::new(move || println!("{}", d.get())); // 2
     a.set_blocking(4); // 7, then 1
 }
 
 #[test]
 fn use_macros() {
-    let a = Subject::new_raw(1);
-    let b = Subject::new_raw(2);
+    let a = RawSubject::new(1);
+    let b = RawSubject::new(2);
     signal! {
         let c => a.get() + b.get();
         let d => a.get() - b.get();

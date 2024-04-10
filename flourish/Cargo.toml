@@ -7,3 +7,4 @@ edition = "2021"
 [dependencies]
 pin-project = "1.1.5"
 pollinate = {path = "../pollinate"}
+servo_arc = "0.3.0"

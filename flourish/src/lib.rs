@@ -1,17 +1,19 @@
 #![warn(clippy::pedantic)]
 
-mod signal;
-pub use signal::{Signal, SignalGuard};
+pub mod raw;
 
 mod subject;
 pub use subject::{Subject, SubjectGuard};
+
+mod signal;
+pub use signal::{Signal, SignalGuard};
 
 mod subscription;
 pub use subscription::{Subscription, SubscriptionGuard};
 
 #[doc(hidden = "macro-only")]
 pub mod __ {
-    pub use super::{signal::__::*, subscription::__::*};
+    pub use super::raw::__::*;
 }
 
 #[macro_export]

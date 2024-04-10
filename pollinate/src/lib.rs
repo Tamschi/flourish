@@ -17,23 +17,39 @@ use slot::{Slot, Token};
 
 static SOURCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-pub struct Source<Eager: Sync, Lazy: Sync> {
-    handle: NonZeroU64,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct SourceHandle(NonZeroU64);
+
+impl SourceHandle {
+    fn new() -> Self {
+        Self(
+            (SOURCE_COUNTER.fetch_add(1, Ordering::SeqCst) + 1)
+                .try_into()
+                .expect("infallible within reasonable time"),
+        )
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Source<Eager: Sync + ?Sized, Lazy: Sync> {
+    handle: SourceHandle,
     _pinned: PhantomPinned,
-    eager: Eager,
     lazy: OnceLock<Lazy>,
+    eager: Eager,
 }
 impl Unpin for Source<(), ()> {}
 
 pub mod slot;
 
-impl<Eager: Sync, Lazy: Sync> Source<Eager, Lazy> {
-    pub fn new(eager: Eager) -> Self {
+impl<Eager: Sync + ?Sized, Lazy: Sync> Source<Eager, Lazy> {
+    pub fn new(eager: Eager) -> Self
+    where
+        Eager: Sized,
+    {
         Self {
             //TODO: Relax ordering?
-            handle: (SOURCE_COUNTER.fetch_add(1, Ordering::SeqCst) + 1)
-                .try_into()
-                .expect("infallible within reasonable time"),
+            handle: SourceHandle::new(),
             _pinned: PhantomPinned,
             eager: eager.into(),
             lazy: OnceLock::new(),
@@ -70,13 +86,6 @@ impl<Eager: Sync, Lazy: Sync> Source<Eager, Lazy> {
         todo!()
     }
 
-    /// # Panics
-    ///
-    /// - iff recording dependencies for an earlier or the same signal.
-    pub fn tag(&self) {
-        todo!()
-    }
-
     //TODO: Can the lifetime requirement be reduced here?
     //      In theory, the closure only needs to live longer than `Self`, but I'm unsure if that's expressible.
     pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&Lazy>)>(self: Pin<&Self>, f: F) {
@@ -88,7 +97,7 @@ impl<Eager: Sync, Lazy: Sync> Source<Eager, Lazy> {
     }
 }
 
-impl<Eager: Sync, Lazy: Sync> Drop for Source<Eager, Lazy> {
+impl<Eager: Sync + ?Sized, Lazy: Sync> Drop for Source<Eager, Lazy> {
     fn drop(&mut self) {
         todo!()
     }
