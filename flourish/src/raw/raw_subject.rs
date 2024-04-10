@@ -1,5 +1,6 @@
 use std::{
     borrow::Borrow,
+    mem::size_of,
     ops::Deref,
     pin::Pin,
     sync::{RwLock, RwLockReadGuard},
@@ -7,6 +8,8 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::Source;
+
+use crate::utils::conjure_zst;
 
 #[pin_project]
 #[derive(Debug)]
@@ -47,7 +50,13 @@ impl<T> RawSubject<T> {
     where
         T: Sync + Copy,
     {
-        *self.read()
+        if size_of::<T>() == 0 {
+            // The read is unobservable, so just skip locking.
+            self.touch();
+            conjure_zst()
+        } else {
+            *self.read()
+        }
     }
 
     pub fn get_clone(&self) -> T
@@ -73,7 +82,13 @@ impl<T> RawSubject<T> {
     where
         T: Copy,
     {
-        self.get_clone_exclusive()
+        if size_of::<T>() == 0 {
+            // The read is unobservable, so just skip locking.
+            self.touch();
+            conjure_zst()
+        } else {
+            self.get_clone_exclusive()
+        }
     }
 
     pub fn get_clone_exclusive(&self) -> T

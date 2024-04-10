@@ -22,3 +22,5 @@ macro_rules! shadow_clone {
 		let ($($ident),*) = ($(::std::clone::Clone::clone(&$ident)),*);
 	};
 }
+
+mod utils;

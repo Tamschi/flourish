@@ -1,6 +1,7 @@
 use std::{
     borrow::Borrow,
     cell::UnsafeCell,
+    mem::{needs_drop, size_of},
     ops::Deref,
     pin::Pin,
     sync::{RwLock, RwLockReadGuard},
@@ -11,6 +12,8 @@ use pollinate::{
     slot::{Slot, Token},
     Source,
 };
+
+use crate::utils::conjure_zst;
 
 #[repr(transparent)]
 #[pin_project]
@@ -51,7 +54,13 @@ impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
     where
         T: Sync + Copy,
     {
-        *self.read()
+        if size_of::<T>() == 0 {
+            // The read is unobservable, so just skip locking.
+            self.touch();
+            conjure_zst()
+        } else {
+            *self.read()
+        }
     }
 
     pub fn get_clone(self: Pin<&Self>) -> T
@@ -72,7 +81,13 @@ impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
     where
         T: Copy,
     {
-        self.get_clone_exclusive()
+        if size_of::<T>() == 0 {
+            // The read is unobservable, so just skip locking.
+            self.touch();
+            conjure_zst()
+        } else {
+            self.get_clone_exclusive()
+        }
     }
 
     pub fn get_clone_exclusive(self: Pin<&Self>) -> T
@@ -121,7 +136,12 @@ impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
         f: Pin<&ForceSyncUnpin<UnsafeCell<F>>>,
         cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
     ) {
-        *cache.project_ref().0.write().unwrap() = (&mut *f.project_ref().0.get())();
+        let new_value = (&mut *f.project_ref().0.get())();
+        if needs_drop::<T>() || size_of::<T>() > 0 {
+            *cache.project_ref().0.write().unwrap() = new_value;
+        } else {
+            // The write is unobservable, so just skip locking.
+        }
     }
 }
 
