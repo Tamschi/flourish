@@ -13,6 +13,7 @@ use pollinate::{
 };
 
 #[pin_project]
+#[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub struct Signal<F: Send + FnMut() -> T, T: Send>(
     #[pin] Source<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>>,
 );
@@ -95,6 +96,17 @@ impl<F: Send + FnMut() -> T, T: Send> Signal<F, T> {
                 .0
         }
     }
+
+    pub(crate) fn pull(self: Pin<&Self>) -> &RwLock<T> {
+        unsafe {
+            self.project_ref()
+                .0
+                .pull_or_init(|f, cache| unsafe { Self::init(f, cache) }, Some(Self::eval))
+                .1
+                .project_ref()
+                .0
+        }
+    }
 }
 
 /// # Safety
@@ -106,13 +118,28 @@ impl<F: Send + FnMut() -> T, T: Send> Signal<F, T> {
         f: Pin<&'a ForceSyncUnpin<UnsafeCell<F>>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
     ) -> Token<'a> {
-        cache.write(unsafe { ForceSyncUnpin(f.project_ref().0.get_mut()().into()) })
+        cache.write(ForceSyncUnpin((&mut *f.project_ref().0.get())().into()))
     }
 
     unsafe extern "C" fn eval(
         f: Pin<&ForceSyncUnpin<UnsafeCell<F>>>,
         cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
     ) {
-        *cache.project_ref().0.write().unwrap() = f.project_ref().0.get_mut()();
+        *cache.project_ref().0.write().unwrap() = (&mut *f.project_ref().0.get())();
     }
+}
+
+pub mod __ {
+    #[must_use = "Signals do nothing unless they are polled or subscribed to."]
+    pub fn must_use_signal<T>(t: T) -> T {
+        t
+    }
+}
+
+#[macro_export]
+macro_rules! signal {
+    {$(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
+		let $name = ::std::pin::pin!($crate::Signal::new_raw(|| $f));
+		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
+	)*};
 }

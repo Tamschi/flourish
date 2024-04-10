@@ -55,10 +55,35 @@ impl<Eager: Sync, Lazy: Sync> Source<Eager, Lazy> {
         todo!()
     }
 
+    /// TODO: Naming?
+    ///
+    /// Acts as [`Self::project_or_init`], but also marks this [`Source`] permanently as subscribed (until dropped).
+    ///
+    /// # Safety
+    ///
+    /// This function has the same safety requirements as [`Self::project_or_init`].
+    pub unsafe fn pull_or_init(
+        self: Pin<&Self>,
+        init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
+        eval: Option<unsafe extern "C" fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)>,
+    ) -> (Pin<&Eager>, Pin<&Lazy>) {
+        todo!()
+    }
+
     /// # Panics
     ///
     /// - iff recording dependencies for an earlier or the same signal.
     pub fn tag(&self) {
+        todo!()
+    }
+
+    //TODO: Can the lifetime requirement be reduced here?
+    //      In theory, the closure only needs to live longer than `Self`, but I'm unsure if that's expressible.
+    pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&Lazy>)>(self: Pin<&Self>, f: F) {
+        todo!()
+    }
+
+    pub fn update_blocking<F: FnOnce(Pin<&Eager>, Pin<&Lazy>)>(self: Pin<&Self>, f: F) {
         todo!()
     }
 }
@@ -69,6 +94,7 @@ impl<Eager: Sync, Lazy: Sync> Drop for Source<Eager, Lazy> {
     }
 }
 
+///TODO: Remove?
 pub trait GetPinNonNullExt {
     type Target: ?Sized;
     fn get_pin_non_null(self: Pin<&Self>) -> Pin<NonNull<Self::Target>>;
@@ -86,6 +112,7 @@ impl<T: ?Sized> GetPinNonNullExt for UnsafeCell<T> {
     }
 }
 
+///TODO: Remove?
 pub trait IntoPinNonNullExt {
     fn into_pin_non_null(self: Pin<&mut Self>) -> Pin<NonNull<Self>>;
 }
