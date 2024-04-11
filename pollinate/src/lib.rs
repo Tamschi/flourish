@@ -13,14 +13,19 @@ use std::{
     },
 };
 
+pub mod slot;
 use slot::{Slot, Token};
+
+mod deferred_queue;
+mod dirty_queue;
+mod work_queue;
 
 static SOURCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct SourceHandle(NonZeroU64);
+struct SourceId(NonZeroU64);
 
-impl SourceHandle {
+impl SourceId {
     fn new() -> Self {
         Self(
             (SOURCE_COUNTER.fetch_add(1, Ordering::SeqCst) + 1)
@@ -33,14 +38,12 @@ impl SourceHandle {
 #[derive(Debug)]
 #[repr(C)]
 pub struct Source<Eager: Sync + ?Sized, Lazy: Sync> {
-    handle: SourceHandle,
+    handle: SourceId,
     _pinned: PhantomPinned,
     lazy: OnceLock<Lazy>,
     eager: Eager,
 }
 impl Unpin for Source<(), ()> {}
-
-pub mod slot;
 
 impl<Eager: Sync + ?Sized, Lazy: Sync> Source<Eager, Lazy> {
     pub fn new(eager: Eager) -> Self
@@ -49,7 +52,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync> Source<Eager, Lazy> {
     {
         Self {
             //TODO: Relax ordering?
-            handle: SourceHandle::new(),
+            handle: SourceId::new(),
             _pinned: PhantomPinned,
             eager: eager.into(),
             lazy: OnceLock::new(),
