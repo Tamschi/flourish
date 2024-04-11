@@ -1,6 +1,7 @@
 use std::{
     borrow::Borrow,
-    mem::size_of,
+    fmt::Debug,
+    mem::{needs_drop, size_of},
     ops::Deref,
     pin::Pin,
     sync::{RwLock, RwLockReadGuard},
@@ -15,12 +16,27 @@ use crate::utils::conjure_zst;
 #[derive(Debug)]
 pub struct RawSubject<T: ?Sized> {
     #[pin]
-    source: Source<(), ()>, // Unpin
-    value: RwLock<T>,
+    source: Source<AssertSync<RwLock<T>>, ()>,
 }
 
 /// TODO: Safety.
 unsafe impl<T> Sync for RawSubject<T> {}
+
+struct AssertSync<T: ?Sized>(T);
+unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
+
+impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let maybe_guard = self.0.try_write();
+        f.debug_tuple("AssertSync")
+            .field(
+                maybe_guard
+                    .as_ref()
+                    .map_or_else(|_| &"(locked)" as &dyn Debug, |guard| guard),
+            )
+            .finish()
+    }
+}
 
 pub struct RawSubjectGuard<'a, T>(RwLockReadGuard<'a, T>);
 
@@ -41,8 +57,7 @@ impl<'a, T> Borrow<T> for RawSubjectGuard<'a, T> {
 impl<T> RawSubject<T> {
     pub fn new(initial_value: T) -> Self {
         Self {
-            source: Source::new(()),
-            value: initial_value.into(),
+            source: Source::new(AssertSync(RwLock::new(initial_value))),
         }
     }
 
@@ -70,12 +85,11 @@ impl<T> RawSubject<T> {
     where
         T: Sync,
     {
-        self.touch();
-        RawSubjectGuard(self.value.read().unwrap())
+        RawSubjectGuard(self.touch().read().unwrap())
     }
 
     pub fn get_mut<'a>(&'a mut self) -> &mut T {
-        self.value.get_mut().unwrap()
+        self.source.eager_mut().0.get_mut().unwrap()
     }
 
     pub fn get_exclusive(&self) -> T
@@ -95,80 +109,117 @@ impl<T> RawSubject<T> {
     where
         T: Clone,
     {
-        self.touch();
-        self.value.write().unwrap().clone()
+        self.touch().write().unwrap().clone()
     }
 
-    pub fn touch(&self) {
+    pub fn touch(&self) -> &RwLock<T> {
         unsafe {
-            // SAFETY: Doesn't access memory.
-            Pin::new(&self.source).project_or_init(|_, slot| slot.write(()), None);
+            // SAFETY: Doesn't defer memory access.
+            &*(&Pin::new_unchecked(&self.source)
+                .project_or_init(|_, slot| slot.write(()), None)
+                .0
+                 .0 as *const _)
         }
     }
 
-    // fn set(&self, new_value: T)
-    // where
-    //     T: 'static + Send,
-    // {
-    //     self.update(|value| *value = new_value);
-    // }
+    pub fn set(self: Pin<&Self>, new_value: T)
+    where
+        T: 'static + Send,
+    {
+        if needs_drop::<T>() || size_of::<T>() > 0 {
+            self.update(|value| *value = new_value);
+        } else {
+            // The write is unobservable, so just skip locking.
+            self.project_ref().source.update(|_, _| ());
+        }
+    }
 
-    // fn update(&self, update: impl 'static + Send + FnOnce(&mut T))
-    // where
-    //     T: Send,
-    // {
-    //     Pin::new(&self.source).update(|_, _| update(&mut *self.value.write().unwrap()))
-    // }
+    pub fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T))
+    where
+        T: Send,
+    {
+        self.project_ref()
+            .source
+            .update(|value, _| update(&mut value.0.write().unwrap()))
+    }
 
     pub fn set_blocking(&self, new_value: T) {
-        self.update_blocking(|value| *value = new_value);
+        if needs_drop::<T>() || size_of::<T>() > 0 {
+            self.update_blocking(|value| *value = new_value)
+        } else {
+            // The write is unobservable, so just skip locking.
+            self.source.update_blocking(|_, _| ())
+        }
     }
 
     pub fn update_blocking(&self, update: impl FnOnce(&mut T)) {
-        Pin::new(&self.source).update_blocking(|_, _| update(&mut *self.value.write().unwrap()))
+        self.source
+            .update_blocking(|value, _| update(&mut value.0.write().unwrap()))
     }
 
-    // fn into_get_set<'a>(self) -> (impl 'a + Fn() -> T, impl 'a + Fn(T))
-    // where
-    //     Self: 'a,
-    //     T: 'static + Sync + Send + Copy,
-    // {
-    //     self.into_get_clone_set()
-    // }
+    pub fn get_set<'a>(
+        self: Pin<&'a Self>,
+    ) -> (
+        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+    )
+    where
+        T: 'static + Sync + Send + Copy,
+    {
+        self.get_clone_set()
+    }
 
-    // fn into_get_clone_set<'a>(self) -> (impl 'a + Fn() -> T, impl 'a + Fn(T))
-    // where
-    //     Self: 'a,
-    //     T: 'static + Sync + Send + Clone,
-    // {
-    //     let this1 = Arc::pin(self);
-    //     let this2 = Pin::clone(&this1);
-    //     (
-    //         move || this1.get_clone(),
-    //         move |new_value| this2.set(new_value),
-    //     )
-    // }
+    pub fn get_clone_set<'a>(
+        self: Pin<&'a Self>,
+    ) -> (
+        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+    )
+    where
+        T: 'static + Sync + Send + Clone,
+    {
+        let this = self.clone();
+        (
+            move || self.get_clone(),
+            move |new_value| this.set(new_value),
+        )
+    }
 
-    // fn into_get_exclusive_set<'a>(self: Pin<Arc<Self>>) -> (impl 'a + Fn() -> T, impl 'a + Fn(T))
-    // where
-    //     Self: 'a,
-    //     T: 'static + Send + Copy,
-    // {
-    //     self.into_get_clone_exclusive_set()
-    // }
+    pub fn into_get_exclusive_set<'a>(
+        self: Pin<&'a Self>,
+    ) -> (
+        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+    )
+    where
+        Self: 'a,
+        T: 'static + Send + Copy,
+    {
+        self.into_get_clone_exclusive_set()
+    }
 
-    // fn into_get_clone_exclusive_set<'a>(
-    //     self: Pin<Arc<Self>>,
-    // ) -> (impl 'a + Fn() -> T, impl 'a + Fn(T))
-    // where
-    //     Self: 'a,
-    //     T: 'static + Send + Clone,
-    // {
-    //     let this1 = Arc::pin(self);
-    //     let this2 = Pin::clone(&this1);
-    //     (
-    //         move || this1.get_clone_exclusive(),
-    //         move |new_value| this2.set(new_value),
-    //     )
-    // }
+    pub fn into_get_clone_exclusive_set<'a>(
+        self: Pin<&'a Self>,
+    ) -> (
+        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+    )
+    where
+        Self: 'a,
+        T: 'static + Send + Clone,
+    {
+        let this = self.clone();
+        (
+            move || self.get_clone_exclusive(),
+            move |new_value| this.set(new_value),
+        )
+    }
+}
+
+#[macro_export]
+macro_rules! subject {
+    {$(let $(mut $(@@ $_mut:ident)?)? $name:ident := $initial_value:expr;)*} => {$(
+		let $name = ::std::pin::pin!($crate::raw::RawSubject::new($initial_value));
+		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
+	)*};
 }

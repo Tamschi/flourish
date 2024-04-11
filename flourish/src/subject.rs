@@ -1,11 +1,11 @@
-use std::{borrow::Borrow, ops::Deref};
+use std::{borrow::Borrow, mem, ops::Deref, pin::Pin, sync::RwLock};
 
 use servo_arc::Arc;
 
 use crate::raw::{RawSubject, RawSubjectGuard};
 
 #[derive(Debug, Clone)]
-pub struct Subject<T: ?Sized>(Arc<RawSubject<T>>);
+pub struct Subject<T: ?Sized>(Pin<Arc<RawSubject<T>>>);
 
 pub struct SubjectGuard<'a, T>(RawSubjectGuard<'a, T>);
 
@@ -25,7 +25,11 @@ impl<'a, T> Borrow<T> for SubjectGuard<'a, T> {
 
 impl<T> Subject<T> {
     pub fn new(initial_value: T) -> Self {
-        Self(Arc::new(RawSubject::new(initial_value)))
+        Self(unsafe {
+            mem::transmute::<Arc<RawSubject<T>>, Pin<Arc<RawSubject<T>>>>(Arc::new(
+                RawSubject::new(initial_value),
+            ))
+        })
     }
 
     pub fn get(&self) -> T
@@ -63,23 +67,23 @@ impl<T> Subject<T> {
         self.0.get_clone_exclusive()
     }
 
-    pub fn touch(&self) {
+    pub fn touch(&self) -> &RwLock<T> {
         self.0.touch()
     }
 
-    // fn set(&self, new_value: T)
-    // where
-    //     T: 'static + Send,
-    // {
-    //     self.update(|value| *value = new_value);
-    // }
+    pub fn set(&self, new_value: T)
+    where
+        T: 'static + Send,
+    {
+        self.0.as_ref().set(new_value)
+    }
 
-    // fn update(&self, update: impl 'static + Send + FnOnce(&mut T))
-    // where
-    //     T: Send,
-    // {
-    //     Pin::new(&self.source).update(|_, _| update(&mut *self.value.write().unwrap()))
-    // }
+    pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T))
+    where
+        T: Send,
+    {
+        self.0.as_ref().update(update)
+    }
 
     pub fn set_blocking(&self, new_value: T) {
         self.0.set_blocking(new_value)
@@ -89,47 +93,63 @@ impl<T> Subject<T> {
         self.0.update_blocking(update)
     }
 
-    // fn into_get_set<'a>(self) -> (impl 'a + Fn() -> T, impl 'a + Fn(T))
-    // where
-    //     Self: 'a,
-    //     T: 'static + Sync + Send + Copy,
-    // {
-    //     self.into_get_clone_set()
-    // }
+    pub fn into_get_set<'a>(
+        self,
+    ) -> (
+        impl 'a + Clone + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Send + Sync + Fn(T),
+    )
+    where
+        Self: 'a,
+        T: 'static + Sync + Send + Copy,
+    {
+        self.into_get_clone_set()
+    }
 
-    // fn into_get_clone_set<'a>(self) -> (impl 'a + Fn() -> T, impl 'a + Fn(T))
-    // where
-    //     Self: 'a,
-    //     T: 'static + Sync + Send + Clone,
-    // {
-    //     let this1 = Arc::pin(self);
-    //     let this2 = Pin::clone(&this1);
-    //     (
-    //         move || this1.get_clone(),
-    //         move |new_value| this2.set(new_value),
-    //     )
-    // }
+    pub fn into_get_clone_set<'a>(
+        self,
+    ) -> (
+        impl 'a + Clone + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Send + Sync + Fn(T),
+    )
+    where
+        Self: 'a,
+        T: 'static + Sync + Send + Clone,
+    {
+        let this = self.clone();
+        (
+            move || self.get_clone(),
+            move |new_value| this.set(new_value),
+        )
+    }
 
-    // fn into_get_exclusive_set<'a>(self: Pin<Arc<Self>>) -> (impl 'a + Fn() -> T, impl 'a + Fn(T))
-    // where
-    //     Self: 'a,
-    //     T: 'static + Send + Copy,
-    // {
-    //     self.into_get_clone_exclusive_set()
-    // }
+    pub fn into_get_exclusive_set<'a>(
+        self,
+    ) -> (
+        impl 'a + Clone + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Send + Sync + Fn(T),
+    )
+    where
+        Self: 'a,
+        T: 'static + Send + Copy,
+    {
+        self.into_get_clone_exclusive_set()
+    }
 
-    // fn into_get_clone_exclusive_set<'a>(
-    //     self: Pin<Arc<Self>>,
-    // ) -> (impl 'a + Fn() -> T, impl 'a + Fn(T))
-    // where
-    //     Self: 'a,
-    //     T: 'static + Send + Clone,
-    // {
-    //     let this1 = Arc::pin(self);
-    //     let this2 = Pin::clone(&this1);
-    //     (
-    //         move || this1.get_clone_exclusive(),
-    //         move |new_value| this2.set(new_value),
-    //     )
-    // }
+    pub fn into_get_clone_exclusive_set<'a>(
+        self,
+    ) -> (
+        impl 'a + Clone + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Send + Sync + Fn(T),
+    )
+    where
+        Self: 'a,
+        T: 'static + Send + Clone,
+    {
+        let this = self.clone();
+        (
+            move || self.get_clone_exclusive(),
+            move |new_value| this.set(new_value),
+        )
+    }
 }
