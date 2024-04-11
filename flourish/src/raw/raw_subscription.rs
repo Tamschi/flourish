@@ -29,11 +29,6 @@ pub fn __pull_subscription<T: Send, F: Send + FnMut() -> T>(
 
 pub(crate) mod __ {
     pub use super::{__new_raw_unsubscribed_subscription, __pull_subscription};
-
-    #[must_use = "Subscriptions are cancelled when dropped."]
-    pub fn must_use_subscription<T>(t: T) -> T {
-        t
-    }
 }
 
 #[macro_export]

@@ -8,5 +8,5 @@ mod raw_subscription;
 pub use raw_subscription::{RawSubscription, RawSubscriptionGuard};
 
 pub(crate) mod __ {
-    pub use super::{raw_signal::__::*, raw_subscription::__::*};
+    pub use super::raw_subscription::__::*;
 }

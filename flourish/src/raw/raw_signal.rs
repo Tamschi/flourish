@@ -145,13 +145,6 @@ impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
     }
 }
 
-pub mod __ {
-    #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-    pub fn must_use_signal<T>(t: T) -> T {
-        t
-    }
-}
-
 #[macro_export]
 macro_rules! signal {
     {$(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
