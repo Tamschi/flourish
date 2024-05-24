@@ -1,11 +1,14 @@
 use std::{borrow::Borrow, mem, ops::Deref, pin::Pin, sync::RwLock};
 
+use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 use servo_arc::Arc;
 
 use crate::raw::{RawSubject, RawSubjectGuard};
 
 #[derive(Debug, Clone)]
-pub struct Subject<T: ?Sized>(Pin<Arc<RawSubject<T>>>);
+pub struct Subject<T: ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
+    Pin<Arc<RawSubject<T, SR>>>,
+);
 
 pub struct SubjectGuard<'a, T>(RawSubjectGuard<'a, T>);
 
@@ -23,11 +26,21 @@ impl<'a, T> Borrow<T> for SubjectGuard<'a, T> {
     }
 }
 
-impl<T> Subject<T> {
-    pub fn new(initial_value: T) -> Self {
+impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
+    pub fn new(initial_value: T) -> Self
+    where
+        SR: Default,
+    {
+        Self::with_runtime(initial_value, SR::default())
+    }
+
+    pub fn with_runtime(initial_value: T, sr: SR) -> Self
+    where
+        SR: Default,
+    {
         Self(unsafe {
-            mem::transmute::<Arc<RawSubject<T>>, Pin<Arc<RawSubject<T>>>>(Arc::new(
-                RawSubject::new(initial_value),
+            mem::transmute::<Arc<RawSubject<T, SR>>, Pin<Arc<RawSubject<T, SR>>>>(Arc::new(
+                RawSubject::with_runtime(initial_value, sr),
             ))
         })
     }
@@ -93,6 +106,14 @@ impl<T> Subject<T> {
         self.0.update_blocking(update)
     }
 
+    pub fn into_get_set_bound<'a>(self) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
+    where
+        Self: 'a,
+        T: 'static + Sync + Send + Copy,
+    {
+        self.into_get_clone_set_bound()
+    }
+
     pub fn into_get_set<'a>(
         self,
     ) -> (
@@ -102,16 +123,14 @@ impl<T> Subject<T> {
     where
         Self: 'a,
         T: 'static + Sync + Send + Copy,
+        SR: Send + Sync,
     {
         self.into_get_clone_set()
     }
 
-    pub fn into_get_clone_set<'a>(
+    pub fn into_get_clone_set_bound<'a>(
         self,
-    ) -> (
-        impl 'a + Clone + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Send + Sync + Fn(T),
-    )
+    ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
     where
         Self: 'a,
         T: 'static + Sync + Send + Clone,
@@ -123,6 +142,34 @@ impl<T> Subject<T> {
         )
     }
 
+    pub fn into_get_clone_set<'a>(
+        self,
+    ) -> (
+        impl 'a + Clone + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Send + Sync + Fn(T),
+    )
+    where
+        Self: 'a,
+        T: 'static + Sync + Send + Clone,
+        SR: Send + Sync,
+    {
+        let this = self.clone();
+        (
+            move || self.get_clone(),
+            move |new_value| this.set(new_value),
+        )
+    }
+
+    pub fn into_get_exclusive_set_bound<'a>(
+        self,
+    ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
+    where
+        Self: 'a,
+        T: 'static + Send + Copy,
+    {
+        self.into_get_clone_exclusive_set_bound()
+    }
+
     pub fn into_get_exclusive_set<'a>(
         self,
     ) -> (
@@ -132,8 +179,23 @@ impl<T> Subject<T> {
     where
         Self: 'a,
         T: 'static + Send + Copy,
+        SR: Send + Sync,
     {
         self.into_get_clone_exclusive_set()
+    }
+
+    pub fn into_get_clone_exclusive_set_bound<'a>(
+        self,
+    ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
+    where
+        Self: 'a,
+        T: 'static + Send + Clone,
+    {
+        let this = self.clone();
+        (
+            move || self.get_clone_exclusive(),
+            move |new_value| this.set(new_value),
+        )
     }
 
     pub fn into_get_clone_exclusive_set<'a>(
@@ -145,6 +207,7 @@ impl<T> Subject<T> {
     where
         Self: 'a,
         T: 'static + Send + Clone,
+        SR: Send + Sync,
     {
         let this = self.clone();
         (

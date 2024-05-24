@@ -8,19 +8,22 @@ use std::{
 };
 
 use pin_project::pin_project;
-use pollinate::Source;
+use pollinate::{
+    runtime::{GlobalSignalRuntime, SignalRuntimeRef},
+    Source,
+};
 
 use crate::utils::conjure_zst;
 
 #[pin_project]
 #[derive(Debug)]
-pub struct RawSubject<T: ?Sized> {
+pub struct RawSubject<T: ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime> {
     #[pin]
-    source: Source<AssertSync<RwLock<T>>, ()>,
+    source: Source<AssertSync<RwLock<T>>, (), SR>,
 }
 
 /// TODO: Safety.
-unsafe impl<T> Sync for RawSubject<T> {}
+unsafe impl<T, SR: SignalRuntimeRef + Sync> Sync for RawSubject<T, SR> {}
 
 struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
@@ -54,10 +57,17 @@ impl<'a, T> Borrow<T> for RawSubjectGuard<'a, T> {
     }
 }
 
-impl<T> RawSubject<T> {
-    pub fn new(initial_value: T) -> Self {
+impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
+    pub fn new(initial_value: T) -> Self
+    where
+        SR: Default,
+    {
+        Self::with_runtime(initial_value, SR::default())
+    }
+
+    pub fn with_runtime(initial_value: T, sr: SR) -> Self {
         Self {
-            source: Source::new(AssertSync(RwLock::new(initial_value))),
+            source: Source::with_runtime(AssertSync(RwLock::new(initial_value)), sr),
         }
     }
 
@@ -157,6 +167,18 @@ impl<T> RawSubject<T> {
             .update_blocking(|value, _| update(&mut value.0.write().unwrap()))
     }
 
+    pub fn get_set_bound<'a>(
+        self: Pin<&'a Self>,
+    ) -> (
+        impl 'a + Clone + Copy + Fn() -> T,
+        impl 'a + Clone + Copy + Fn(T),
+    )
+    where
+        T: 'static + Sync + Send + Copy,
+    {
+        self.get_clone_set_bound()
+    }
+
     pub fn get_set<'a>(
         self: Pin<&'a Self>,
     ) -> (
@@ -165,15 +187,16 @@ impl<T> RawSubject<T> {
     )
     where
         T: 'static + Sync + Send + Copy,
+        SR: Sync,
     {
         self.get_clone_set()
     }
 
-    pub fn get_clone_set<'a>(
+    pub fn get_clone_set_bound<'a>(
         self: Pin<&'a Self>,
     ) -> (
-        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+        impl 'a + Clone + Copy + Fn() -> T,
+        impl 'a + Clone + Copy + Fn(T),
     )
     where
         T: 'static + Sync + Send + Clone,
@@ -185,6 +208,36 @@ impl<T> RawSubject<T> {
         )
     }
 
+    pub fn get_clone_set<'a>(
+        self: Pin<&'a Self>,
+    ) -> (
+        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+    )
+    where
+        T: 'static + Sync + Send + Clone,
+        SR: Sync,
+    {
+        let this = self.clone();
+        (
+            move || self.get_clone(),
+            move |new_value| this.set(new_value),
+        )
+    }
+
+    pub fn into_get_exclusive_set_bound<'a>(
+        self: Pin<&'a Self>,
+    ) -> (
+        impl 'a + Clone + Copy + Fn() -> T,
+        impl 'a + Clone + Copy + Fn(T),
+    )
+    where
+        Self: 'a,
+        T: 'static + Send + Copy,
+    {
+        self.into_get_clone_exclusive_set_bound()
+    }
+
     pub fn into_get_exclusive_set<'a>(
         self: Pin<&'a Self>,
     ) -> (
@@ -194,8 +247,26 @@ impl<T> RawSubject<T> {
     where
         Self: 'a,
         T: 'static + Send + Copy,
+        SR: Sync,
     {
         self.into_get_clone_exclusive_set()
+    }
+
+    pub fn into_get_clone_exclusive_set_bound<'a>(
+        self: Pin<&'a Self>,
+    ) -> (
+        impl 'a + Clone + Copy + Fn() -> T,
+        impl 'a + Clone + Copy + Fn(T),
+    )
+    where
+        Self: 'a,
+        T: 'static + Send + Clone,
+    {
+        let this = self.clone();
+        (
+            move || self.get_clone_exclusive(),
+            move |new_value| this.set(new_value),
+        )
     }
 
     pub fn into_get_clone_exclusive_set<'a>(
@@ -207,6 +278,7 @@ impl<T> RawSubject<T> {
     where
         Self: 'a,
         T: 'static + Send + Clone,
+        SR: Sync,
     {
         let this = self.clone();
         (
@@ -219,7 +291,7 @@ impl<T> RawSubject<T> {
 #[macro_export]
 macro_rules! subject {
     {$(let $(mut $(@@ $_mut:ident)?)? $name:ident := $initial_value:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawSubject::new($initial_value));
+		let $name = ::std::pin::pin!($crate::raw::RawSubject::<_>::new($initial_value));
 		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
 	)*};
 }

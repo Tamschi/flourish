@@ -1,58 +1,67 @@
 #![warn(clippy::pedantic)]
 
 use std::{
-    cell::UnsafeCell,
-    marker::PhantomPinned,
-    mem,
-    num::NonZeroU64,
-    pin::Pin,
-    ptr::NonNull,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        OnceLock,
-    },
+    cell::UnsafeCell, marker::PhantomPinned, mem, num::NonZeroU64, pin::Pin, ptr::NonNull,
+    sync::OnceLock,
 };
 
 pub mod slot;
+use runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 use slot::{Slot, Token};
 
 mod deferred_queue;
 mod dirty_queue;
+pub mod runtime;
 mod work_queue;
 
-static SOURCE_COUNTER: AtomicU64 = AtomicU64::new(0);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct SourceId(NonZeroU64);
+struct SourceId<SR = GlobalSignalRuntime> {
+    id: NonZeroU64,
+    sr: SR,
+}
 
-impl SourceId {
-    fn new() -> Self {
-        Self(
-            (SOURCE_COUNTER.fetch_add(1, Ordering::SeqCst) + 1)
-                .try_into()
-                .expect("infallible within reasonable time"),
-        )
+impl<SR: SignalRuntimeRef> SourceId<SR> {
+    fn new() -> Self
+    where
+        SR: Default,
+    {
+        Self::with_runtime(SR::default())
+    }
+
+    fn with_runtime(sr: SR) -> Self {
+        Self {
+            id: sr.next_source_id_number(),
+            sr,
+        }
     }
 }
 
 #[derive(Debug)]
 #[repr(C)]
-pub struct Source<Eager: Sync + ?Sized, Lazy: Sync> {
-    handle: SourceId,
+pub struct Source<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef = GlobalSignalRuntime> {
+    handle: SourceId<SR>,
     _pinned: PhantomPinned,
     lazy: OnceLock<Lazy>,
     eager: Eager,
 }
-impl Unpin for Source<(), ()> {}
+impl<SR: SignalRuntimeRef + Unpin> Unpin for Source<(), (), SR> {}
 
-impl<Eager: Sync + ?Sized, Lazy: Sync> Source<Eager, Lazy> {
+impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy, SR> {
     pub fn new(eager: Eager) -> Self
+    where
+        Eager: Sized,
+        SR: Default,
+    {
+        Self::with_runtime(eager, SR::default())
+    }
+
+    pub fn with_runtime(eager: Eager, sr: SR) -> Self
     where
         Eager: Sized,
     {
         Self {
             //TODO: Relax ordering?
-            handle: SourceId::new(),
+            handle: SourceId::with_runtime(sr),
             _pinned: PhantomPinned,
             eager: eager.into(),
             lazy: OnceLock::new(),
@@ -107,7 +116,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync> Source<Eager, Lazy> {
     }
 }
 
-impl<Eager: Sync + ?Sized, Lazy: Sync> Drop for Source<Eager, Lazy> {
+impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eager, Lazy, SR> {
     fn drop(&mut self) {
         todo!()
     }

@@ -1,12 +1,17 @@
 use std::pin::Pin;
 
 use pin_project::pin_project;
+use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use super::{RawSignal, RawSignalGuard};
 
 #[pin_project]
 #[must_use = "Subscriptions are cancelled when dropped."]
-pub struct RawSubscription<T: Send, F: Send + ?Sized + FnMut() -> T>(#[pin] RawSignal<T, F>);
+pub struct RawSubscription<
+    T: Send,
+    F: Send + ?Sized + FnMut() -> T,
+    SR: SignalRuntimeRef = GlobalSignalRuntime,
+>(#[pin] RawSignal<T, F, SR>);
 
 //TODO: Implementations
 pub struct RawSubscriptionGuard<'a, T>(RawSignalGuard<'a, T>);

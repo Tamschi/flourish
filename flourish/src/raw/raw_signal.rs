@@ -9,18 +9,20 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
+    runtime::{GlobalSignalRuntime, SignalRuntimeRef},
     slot::{Slot, Token},
     Source,
 };
 
 use crate::utils::conjure_zst;
 
-#[repr(transparent)]
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub struct RawSignal<T: Send, F: Send + ?Sized + FnMut() -> T>(
-    #[pin] Source<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>>,
-);
+pub struct RawSignal<
+    T: Send,
+    F: Send + ?Sized + FnMut() -> T,
+    SR: SignalRuntimeRef = GlobalSignalRuntime,
+>(#[pin] Source<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>, SR>);
 
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(T);
@@ -43,11 +45,24 @@ impl<'a, T: ?Sized> Borrow<T> for RawSignalGuard<'a, T> {
 }
 
 /// TODO: Safety documentation.
-unsafe impl<T: Send, F: Send + FnMut() -> T> Sync for RawSignal<T, F> {}
+unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
+    for RawSignal<T, F, SR>
+{
+}
 
-impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
-    pub fn new(f: F) -> Self {
-        Self(Source::new(ForceSyncUnpin(f.into())))
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
+    pub fn new(f: F) -> Self
+    where
+        SR: Default + SignalRuntimeRef,
+    {
+        Self::with_runtime(f, SR::default())
+    }
+
+    pub fn with_runtime(f: F, sr: SR) -> Self
+    where
+        SR: SignalRuntimeRef,
+    {
+        Self(Source::with_runtime(ForceSyncUnpin(f.into()), sr))
     }
 
     pub fn get(self: Pin<&Self>) -> T
@@ -124,7 +139,7 @@ impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
     unsafe fn init<'a>(
         f: Pin<&'a ForceSyncUnpin<UnsafeCell<F>>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
@@ -148,7 +163,7 @@ impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
 #[macro_export]
 macro_rules! signal {
     {$(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawSignal::new(|| $f));
+		let $name = ::std::pin::pin!($crate::raw::RawSignal::<_, _>::new(|| $f));
 		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
 	)*};
 }
