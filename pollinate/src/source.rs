@@ -3,7 +3,10 @@ use core::{
     marker::PhantomPinned,
     pin::Pin,
 };
-use std::sync::OnceLock;
+use std::{
+    mem::{self, MaybeUninit},
+    sync::OnceLock,
+};
 
 use crate::{
     runtime::{GlobalSignalRuntime, SignalRuntimeRef},
@@ -31,12 +34,35 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         }
     }
 
+    fn mark<T>(&self, f: impl FnOnce() -> T) -> T {
+        self.sr.reentrant_critical(|| {
+            self.sr.touch(self.id);
+            f()
+        })
+    }
+
+    fn start<T, D: ?Sized>(
+        &self,
+        f: impl FnOnce() -> T,
+        callback: unsafe extern "C" fn(*const D),
+        callback_data: *const D,
+    ) -> T {
+        self.sr.start(self.id, f, callback, callback_data)
+    }
+
+    fn set_subscription(&self, enabled: bool) {
+        self.sr.set_subscription(self.id, enabled);
+    }
+
+    fn propagate(&self) {
+        self.sr.propagate_from(self.id)
+    }
+
     fn stop(&self) {
         self.sr.stop(self.id)
     }
 }
 
-#[repr(C)]
 pub struct Source<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef = GlobalSignalRuntime> {
     handle: SourceId<SR>,
     _pinned: PhantomPinned,
@@ -98,7 +124,30 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
         eval: Option<unsafe extern "C" fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
-        todo!()
+        let eager = Pin::new_unchecked(&self.eager);
+        let lazy = self.handle.mark(|| {
+            self.lazy.get_or_init(|| {
+                let mut lazy = MaybeUninit::uninit();
+                let init = || drop(init(eager, Slot::new(&mut lazy)));
+                if let Some(eval) = eval {
+                    self.handle
+                        .start(init, callback, Pin::into_inner_unchecked(self) as *const _);
+                    unsafe extern "C" fn callback<
+                        Eager: Sync + ?Sized,
+                        Lazy: Sync,
+                        SR: SignalRuntimeRef,
+                    >(
+                        this: *const Source<Eager, Lazy, SR>,
+                    ) {
+                        todo!()
+                    }
+                } else {
+                    init()
+                }
+                unsafe { lazy.assume_init() }
+            })
+        });
+        unsafe { mem::transmute((eager, Pin::new_unchecked(lazy))) }
     }
 
     /// TODO: Naming?
@@ -113,7 +162,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
         eval: Option<unsafe extern "C" fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
-        todo!()
+        let projected = self.project_or_init(init, eval);
+        self.handle.set_subscription(true);
+        projected
     }
 
     //TODO: Can the lifetime requirement be reduced here?
@@ -126,7 +177,14 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     }
 
     pub fn update_blocking<F: FnOnce(Pin<&Eager>, Pin<&OnceLock<Lazy>>)>(&self, f: F) {
-        todo!()
+        todo!("This should be in a critical section too.");
+        unsafe {
+            f(
+                Pin::new_unchecked(&self.eager),
+                Pin::new_unchecked(&self.lazy),
+            );
+        }
+        self.handle.propagate()
     }
 }
 

@@ -4,6 +4,10 @@ pub struct Slot<'a, T>(&'a mut MaybeUninit<T>, PhantomData<&'a mut &'a mut ()>);
 pub struct Token<'a>(PhantomData<&'a mut &'a mut ()>);
 
 impl<'a, T> Slot<'a, T> {
+    pub fn new(target: &'a mut MaybeUninit<T>) -> Self {
+        Self(target, PhantomData)
+    }
+
     pub fn write(self, value: T) -> Token<'a> {
         self.0.write(value);
         Token(PhantomData)
