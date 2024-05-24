@@ -5,7 +5,7 @@ use std::{
 
 use once_cell::unsync::Lazy;
 
-use crate::SourceId;
+use crate::source::SourceId;
 
 static DIRTY_QUEUE: Mutex<Lazy<BTreeSet<SourceId>>> = Mutex::new(Lazy::new(|| BTreeSet::new()));
 static CURRENT: Mutex<Option<SourceId>> = Mutex::new(None);

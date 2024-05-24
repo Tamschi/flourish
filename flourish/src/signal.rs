@@ -4,6 +4,7 @@ use std::{
     marker::PhantomData,
     mem::MaybeUninit,
     ops::Deref,
+    pin::Pin,
     ptr::NonNull,
     sync::{RwLock, RwLockReadGuard},
 };
@@ -11,6 +12,7 @@ use std::{
 use pin_project::pin_project;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 use servo_arc::Arc;
+use sptr::{from_exposed_addr, Strict};
 
 use crate::raw::RawSignal;
 
@@ -80,10 +82,15 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
         unsafe {
             arc.header
                 .set(MaybeUninit::new(SignalHeader(NonNull::new_unchecked(
-                    &arc.anchor as &dyn AtSignalDataAddress<T, SR> as *const _ as *mut _,
+                    &arc.anchor as &dyn SignalDataAddress<T, SR> as *const _ as *mut _,
                 ))))
         };
-        Self(unsafe { NonNull::new_unchecked(Arc::into_raw(arc).cast_mut().cast()) })
+
+        Self(unsafe {
+            let signal_data_full = Arc::into_raw(arc);
+            let _ = Strict::expose_addr(signal_data_full);
+            NonNull::new_unchecked(signal_data_full.cast_mut().cast())
+        })
     }
 
     pub fn get(&self) -> T
@@ -134,11 +141,9 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
 
 /// FIXME: Once pointer-metadata is available, shrink this.
 #[derive(Debug, Clone, Copy)]
-struct SignalHeader<T: Send + ?Sized, SR: SignalRuntimeRef>(
-    NonNull<dyn AtSignalDataAddress<T, SR>>,
-);
+struct SignalHeader<T: Send + ?Sized, SR: SignalRuntimeRef>(NonNull<dyn SignalDataAddress<T, SR>>);
 
-trait AtSignalDataAddress<T: Send + ?Sized, SR: SignalRuntimeRef> {
+trait SignalDataAddress<T: Send + ?Sized, SR: SignalRuntimeRef> {
     unsafe fn drop_arc(&self);
     fn touch(&self) -> &RwLock<T>;
     fn pull(&self) -> &RwLock<T>;
@@ -158,8 +163,7 @@ struct SignalDataAnchor<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRunt
     PhantomData<*const SignalDataFull<T, F, SR>>,
 );
 
-/// TODO: This definitely has wrong provenance.
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> AtSignalDataAddress<T, SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> SignalDataAddress<T, SR>
     for SignalDataAnchor<T, F, SR>
 {
     /// # Safety
@@ -168,15 +172,29 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> AtSignalDataAddress<
     ///
     unsafe fn drop_arc(&self) {
         drop(Arc::<SignalDataFull<T, F, SR>>::from_raw(
-            (self as *const Self).cast(),
+            from_exposed_addr(Strict::addr(self as *const Self)),
         ))
     }
 
     fn touch(&self) -> &RwLock<T> {
-        todo!()
+        unsafe {
+            Pin::new_unchecked(&*from_exposed_addr::<SignalDataFull<T, F, SR>>(
+                Strict::addr(self as *const Self),
+            ))
+        }
+        .project_ref()
+        .signal
+        .touch()
     }
 
     fn pull(&self) -> &RwLock<T> {
-        todo!()
+        unsafe {
+            Pin::new_unchecked(&*from_exposed_addr::<SignalDataFull<T, F, SR>>(
+                Strict::addr(self as *const Self),
+            ))
+        }
+        .project_ref()
+        .signal
+        .pull()
     }
 }

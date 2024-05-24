@@ -1,6 +1,6 @@
 use std::{
     borrow::Borrow,
-    fmt::Debug,
+    fmt::{self, Debug, Formatter},
     mem::{needs_drop, size_of},
     ops::Deref,
     pin::Pin,
@@ -10,16 +10,26 @@ use std::{
 use pin_project::pin_project;
 use pollinate::{
     runtime::{GlobalSignalRuntime, SignalRuntimeRef},
-    Source,
+    source::Source,
 };
 
 use crate::utils::conjure_zst;
 
 #[pin_project]
-#[derive(Debug)]
 pub struct RawSubject<T: ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime> {
     #[pin]
     source: Source<AssertSync<RwLock<T>>, (), SR>,
+}
+
+impl<T: ?Sized + Debug, SR: SignalRuntimeRef + Debug> Debug for RawSubject<T, SR>
+where
+    SR::Symbol: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RawSubject")
+            .field("source", &&self.source)
+            .finish()
+    }
 }
 
 /// TODO: Safety.
@@ -29,7 +39,7 @@ struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
 
 impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let maybe_guard = self.0.try_write();
         f.debug_tuple("AssertSync")
             .field(

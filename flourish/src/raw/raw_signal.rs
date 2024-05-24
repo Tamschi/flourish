@@ -11,7 +11,7 @@ use pin_project::pin_project;
 use pollinate::{
     runtime::{GlobalSignalRuntime, SignalRuntimeRef},
     slot::{Slot, Token},
-    Source,
+    source::Source,
 };
 
 use crate::utils::conjure_zst;
@@ -112,7 +112,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> 
         self.touch().write().unwrap().clone()
     }
 
-    fn touch(self: Pin<&Self>) -> &RwLock<T> {
+    pub(crate) fn touch(self: Pin<&Self>) -> &RwLock<T> {
         unsafe {
             self.project_ref()
                 .0

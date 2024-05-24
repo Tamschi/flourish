@@ -1,14 +1,24 @@
-use std::{borrow::Borrow, mem, ops::Deref, pin::Pin, sync::RwLock};
+use std::{borrow::Borrow, fmt::Debug, mem, ops::Deref, pin::Pin, sync::RwLock};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 use servo_arc::Arc;
 
 use crate::raw::{RawSubject, RawSubjectGuard};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Subject<T: ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
     Pin<Arc<RawSubject<T, SR>>>,
 );
+
+impl<T: ?Sized + std::fmt::Debug, SR: SignalRuntimeRef + std::fmt::Debug> std::fmt::Debug
+    for Subject<T, SR>
+where
+    SR::Symbol: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Subject").field(&self.0).finish()
+    }
+}
 
 pub struct SubjectGuard<'a, T>(RawSubjectGuard<'a, T>);
 
@@ -124,6 +134,7 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
         Self: 'a,
         T: 'static + Sync + Send + Copy,
         SR: Send + Sync,
+        SR::Symbol: Send,
     {
         self.into_get_clone_set()
     }
@@ -152,6 +163,7 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
         Self: 'a,
         T: 'static + Sync + Send + Clone,
         SR: Send + Sync,
+        SR::Symbol: Send,
     {
         let this = self.clone();
         (
@@ -180,6 +192,7 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
         Self: 'a,
         T: 'static + Send + Copy,
         SR: Send + Sync,
+        SR::Symbol: Send,
     {
         self.into_get_clone_exclusive_set()
     }
@@ -208,6 +221,7 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
         Self: 'a,
         T: 'static + Send + Clone,
         SR: Send + Sync,
+        SR::Symbol: Send,
     {
         let this = self.clone();
         (

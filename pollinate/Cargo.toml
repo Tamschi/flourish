@@ -8,3 +8,6 @@ edition = "2021"
 num-traits = { version = "0.2.18", default-features = false }
 once_cell = { version = "1.19.0", default-features = false }
 pin-project = "1.1.5"
+
+[features]
+std = []
