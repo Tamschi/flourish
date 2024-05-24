@@ -1,12 +1,13 @@
-use std::{collections::HashMap, num::NonZeroU64, sync::Mutex};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    sync::Mutex,
+};
 
 use once_cell::unsync::Lazy;
-use range_set_blaze::RangeSetBlaze;
 
 use crate::SourceId;
 
-static DIRTY_QUEUE: Mutex<Lazy<RangeSetBlaze<u64>>> =
-    Mutex::new(Lazy::new(|| RangeSetBlaze::new()));
+static DIRTY_QUEUE: Mutex<Lazy<BTreeSet<SourceId>>> = Mutex::new(Lazy::new(|| BTreeSet::new()));
 static CURRENT: Mutex<Option<SourceId>> = Mutex::new(None);
 
 static INTERDEPENDENCIES: Mutex<Lazy<Interdependencies>> =
@@ -14,12 +15,8 @@ static INTERDEPENDENCIES: Mutex<Lazy<Interdependencies>> =
 
 #[derive(Debug, Default)]
 struct Interdependencies {
-    by_dependent: HashMap<SourceId, RangeSetBlaze<u64>>,
-    by_dependency: HashMap<SourceId, RangeSetBlaze<u64>>,
-}
-
-fn to_source_id(u64: u64) -> SourceId {
-    SourceId(NonZeroU64::new(u64).expect("unreachable"))
+    by_dependent: HashMap<SourceId, HashSet<SourceId>>,
+    by_dependency: HashMap<SourceId, HashSet<SourceId>>,
 }
 
 pub(crate) fn eval_dependents(dependency: SourceId) {
@@ -37,19 +34,14 @@ pub(crate) fn eval_dependents(dependency: SourceId) {
             return;
         };
 
-        **dirty_queue |= dependents;
-        let mut current = to_source_id(dirty_queue.pop_first().expect("unreachable"));
+        dirty_queue.extend(dependents);
+        let mut current = dirty_queue.pop_first().expect("unreachable");
         loop {
             *CURRENT.lock().expect("infallible") = Some(current);
 
             todo!();
 
-            match DIRTY_QUEUE
-                .lock()
-                .expect("infallible")
-                .pop_first()
-                .map(to_source_id)
-            {
+            match DIRTY_QUEUE.lock().expect("infallible").pop_first() {
                 Some(next) => current = next,
                 None => break,
             }
