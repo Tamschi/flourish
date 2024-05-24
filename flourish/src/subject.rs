@@ -1,7 +1,13 @@
-use std::{borrow::Borrow, fmt::Debug, mem, ops::Deref, pin::Pin, sync::RwLock};
+use std::{
+    borrow::Borrow,
+    fmt::Debug,
+    mem,
+    ops::Deref,
+    pin::Pin,
+    sync::{Arc, RwLock},
+};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
-use servo_arc::Arc;
 
 use crate::raw::{RawSubject, RawSubjectGuard};
 

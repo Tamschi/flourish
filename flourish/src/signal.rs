@@ -6,12 +6,11 @@ use std::{
     ops::Deref,
     pin::Pin,
     ptr::NonNull,
-    sync::{RwLock, RwLockReadGuard},
+    sync::{Arc, RwLock, RwLockReadGuard},
 };
 
 use pin_project::pin_project;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
-use servo_arc::Arc;
 use sptr::{from_exposed_addr, Strict};
 
 use crate::raw::RawSignal;
@@ -30,9 +29,10 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef + Clone> Clone for Signal<T, SR> {
     fn clone(&self) -> Self {
         Self(unsafe {
             // SAFETY: `Arc` uses enough `repr(C)` to increment the reference without the actual type.
-            NonNull::new_unchecked(
-                Arc::into_raw(Arc::from_raw_addrefed(self.0.as_ptr().cast_const())).cast_mut(),
-            )
+            let from_raw = Arc::from_raw(self.0.as_ptr().cast_const());
+            let cloned = from_raw.clone();
+            let _ = Arc::into_raw(from_raw);
+            NonNull::new_unchecked(Arc::into_raw(cloned).cast_mut())
         })
     }
 }
