@@ -10,15 +10,17 @@ pub struct Subscription<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRun
 //TODO: Implementations
 pub struct SubscriptionGuard<'a, T>(SignalGuard<'a, T>);
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> Subscription<T, SR> {
+/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
+impl<T: Send + ?Sized> Subscription<T> {
     pub fn new<F: Send + FnMut() -> T>(f: F) -> Self
     where
         T: Sized,
-        SR: Default,
     {
-        Self::with_runtime(f, SR::default())
+        Self::with_runtime(f, GlobalSignalRuntime)
     }
+}
 
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> Subscription<T, SR> {
     pub fn with_runtime<F: Send + FnMut() -> T>(f: F, sr: SR) -> Self
     where
         T: Sized,

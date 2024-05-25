@@ -50,14 +50,14 @@ unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
 {
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
-    pub fn new(f: F) -> Self
-    where
-        SR: Default + SignalRuntimeRef,
-    {
-        Self::with_runtime(f, SR::default())
+/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
+impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
+    pub fn new(f: F) -> Self {
+        Self::with_runtime(f, GlobalSignalRuntime)
     }
+}
 
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
     pub fn with_runtime(f: F, sr: SR) -> Self
     where
         SR: SignalRuntimeRef,
@@ -162,8 +162,12 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> 
 
 #[macro_export]
 macro_rules! signal {
+	{$runtime:expr=> $(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
+		let $name = ::std::pin::pin!($crate::raw::RawSignal::with_runtime(|| $f, $runtime));
+		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
+	)*};
     {$(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawSignal::<_, _>::new(|| $f));
+		let $name = ::std::pin::pin!($crate::raw::RawSignal::new(|| $f));
 		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
 	)*};
 }

@@ -67,14 +67,14 @@ impl<'a, T> Borrow<T> for RawSubjectGuard<'a, T> {
     }
 }
 
-impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
-    pub fn new(initial_value: T) -> Self
-    where
-        SR: Default,
-    {
-        Self::with_runtime(initial_value, SR::default())
+/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
+impl<T> RawSubject<T> {
+    pub fn new(initial_value: T) -> Self {
+        Self::with_runtime(initial_value, GlobalSignalRuntime)
     }
+}
 
+impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn with_runtime(initial_value: T, sr: SR) -> Self {
         Self {
             source: Source::with_runtime(AssertSync(RwLock::new(initial_value)), sr),
@@ -308,8 +308,12 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
 
 #[macro_export]
 macro_rules! subject {
+	{$runtime:expr=> $(let $(mut $(@@ $_mut:ident)?)? $name:ident := $initial_value:expr;)*} => {$(
+		let $name = ::std::pin::pin!($crate::raw::RawSubject::with_runtime($initial_value, $runtime));
+		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
+	)*};
     {$(let $(mut $(@@ $_mut:ident)?)? $name:ident := $initial_value:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawSubject::<_>::new($initial_value));
+		let $name = ::std::pin::pin!($crate::raw::RawSubject::new($initial_value));
 		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
 	)*};
 }

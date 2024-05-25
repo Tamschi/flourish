@@ -42,14 +42,15 @@ impl<'a, T> Borrow<T> for SubjectGuard<'a, T> {
     }
 }
 
-impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
+/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
+impl<T> Subject<T> {
     pub fn new(initial_value: T) -> Self
-    where
-        SR: Default,
-    {
-        Self::with_runtime(initial_value, SR::default())
+where {
+        Self::with_runtime(initial_value, GlobalSignalRuntime)
     }
+}
 
+impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
     pub fn with_runtime(initial_value: T, sr: SR) -> Self
     where
         SR: Default,

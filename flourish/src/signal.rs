@@ -61,15 +61,17 @@ impl<'a, T: ?Sized> Borrow<T> for SignalGuard<'a, T> {
     }
 }
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
+/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
+impl<T: Send + ?Sized> Signal<T> {
     pub fn new<F: Send + FnMut() -> T>(f: F) -> Self
     where
         T: Sized,
-        SR: Default,
     {
-        Self::with_runtime(f, SR::default())
+        Self::with_runtime(f, GlobalSignalRuntime)
     }
+}
 
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
     pub fn with_runtime<F: Send + FnMut() -> T>(f: F, sr: SR) -> Self
     where
         T: Sized,
