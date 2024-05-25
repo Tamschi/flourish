@@ -23,13 +23,14 @@ pub trait SignalRuntimeRef: Clone {
         callback_data: *const D,
     ) -> T;
     fn set_subscription(&self, id: Self::Symbol, enabled: bool);
+    fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
     fn stop(&self, id: Self::Symbol);
 }
 
 struct ASignalRuntime {
     source_counter: AtomicU64,
-    reentrant_mutex: ReentrantMutex<()>,
+    critical_mutex: ReentrantMutex<()>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct ASymbol(NonZeroU64);
@@ -38,7 +39,7 @@ impl ASignalRuntime {
     const fn new() -> Self {
         Self {
             source_counter: AtomicU64::new(0),
-            reentrant_mutex: ReentrantMutex::new(()),
+            critical_mutex: ReentrantMutex::new(()),
         }
     }
 }
@@ -55,7 +56,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     }
 
     fn reentrant_critical<T>(&self, f: impl FnOnce() -> T) -> T {
-        let _guard = self.reentrant_mutex.lock();
+        let _guard = self.critical_mutex.lock();
         f()
     }
 
@@ -75,6 +76,10 @@ impl SignalRuntimeRef for &ASignalRuntime {
     }
 
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) {
+        //TODO
+    }
+
+    fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
         //TODO
     }
 
@@ -121,6 +126,10 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
 
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) {
         (&GLOBAL_SIGNAL_RUNTIME).set_subscription(id.0, enabled)
+    }
+
+    fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
+        (&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue(id.0, f)
     }
 
     fn propagate_from(&self, id: Self::Symbol) {

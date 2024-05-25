@@ -145,6 +145,8 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn set(self: Pin<&Self>, new_value: T)
     where
         T: 'static + Send,
+        SR: 'static + Sync,
+        SR::Symbol: Sync,
     {
         if needs_drop::<T>() || size_of::<T>() > 0 {
             self.update(|value| *value = new_value);
@@ -157,6 +159,8 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T))
     where
         T: Send,
+        SR: 'static + Sync,
+        SR::Symbol: Sync,
     {
         self.project_ref()
             .source
@@ -177,7 +181,7 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
             .update_blocking(|value, _| update(&mut value.0.write().unwrap()))
     }
 
-    pub fn get_set_bound<'a>(
+    pub fn get_set_blocking<'a>(
         self: Pin<&'a Self>,
     ) -> (
         impl 'a + Clone + Copy + Fn() -> T,
@@ -186,7 +190,7 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
     where
         T: 'static + Sync + Send + Copy,
     {
-        self.get_clone_set_bound()
+        self.get_clone_set_blocking()
     }
 
     pub fn get_set<'a>(
@@ -197,12 +201,13 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
     )
     where
         T: 'static + Sync + Send + Copy,
-        SR: Sync,
+        SR: 'static + Sync,
+        SR::Symbol: Sync,
     {
         self.get_clone_set()
     }
 
-    pub fn get_clone_set_bound<'a>(
+    pub fn get_clone_set_blocking<'a>(
         self: Pin<&'a Self>,
     ) -> (
         impl 'a + Clone + Copy + Fn() -> T,
@@ -214,7 +219,7 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
         let this = self.clone();
         (
             move || self.get_clone(),
-            move |new_value| this.set(new_value),
+            move |new_value| this.set_blocking(new_value),
         )
     }
 
@@ -226,7 +231,8 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
     )
     where
         T: 'static + Sync + Send + Clone,
-        SR: Sync,
+        SR: 'static + Sync,
+        SR::Symbol: Sync,
     {
         let this = self.clone();
         (
@@ -235,7 +241,7 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
         )
     }
 
-    pub fn into_get_exclusive_set_bound<'a>(
+    pub fn into_get_exclusive_set_blocking<'a>(
         self: Pin<&'a Self>,
     ) -> (
         impl 'a + Clone + Copy + Fn() -> T,
@@ -245,7 +251,7 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
         Self: 'a,
         T: 'static + Send + Copy,
     {
-        self.into_get_clone_exclusive_set_bound()
+        self.into_get_clone_exclusive_set_blocking()
     }
 
     pub fn into_get_exclusive_set<'a>(
@@ -257,12 +263,13 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
     where
         Self: 'a,
         T: 'static + Send + Copy,
-        SR: Sync,
+        SR: 'static + Sync,
+        SR::Symbol: Sync,
     {
         self.into_get_clone_exclusive_set()
     }
 
-    pub fn into_get_clone_exclusive_set_bound<'a>(
+    pub fn into_get_clone_exclusive_set_blocking<'a>(
         self: Pin<&'a Self>,
     ) -> (
         impl 'a + Clone + Copy + Fn() -> T,
@@ -275,7 +282,7 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
         let this = self.clone();
         (
             move || self.get_clone_exclusive(),
-            move |new_value| this.set(new_value),
+            move |new_value| this.set_blocking(new_value),
         )
     }
 
@@ -288,7 +295,8 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
     where
         Self: 'a,
         T: 'static + Send + Clone,
-        SR: Sync,
+        SR: 'static + Sync,
+        SR::Symbol: Sync,
     {
         let this = self.clone();
         (

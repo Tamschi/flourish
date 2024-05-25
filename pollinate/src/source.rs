@@ -54,6 +54,10 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         self.sr.set_subscription(self.id, enabled);
     }
 
+    fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce()) {
+        self.sr.update_or_enqueue(self.id, f);
+    }
+
     fn propagate(&self) {
         self.sr.propagate_from(self.id)
     }
@@ -172,8 +176,20 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&OnceLock<Lazy>>)>(
         self: Pin<&Self>,
         f: F,
-    ) {
-        todo!()
+    ) where
+        SR: 'static + Sync,
+        SR::Symbol: Sync,
+        Lazy: 'static + Send,
+    {
+        let this = Pin::clone(&self);
+        let update: Box<dyn Send + FnOnce()> = Box::new(move || unsafe {
+            f(
+                this.map_unchecked(|this| &this.eager),
+                this.map_unchecked(|this| &this.lazy),
+            )
+        });
+        let update: Box<dyn Send + FnOnce()> = unsafe { mem::transmute(update) };
+        self.handle.update_or_enqueue(update);
     }
 
     pub fn update_blocking<F: FnOnce(Pin<&Eager>, Pin<&OnceLock<Lazy>>)>(&self, f: F) {
