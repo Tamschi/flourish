@@ -104,7 +104,6 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         Eager: Sized,
     {
         Self {
-            //TODO: Relax ordering?
             handle: SourceId::with_runtime(sr),
             _pinned: PhantomPinned,
             eager: eager.into(),

@@ -49,6 +49,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
 
     fn next_id(&self) -> Self::Symbol {
         ASymbol(
+            //TODO: Relax ordering?
             (self.source_counter.fetch_add(1, Ordering::SeqCst) + 1)
                 .try_into()
                 .expect("infallible within reasonable time"),
