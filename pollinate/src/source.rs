@@ -41,7 +41,7 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         })
     }
 
-    fn start<T, D: ?Sized>(
+    unsafe fn start<T, D: ?Sized>(
         &self,
         f: impl FnOnce() -> T,
         callback: unsafe extern "C" fn(*const D),
