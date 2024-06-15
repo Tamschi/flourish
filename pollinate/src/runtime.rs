@@ -6,9 +6,9 @@ use core::{
 use std::{
     borrow::BorrowMut,
     cell::RefCell,
-    collections::{BTreeMap, VecDeque},
+    collections::{btree_map::Entry, BTreeMap, VecDeque},
     mem,
-    panic::{catch_unwind, resume_unwind},
+    panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
 };
 
 use dirty_queue::DirtyQueue;
@@ -139,8 +139,34 @@ impl SignalRuntimeRef for &ASignalRuntime {
         callback: unsafe extern "C" fn(*const D),
         callback_data: *const D,
     ) -> T {
-        f()
+        let lock = self.critical_mutex.lock();
         //TODO
+        {
+            let mut borrow = (*lock).borrow_mut();
+			borrow.dirty_queue.register_id(id);
+            borrow.stack.push_back(id);
+        }
+        let r = catch_unwind(AssertUnwindSafe(f));
+        {
+            let mut borrow = (*lock).borrow_mut();
+            assert_eq!(borrow.stack.pop_back(), Some(id));
+            match borrow.callbacks.entry(id) {
+                Entry::Vacant(v) => {
+                    v.insert((
+                        unsafe {
+                            //SAFETY: Due to `extern "C"`, these signatures are compatible.
+                            mem::transmute::<
+                                unsafe extern "C" fn(*const D),
+                                unsafe extern "C" fn(*const ()),
+                            >(callback)
+                        },
+                        callback_data.cast(),
+                    ))
+                }
+                Entry::Occupied(_) => panic!("Can't call `start` again before calling `stop`."),
+            };
+        }
+        r.unwrap_or_else(|p| resume_unwind(p))
     }
 
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool {

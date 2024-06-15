@@ -1,5 +1,6 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
+    convert::identity,
     hash::Hash,
 };
 
@@ -8,7 +9,6 @@ use crate::source::SourceId;
 #[derive(Debug)]
 pub(crate) struct DirtyQueue<S> {
     dirty_queue: BTreeSet<S>,
-    current: Option<S>,
     interdependencies: Interdependencies<S>,
     sensors: BTreeMap<S, (unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
     sensor_stack: VecDeque<S>,
@@ -26,7 +26,6 @@ impl<S> DirtyQueue<S> {
     pub(crate) const fn new() -> Self {
         Self {
             dirty_queue: BTreeSet::new(),
-            current: None,
             interdependencies: Interdependencies::new(),
             sensors: BTreeMap::new(),
             sensor_stack: VecDeque::new(),
@@ -77,19 +76,30 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
         }
     }
 
+    pub(crate) fn register_id(&mut self, symbol: S) {
+        match (
+            self.interdependencies.subscribed_by_dependent.entry(symbol),
+            self.interdependencies.all_by_dependency.entry(symbol),
+        ) {
+            (Entry::Vacant(v1), Entry::Vacant(v2)) => {
+                v1.insert(BTreeSet::new());
+                v2.insert(BTreeSet::new());
+            }
+            (_, _) => panic!("Tried to `register_id` twice without calling `purge_id` in-between."),
+        }
+    }
+
     pub(crate) fn purge_id(&mut self, symbol: S) {
-        if self.current == Some(symbol) {
-            self.dirty_queue.remove(&symbol);
-            self.interdependencies.all_by_dependency.remove(&symbol);
-            for dependents in self.interdependencies.all_by_dependency.values_mut() {
-                dependents.remove(&symbol);
-            }
-            self.interdependencies
-                .subscribed_by_dependent
-                .remove(&symbol);
-            for dependencies in self.interdependencies.subscribed_by_dependent.values_mut() {
-                dependencies.remove(&symbol);
-            }
+        self.dirty_queue.remove(&symbol);
+        self.interdependencies.all_by_dependency.remove(&symbol);
+        for dependents in self.interdependencies.all_by_dependency.values_mut() {
+            dependents.remove(&symbol);
+        }
+        self.interdependencies
+            .subscribed_by_dependent
+            .remove(&symbol);
+        for dependencies in self.interdependencies.subscribed_by_dependent.values_mut() {
+            dependencies.remove(&symbol);
         }
     }
 
@@ -139,7 +149,16 @@ impl<S: Copy + Ord> Iterator for DirtyQueue<S> {
     type Item = S;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.current = self.dirty_queue.pop_first();
-        self.current
+        std::iter::repeat_with(|| self.dirty_queue.pop_first())
+            .map_while(identity)
+            .filter(|next| {
+                !self
+                    .interdependencies
+                    .subscribed_by_dependent
+                    .get(&next)
+                    .expect("unreachable")
+                    .is_empty()
+            })
+            .next()
     }
 }
