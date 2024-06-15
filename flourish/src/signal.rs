@@ -204,6 +204,10 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> SignalDataAddress<T,
 impl<T: ?Sized + Send, SR: SignalRuntimeRef> Source for Signal<T, SR> {
     type Value = T;
 
+    fn touch(&self) {
+        self.touch();
+    }
+
     fn get(&self) -> Self::Value
     where
         Self::Value: Sync + Copy,

@@ -177,6 +177,10 @@ impl<T: Send, F: Send + Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Sourc
 {
     type Value = T;
 
+    fn touch(&self) {
+        RawSignal::touch(*self);
+    }
+
     fn get(&self) -> Self::Value
     where
         Self::Value: Sync + Copy,

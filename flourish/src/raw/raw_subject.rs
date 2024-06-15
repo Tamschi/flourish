@@ -327,6 +327,10 @@ macro_rules! subject {
 impl<T: Send, SR: SignalRuntimeRef> crate::Source for Pin<&'_ RawSubject<T, SR>> {
     type Value = T;
 
+    fn touch(&self) {
+        RawSubject::touch(self);
+    }
+
     fn get(&self) -> Self::Value
     where
         Self::Value: Sync + Copy,

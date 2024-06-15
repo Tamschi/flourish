@@ -12,7 +12,7 @@ mod subscription;
 pub use subscription::{Subscription, SubscriptionGuard};
 
 mod source;
-pub use source::Source;
+pub use source::{DelegateSource, Source};
 
 #[doc(hidden = "macro-only")]
 pub mod __ {

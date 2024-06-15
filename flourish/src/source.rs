@@ -3,6 +3,8 @@ use std::borrow::Borrow;
 pub trait Source {
     type Value: ?Sized;
 
+    fn touch(&self);
+
     fn get(&self) -> Self::Value
     where
         Self::Value: Sync + Copy;
@@ -32,6 +34,10 @@ pub trait DelegateSource {
 
 impl<T: ?Sized + DelegateSource> Source for T {
     type Value = <T as DelegateSource>::DelegateValue;
+
+    fn touch(&self) {
+        self.delegate_source().touch()
+    }
 
     fn get(&self) -> Self::Value
     where

@@ -248,6 +248,10 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
 impl<T, SR: SignalRuntimeRef> Source for Subject<T, SR> {
     type Value = T;
 
+    fn touch(&self) {
+        self.touch();
+    }
+
     fn get(&self) -> Self::Value
     where
         Self::Value: Sync + Copy,
