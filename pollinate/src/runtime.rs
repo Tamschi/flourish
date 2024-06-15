@@ -4,7 +4,6 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use std::{
-    borrow::BorrowMut,
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
     mem,
@@ -132,7 +131,10 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn touch(&self, id: Self::Symbol) {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
-        if let Some((_, touched)) = &mut borrow.stack.back_mut() {
+        if let Some((context_id, touched)) = &mut borrow.stack.back_mut() {
+            if id >= *context_id {
+                panic!("Tried to depend on later-created signal. To prevent loops, this isn't possible for now.");
+            }
             touched.insert(id);
         }
     }
@@ -184,13 +186,12 @@ impl SignalRuntimeRef for &ASignalRuntime {
     }
 
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
-        let lock = self.critical_mutex.lock();
-        let stack_is_empty = lock.borrow().stack.is_empty();
-        if stack_is_empty {
-            f();
-            self.propagate_from(id);
-        } else {
-            todo!("update_or_enqueue: enqueue")
+        match self.critical_mutex.try_lock() {
+            Some(lock) if (*lock).borrow().stack.is_empty() => {
+                f();
+                self.propagate_from(id);
+            }
+            _ => todo!("update_or_enqueue: enqueue"),
         }
     }
 
