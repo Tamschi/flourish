@@ -4,6 +4,7 @@ use core::{
     pin::Pin,
 };
 use std::{
+    cell::Cell,
     mem::{self, MaybeUninit},
     sync::OnceLock,
 };
@@ -70,8 +71,15 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
 pub struct Source<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef = GlobalSignalRuntime> {
     handle: SourceId<SR>,
     _pinned: PhantomPinned,
+    eval: Cell<Option<unsafe extern "C" fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)>>,
     lazy: OnceLock<Lazy>,
     eager: Eager,
+}
+
+unsafe impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Sync
+    for Source<Eager, Lazy, SR>
+{
+    // Access to `eval` is synchronised through `lazy`.
 }
 
 impl<Eager: Sync + ?Sized + Debug, Lazy: Sync + Debug, SR: SignalRuntimeRef + Debug> Debug
@@ -106,8 +114,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         Self {
             handle: SourceId::with_runtime(sr),
             _pinned: PhantomPinned,
-            eager: eager.into(),
+            eval: Cell::new(None),
             lazy: OnceLock::new(),
+            eager: eager.into(),
         }
     }
 
@@ -133,6 +142,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                 let mut lazy = MaybeUninit::uninit();
                 let init = || drop(init(eager, Slot::new(&mut lazy)));
                 if let Some(eval) = eval {
+                    self.eval.set(Some(eval));
                     self.handle
                         .start(init, callback, Pin::into_inner_unchecked(self) as *const _);
                     unsafe extern "C" fn callback<
@@ -142,11 +152,15 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     >(
                         this: *const Source<Eager, Lazy, SR>,
                     ) {
-                        todo!()
+                        let this = &*this;
+                        this.eval.get().expect("unreachable")(
+                            Pin::new_unchecked(&this.eager),
+                            Pin::new_unchecked(this.lazy.get().expect("unreachable")),
+                        )
                     }
                 } else {
-                    self.handle.start(init, nop, &());
-                    unsafe extern "C" fn nop(_: *const ()) {}
+                    self.handle.start(init, no_operation, &());
+                    extern "C" fn no_operation(_: *const ()) {}
                 }
                 unsafe { lazy.assume_init() }
             })

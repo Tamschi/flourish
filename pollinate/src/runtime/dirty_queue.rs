@@ -153,10 +153,10 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
             }
         }
         if was_subscribed && !is_subscribed {
-            todo!()
+            //TODO: Propagate!
         }
         if !was_subscribed && is_subscribed {
-            todo!()
+            //TODO: Propagate!
         }
         for added_dependency in added_dependencies {
             assert!(self
@@ -251,14 +251,16 @@ impl<S: Copy + Ord> Iterator for DirtyQueue<S> {
     fn next(&mut self) -> Option<Self::Item> {
         std::iter::repeat_with(|| self.dirty_queue.pop_first())
             .map_while(identity)
-            .filter(|next| {
-                !self
-                    .interdependencies
-                    .subscribed_by_dependent
-                    .get(&next)
-                    .expect("unreachable")
-                    .is_empty()
-            })
+            //TODO: This filter must be re-enabled once subscriptions propagate properly!
+            //TODO: Add a test aspect to check that intermediate closures aren't called anymore if there's no subscriptions.
+            // .filter(|next| {
+            //     !self
+            //         .interdependencies
+            //         .subscribed_by_dependent
+            //         .get(&next)
+            //         .expect("unreachable")
+            //         .is_empty()
+            // })
             .next()
     }
 }

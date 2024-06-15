@@ -89,7 +89,7 @@ impl ASignalRuntime {
             .borrow_mut()
             .dirty_queue
             .mark_dependents_as_dirty(dependency);
-        while let Some(current) = (*lock).borrow_mut().dirty_queue.next() {
+        while let Some(current) = (|| (*lock).borrow_mut().dirty_queue.next())() {
             let mut borrow = (*lock).borrow_mut();
             if let Some(callback) = borrow.callbacks.get(&current).clone() {
                 let (f, d) = callback.clone();
@@ -106,9 +106,7 @@ impl ASignalRuntime {
                 borrow
                     .dirty_queue
                     .update_dependencies(current, touched_dependencies);
-                borrow
-                    .dirty_queue
-                    .mark_dependents_as_dirty(current);
+                borrow.dirty_queue.mark_dependents_as_dirty(current);
             }
         }
     }
@@ -186,8 +184,14 @@ impl SignalRuntimeRef for &ASignalRuntime {
     }
 
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
-        //TODO
-        self.propagate_from(id);
+        let lock = self.critical_mutex.lock();
+        let stack_is_empty = lock.borrow().stack.is_empty();
+        if stack_is_empty {
+            f();
+            self.propagate_from(id);
+        } else {
+            todo!("update_or_enqueue: enqueue")
+        }
     }
 
     fn propagate_from(&self, id: Self::Symbol) {
