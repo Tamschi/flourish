@@ -171,3 +171,44 @@ macro_rules! signal {
 		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
 	)*};
 }
+
+impl<T: Send, F: Send + Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Source
+    for Pin<&RawSignal<T, F, SR>>
+{
+    type Value = T;
+
+    fn get(&self) -> Self::Value
+    where
+        Self::Value: Sync + Copy,
+    {
+        RawSignal::get(*self)
+    }
+
+    fn get_clone(&self) -> Self::Value
+    where
+        Self::Value: Sync + Clone,
+    {
+        RawSignal::get_clone(*self)
+    }
+
+    fn get_exclusive(&self) -> Self::Value
+    where
+        Self::Value: Copy,
+    {
+        RawSignal::get_exclusive(*self)
+    }
+
+    fn get_clone_exclusive(&self) -> Self::Value
+    where
+        Self::Value: Copy,
+    {
+        RawSignal::get_clone_exclusive(*self)
+    }
+
+    fn read(&self) -> Box<dyn '_ + Borrow<Self::Value>>
+    where
+        Self::Value: Sync,
+    {
+        Box::new(RawSignal::read(*self))
+    }
+}

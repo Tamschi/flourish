@@ -9,7 +9,10 @@ use std::{
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::raw::{RawSubject, RawSubjectGuard};
+use crate::{
+    raw::{RawSubject, RawSubjectGuard},
+    Source,
+};
 
 #[derive(Clone)]
 pub struct Subject<T: ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
@@ -239,5 +242,44 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
             move || self.get_clone_exclusive(),
             move |new_value| this.set(new_value),
         )
+    }
+}
+
+impl<T, SR: SignalRuntimeRef> Source for Subject<T, SR> {
+    type Value = T;
+
+    fn get(&self) -> Self::Value
+    where
+        Self::Value: Sync + Copy,
+    {
+        self.get()
+    }
+
+    fn get_clone(&self) -> Self::Value
+    where
+        Self::Value: Sync + Clone,
+    {
+        self.get_clone()
+    }
+
+    fn get_exclusive(&self) -> Self::Value
+    where
+        Self::Value: Copy,
+    {
+        self.get_exclusive()
+    }
+
+    fn get_clone_exclusive(&self) -> Self::Value
+    where
+        Self::Value: Copy,
+    {
+        self.get_clone_exclusive()
+    }
+
+    fn read(&self) -> Box<dyn '_ + Borrow<Self::Value>>
+    where
+        Self::Value: Sync,
+    {
+        Box::new(self.0.read())
     }
 }

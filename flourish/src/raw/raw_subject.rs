@@ -51,7 +51,7 @@ impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
     }
 }
 
-pub struct RawSubjectGuard<'a, T>(RwLockReadGuard<'a, T>);
+pub struct RawSubjectGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
 impl<'a, T> Deref for RawSubjectGuard<'a, T> {
     type Target = T;
@@ -74,8 +74,11 @@ impl<T> RawSubject<T> {
     }
 }
 
-impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
-    pub fn with_runtime(initial_value: T, sr: SR) -> Self {
+impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
+    pub fn with_runtime(initial_value: T, sr: SR) -> Self
+    where
+        T: Sized,
+    {
         Self {
             source: Source::with_runtime(AssertSync(RwLock::new(initial_value)), sr),
         }
@@ -144,7 +147,7 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
 
     pub fn set(self: Pin<&Self>, new_value: T)
     where
-        T: 'static + Send,
+        T: 'static + Send + Sized,
         SR: 'static + Sync,
         SR::Symbol: Sync,
     {
@@ -167,7 +170,10 @@ impl<T, SR: SignalRuntimeRef> RawSubject<T, SR> {
             .update(|value, _| update(&mut value.0.write().unwrap()))
     }
 
-    pub fn set_blocking(&self, new_value: T) {
+    pub fn set_blocking(&self, new_value: T)
+    where
+        T: Sized,
+    {
         if needs_drop::<T>() || size_of::<T>() > 0 {
             self.update_blocking(|value| *value = new_value)
         } else {
@@ -316,4 +322,43 @@ macro_rules! subject {
 		let $name = ::std::pin::pin!($crate::raw::RawSubject::new($initial_value));
 		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
 	)*};
+}
+
+impl<T: Send, SR: SignalRuntimeRef> crate::Source for Pin<&'_ RawSubject<T, SR>> {
+    type Value = T;
+
+    fn get(&self) -> Self::Value
+    where
+        Self::Value: Sync + Copy,
+    {
+        RawSubject::get(self)
+    }
+
+    fn get_clone(&self) -> Self::Value
+    where
+        Self::Value: Sync + Clone,
+    {
+        RawSubject::get_clone(self)
+    }
+
+    fn get_exclusive(&self) -> Self::Value
+    where
+        Self::Value: Copy,
+    {
+        RawSubject::get_exclusive(self)
+    }
+
+    fn get_clone_exclusive(&self) -> Self::Value
+    where
+        Self::Value: Copy,
+    {
+        RawSubject::get_clone_exclusive(self)
+    }
+
+    fn read(&self) -> Box<dyn '_ + Borrow<Self::Value>>
+    where
+        Self::Value: Sync,
+    {
+        Box::new(RawSubject::read(self))
+    }
 }
