@@ -6,7 +6,7 @@ use core::{
 use std::{
     borrow::BorrowMut,
     cell::RefCell,
-    collections::{btree_map::Entry, BTreeMap, VecDeque},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
     mem,
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
 };
@@ -58,7 +58,7 @@ unsafe impl Sync for ASignalRuntime {}
 #[derive(Default)]
 struct ASignalRuntime_ {
     dirty_queue: DirtyQueue<ASymbol>,
-    stack: VecDeque<ASymbol>,
+    stack: VecDeque<(ASymbol, BTreeSet<ASymbol>)>,
     callbacks: BTreeMap<ASymbol, (unsafe extern "C" fn(*const ()), *const ())>,
 }
 
@@ -85,27 +85,30 @@ impl ASignalRuntime {
 
     pub(crate) fn eval_dependents(&self, dependency: ASymbol) {
         let lock = self.critical_mutex.lock();
-        let mut borrow = Some((*lock).borrow_mut());
-        while let Some(next) = borrow.as_mut().expect("unreachable").dirty_queue.next() {
-            if let Some(callback) = borrow
-                .as_mut()
-                .expect("infallible")
-                .callbacks
-                .get(&next)
-                .clone()
-            {
+        (*lock)
+            .borrow_mut()
+            .dirty_queue
+            .mark_dependents_as_dirty(dependency);
+        while let Some(current) = (*lock).borrow_mut().dirty_queue.next() {
+            let mut borrow = (*lock).borrow_mut();
+            if let Some(callback) = borrow.callbacks.get(&current).clone() {
                 let (f, d) = callback.clone();
-                borrow.as_mut().expect("unreachable").stack.push_back(next);
-                borrow.take();
+                borrow.stack.push_back((current, BTreeSet::new()));
+                drop(borrow);
                 let r = catch_unwind(|| unsafe { f(d) });
-                borrow = Some((*lock).borrow_mut());
-                assert_eq!(
-                    borrow.as_mut().expect("unreachable").stack.pop_back(),
-                    Some(dependency)
-                );
+                let mut borrow = (*lock).borrow_mut();
+                let (popped_id, touched_dependencies) =
+                    borrow.stack.pop_back().expect("infallible");
+                assert_eq!(popped_id, current);
                 if let Err(payload) = r {
                     resume_unwind(payload)
                 }
+                borrow
+                    .dirty_queue
+                    .update_dependencies(current, touched_dependencies);
+                borrow
+                    .dirty_queue
+                    .mark_dependents_as_dirty(current);
             }
         }
     }
@@ -129,7 +132,11 @@ impl SignalRuntimeRef for &ASignalRuntime {
     }
 
     fn touch(&self, id: Self::Symbol) {
-        //TODO
+        let lock = self.critical_mutex.lock();
+        let mut borrow = (*lock).borrow_mut();
+        if let Some((_, touched)) = &mut borrow.stack.back_mut() {
+            touched.insert(id);
+        }
     }
 
     unsafe fn start<T, D: ?Sized>(
@@ -140,16 +147,19 @@ impl SignalRuntimeRef for &ASignalRuntime {
         callback_data: *const D,
     ) -> T {
         let lock = self.critical_mutex.lock();
-        //TODO
         {
             let mut borrow = (*lock).borrow_mut();
-			borrow.dirty_queue.register_id(id);
-            borrow.stack.push_back(id);
+            borrow.dirty_queue.register_id(id);
+            borrow.stack.push_back((id, BTreeSet::new()));
         }
         let r = catch_unwind(AssertUnwindSafe(f));
         {
             let mut borrow = (*lock).borrow_mut();
-            assert_eq!(borrow.stack.pop_back(), Some(id));
+            let (popped_id, touched_dependencies) = borrow.stack.pop_back().expect("infallible");
+            assert_eq!(popped_id, id);
+            borrow
+                .dirty_queue
+                .update_dependencies(id, touched_dependencies);
             match borrow.callbacks.entry(id) {
                 Entry::Vacant(v) => {
                     v.insert((
@@ -187,7 +197,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn stop(&self, id: Self::Symbol) {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
-        if borrow.stack.contains(&id) {
+        if borrow.stack.iter().any(|(symbol, _)| *symbol == id) {
             //TODO: Does this need to abort the process?
             panic!("Can't stop symbol while it is executing on the same thread.");
         }

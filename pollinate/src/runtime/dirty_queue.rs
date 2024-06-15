@@ -4,8 +4,6 @@ use std::{
     hash::Hash,
 };
 
-use crate::source::SourceId;
-
 #[derive(Debug)]
 pub(crate) struct DirtyQueue<S> {
     dirty_queue: BTreeSet<S>,
@@ -40,6 +38,7 @@ struct Interdependencies<S> {
     /// TODO: When cleaning dirty flags, use this to check whether to call the callback.
     ///       If a symbol lacks subscribers, then the associated callback isn't called.
     subscribed_by_dependent: BTreeMap<S, BTreeSet<S>>,
+    all_by_dependent: BTreeMap<S, BTreeSet<S>>,
     all_by_dependency: BTreeMap<S, BTreeSet<S>>,
 }
 
@@ -47,6 +46,7 @@ impl<S> Interdependencies<S> {
     pub(crate) const fn new() -> Self {
         Self {
             subscribed_by_dependent: BTreeMap::new(),
+            all_by_dependent: BTreeMap::new(),
             all_by_dependency: BTreeMap::new(),
         }
     }
@@ -79,27 +79,51 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
     pub(crate) fn register_id(&mut self, symbol: S) {
         match (
             self.interdependencies.subscribed_by_dependent.entry(symbol),
+            self.interdependencies.all_by_dependent.entry(symbol),
             self.interdependencies.all_by_dependency.entry(symbol),
         ) {
-            (Entry::Vacant(v1), Entry::Vacant(v2)) => {
+            (Entry::Vacant(v1), Entry::Vacant(v2), Entry::Vacant(v3)) => {
                 v1.insert(BTreeSet::new());
                 v2.insert(BTreeSet::new());
+                v3.insert(BTreeSet::new());
             }
-            (_, _) => panic!("Tried to `register_id` twice without calling `purge_id` in-between."),
+            (_, _, _) => {
+                panic!("Tried to `register_id` twice without calling `purge_id` in-between.")
+            }
         }
+    }
+
+    pub(crate) fn update_dependencies(&mut self, symbol: S, new_dependencies: BTreeSet<S>) {
+        let old_dependencies = self
+            .interdependencies
+            .all_by_dependent
+            .get(&symbol)
+            .expect("unreachable");
+        let added_dependencies = &new_dependencies - old_dependencies;
+        let removed_dependencies = old_dependencies - &new_dependencies;
+        todo!("update_dependencies")
+    }
+
+    pub(crate) fn mark_dependents_as_dirty(&mut self, symbol: S) {
+        self.dirty_queue.extend(
+            self.interdependencies
+                .all_by_dependency
+                .get(&symbol)
+                .expect("unreachable"),
+        )
     }
 
     pub(crate) fn purge_id(&mut self, symbol: S) {
         self.dirty_queue.remove(&symbol);
-        self.interdependencies.all_by_dependency.remove(&symbol);
-        for dependents in self.interdependencies.all_by_dependency.values_mut() {
-            dependents.remove(&symbol);
-        }
-        self.interdependencies
-            .subscribed_by_dependent
-            .remove(&symbol);
-        for dependencies in self.interdependencies.subscribed_by_dependent.values_mut() {
-            dependencies.remove(&symbol);
+        for map in [
+            &mut self.interdependencies.subscribed_by_dependent,
+            &mut self.interdependencies.all_by_dependent,
+            &mut self.interdependencies.all_by_dependency,
+        ] {
+            map.remove(&symbol);
+            for value in map.values_mut() {
+                value.remove(&symbol);
+            }
         }
     }
 
