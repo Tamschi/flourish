@@ -145,7 +145,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                         todo!()
                     }
                 } else {
-                    init()
+                    self.handle.start(init, nop, &());
+                    unsafe extern "C" fn nop(_: *const ()) {}
                 }
                 unsafe { lazy.assume_init() }
             })
