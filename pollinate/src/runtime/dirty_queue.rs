@@ -101,7 +101,83 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
             .expect("unreachable");
         let added_dependencies = &new_dependencies - old_dependencies;
         let removed_dependencies = old_dependencies - &new_dependencies;
-        todo!("update_dependencies")
+
+        let was_subscribed = !self
+            .interdependencies
+            .subscribed_by_dependent
+            .get(&symbol)
+            .expect("unreachable")
+            .is_empty();
+        let new_subscribed_dependencies: BTreeSet<S> = new_dependencies
+            .iter()
+            .copied()
+            .filter(|d| {
+                !self
+                    .interdependencies
+                    .subscribed_by_dependent
+                    .get(d)
+                    .expect("unreachable")
+                    .is_empty()
+            })
+            .collect();
+        let is_subscribed = !new_subscribed_dependencies.is_empty();
+        drop(
+            self.interdependencies
+                .subscribed_by_dependent
+                .insert(symbol, new_subscribed_dependencies),
+        );
+        drop(
+            self.interdependencies
+                .all_by_dependent
+                .insert(symbol, new_dependencies)
+                .expect("old_dependencies"),
+        );
+        for removed_dependency in removed_dependencies {
+            assert!(self
+                .interdependencies
+                .all_by_dependency
+                .get_mut(&removed_dependency)
+                .expect("unreachable")
+                .remove(&symbol));
+            if was_subscribed {
+                let subscribed_of_dependency = &mut self
+                    .interdependencies
+                    .subscribed_by_dependent
+                    .get_mut(&removed_dependency)
+                    .expect("unreachable");
+                assert!(subscribed_of_dependency.remove(&symbol));
+                if subscribed_of_dependency.is_empty() {
+                    //TODO: Propagate!
+                    //TODO: Notify!
+                }
+            }
+        }
+        if was_subscribed && !is_subscribed {
+            todo!()
+        }
+        if !was_subscribed && is_subscribed {
+            todo!()
+        }
+        for added_dependency in added_dependencies {
+            assert!(self
+                .interdependencies
+                .all_by_dependency
+                .get_mut(&added_dependency)
+                .expect("unreachable")
+                .insert(symbol));
+            if is_subscribed {
+                let subscribed_of_dependency = &mut self
+                    .interdependencies
+                    .subscribed_by_dependent
+                    .get_mut(&added_dependency)
+                    .expect("unreachable");
+                assert!(subscribed_of_dependency.insert(symbol));
+                if subscribed_of_dependency.len() == 1 {
+                    //TODO: Propagate!
+                    //TODO: Notify!
+                }
+            }
+        }
     }
 
     pub(crate) fn mark_dependents_as_dirty(&mut self, symbol: S) {
