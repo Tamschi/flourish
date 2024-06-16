@@ -71,7 +71,6 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
 pub struct Source<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef = GlobalSignalRuntime> {
     handle: SourceId<SR>,
     _pinned: PhantomPinned,
-    eval: Cell<Option<unsafe extern "C" fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)>>,
     lazy: OnceLock<Lazy>,
     eager: Eager,
 }
@@ -114,7 +113,6 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         Self {
             handle: SourceId::with_runtime(sr),
             _pinned: PhantomPinned,
-            eval: Cell::new(None),
             lazy: OnceLock::new(),
             eager: eager.into(),
         }
@@ -128,39 +126,36 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     ///
     /// `init` is called exactly once with `receiver` before this function returns for the first time for this instance.
     ///
-    /// After `init` returns, `eval` may be called any number of times with the state initialised by `init`, but at most once at a time.
+    /// After `init` returns, `E::eval` may be called any number of times with the state initialised by `init`, but at most once at a time.
     ///
     /// [`Source`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
-    pub unsafe fn project_or_init(
+    pub unsafe fn project_or_init<E: Eval<Eager, Lazy>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
-        eval: Option<unsafe extern "C" fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
         let eager = Pin::new_unchecked(&self.eager);
         let lazy = self.handle.mark(|| {
             self.lazy.get_or_init(|| {
                 let mut lazy = MaybeUninit::uninit();
                 let init = || drop(init(eager, Slot::new(&mut lazy)));
-                if let Some(eval) = eval {
-                    self.eval.set(Some(eval));
-                    self.handle
-                        .start(init, callback, Pin::into_inner_unchecked(self) as *const _);
-                    unsafe extern "C" fn callback<
-                        Eager: Sync + ?Sized,
-                        Lazy: Sync,
-                        SR: SignalRuntimeRef,
-                    >(
-                        this: *const Source<Eager, Lazy, SR>,
-                    ) {
-                        let this = &*this;
-                        this.eval.get().expect("unreachable")(
-                            Pin::new_unchecked(&this.eager),
-                            Pin::new_unchecked(this.lazy.get().expect("unreachable")),
-                        )
-                    }
-                } else {
-                    self.handle.start(init, no_operation, &());
-                    extern "C" fn no_operation(_: *const ()) {}
+                self.handle.start(
+                    init,
+                    callback::<_, _, _, E>,
+                    Pin::into_inner_unchecked(self) as *const _,
+                );
+                unsafe extern "C" fn callback<
+                    Eager: Sync + ?Sized,
+                    Lazy: Sync,
+                    SR: SignalRuntimeRef,
+                    E: Eval<Eager, Lazy>,
+                >(
+                    this: *const Source<Eager, Lazy, SR>,
+                ) {
+                    let this = &*this;
+                    E::eval(
+                        Pin::new_unchecked(&this.eager),
+                        Pin::new_unchecked(this.lazy.get().expect("unreachable")),
+                    )
                 }
                 unsafe { lazy.assume_init() }
             })
@@ -175,12 +170,11 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     /// # Safety
     ///
     /// This function has the same safety requirements as [`Self::project_or_init`].
-    pub unsafe fn pull_or_init(
+    pub unsafe fn pull_or_init<E: Eval<Eager, Lazy>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
-        eval: Option<unsafe extern "C" fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
-        let projected = self.project_or_init(init, eval);
+        let projected = self.project_or_init::<E>(init);
         self.handle.set_subscription(true);
         projected
     }
@@ -222,4 +216,16 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eag
     fn drop(&mut self) {
         self.handle.stop()
     }
+}
+
+pub trait Eval<Eager: ?Sized, Lazy> {
+    /// # Safety
+    ///
+    /// Only called once at a time for each initialised [`Source`].
+    unsafe fn eval(eager: Pin<&Eager>, lazy: Pin<&Lazy>);
+}
+
+pub enum NoEval {}
+impl<Eager: ?Sized, Lazy> Eval<Eager, Lazy> for NoEval {
+    unsafe fn eval(_: Pin<&Eager>, _: Pin<&Lazy>) {}
 }

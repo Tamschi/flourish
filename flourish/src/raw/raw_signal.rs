@@ -11,7 +11,7 @@ use pin_project::pin_project;
 use pollinate::{
     runtime::{GlobalSignalRuntime, SignalRuntimeRef},
     slot::{Slot, Token},
-    source::Source,
+    source::{Eval, Source},
 };
 
 use crate::utils::conjure_zst;
@@ -116,7 +116,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> 
         unsafe {
             self.project_ref()
                 .0
-                .project_or_init(|f, cache| Self::init(f, cache), Some(Self::eval))
+                .project_or_init::<E>(|f, cache| Self::init(f, cache))
                 .1
                 .project_ref()
                 .0
@@ -127,10 +127,24 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> 
         unsafe {
             self.project_ref()
                 .0
-                .pull_or_init(|f, cache| Self::init(f, cache), Some(Self::eval))
+                .pull_or_init::<E>(|f, cache| Self::init(f, cache))
                 .1
                 .project_ref()
                 .0
+        }
+    }
+}
+
+enum E {}
+impl<T: Send, F: Send + FnMut() -> T> Eval<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>>
+    for E
+{
+    unsafe fn eval(f: Pin<&ForceSyncUnpin<UnsafeCell<F>>>, cache: Pin<&ForceSyncUnpin<RwLock<T>>>) {
+        let new_value = (&mut *f.project_ref().0.get())();
+        if needs_drop::<T>() || size_of::<T>() > 0 {
+            *cache.project_ref().0.write().unwrap() = new_value;
+        } else {
+            // The write is unobservable, so just skip locking.
         }
     }
 }
@@ -145,18 +159,6 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> 
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
     ) -> Token<'a> {
         cache.write(ForceSyncUnpin((&mut *f.project_ref().0.get())().into()))
-    }
-
-    unsafe extern "C" fn eval(
-        f: Pin<&ForceSyncUnpin<UnsafeCell<F>>>,
-        cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
-    ) {
-        let new_value = (&mut *f.project_ref().0.get())();
-        if needs_drop::<T>() || size_of::<T>() > 0 {
-            *cache.project_ref().0.write().unwrap() = new_value;
-        } else {
-            // The write is unobservable, so just skip locking.
-        }
     }
 }
 

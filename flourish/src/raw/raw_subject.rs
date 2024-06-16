@@ -10,7 +10,7 @@ use std::{
 use pin_project::pin_project;
 use pollinate::{
     runtime::{GlobalSignalRuntime, SignalRuntimeRef},
-    source::Source,
+    source::{NoEval, Source},
 };
 
 use crate::utils::conjure_zst;
@@ -139,7 +139,7 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
         unsafe {
             // SAFETY: Doesn't defer memory access.
             &*(&Pin::new_unchecked(&self.source)
-                .project_or_init(|_, slot| slot.write(()), None)
+                .project_or_init::<NoEval>(|_, slot| slot.write(()))
                 .0
                  .0 as *const _)
         }
