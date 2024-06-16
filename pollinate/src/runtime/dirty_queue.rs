@@ -4,6 +4,8 @@ use std::{
     hash::Hash,
 };
 
+use crate::runtime::dirty_queue;
+
 #[derive(Debug)]
 pub(crate) struct DirtyQueue<S> {
     dirty_queue: BTreeSet<S>,
@@ -181,11 +183,22 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
     }
 
     pub(crate) fn mark_dependents_as_dirty(&mut self, symbol: S) {
-        self.dirty_queue.extend(
-            self.interdependencies
-                .all_by_dependency
-                .get(&symbol)
-                .expect("unreachable"),
+        fn mark_dependents_as_dirty<S: Hash + Ord + Copy>(
+            symbol: S,
+            all_by_dependency: &BTreeMap<S, BTreeSet<S>>,
+            dirty_queue: &mut BTreeSet<S>,
+        ) {
+            for &dependent in all_by_dependency.get(&symbol).expect("unreachable") {
+                if dirty_queue.insert(dependent) {
+                    mark_dependents_as_dirty(dependent, all_by_dependency, dirty_queue)
+                }
+            }
+        }
+
+        mark_dependents_as_dirty(
+            symbol,
+            &self.interdependencies.all_by_dependency,
+            &mut self.dirty_queue,
         )
     }
 
@@ -249,18 +262,17 @@ impl<S: Copy + Ord> Iterator for DirtyQueue<S> {
     type Item = S;
 
     fn next(&mut self) -> Option<Self::Item> {
-        std::iter::repeat_with(|| self.dirty_queue.pop_first())
-            .map_while(identity)
-            //TODO: This filter must be re-enabled once subscriptions propagate properly!
-            //TODO: Add a test aspect to check that intermediate closures aren't called anymore if there's no subscriptions.
-            // .filter(|next| {
-            //     !self
-            //         .interdependencies
-            //         .subscribed_by_dependent
-            //         .get(&next)
-            //         .expect("unreachable")
-            //         .is_empty()
-            // })
-            .next()
+        let next = self.dirty_queue.iter().copied().find(|next| {
+            !self
+                .interdependencies
+                .subscribed_by_dependent
+                .get(&next)
+                .expect("unreachable")
+                .is_empty()
+        });
+        if let Some(next) = next {
+            assert!(self.dirty_queue.remove(&next));
+        }
+        next
     }
 }
