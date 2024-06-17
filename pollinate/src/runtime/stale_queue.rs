@@ -5,29 +5,29 @@ use std::{
     hash::Hash,
 };
 
-use crate::runtime::dirty_queue;
+use crate::runtime::stale_queue;
 
 #[derive(Debug)]
-pub(crate) struct DirtyQueue<S> {
-    /// TODO: When projecting something, clean it if it's dirty!
-    dirty_queue: BTreeSet<S>,
+pub(crate) struct StaleQueue<S> {
+    /// TODO: When projecting something, clean it if it's stale!
+    stale_queue: BTreeSet<S>,
     interdependencies: Interdependencies<S>,
     sensors: BTreeMap<S, (unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
     sensor_stack: VecDeque<S>,
 }
 
-unsafe impl<S> Send for DirtyQueue<S> {}
+unsafe impl<S> Send for StaleQueue<S> {}
 
-impl<S> Default for DirtyQueue<S> {
+impl<S> Default for StaleQueue<S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<S> DirtyQueue<S> {
+impl<S> StaleQueue<S> {
     pub(crate) const fn new() -> Self {
         Self {
-            dirty_queue: BTreeSet::new(),
+            stale_queue: BTreeSet::new(),
             interdependencies: Interdependencies::new(),
             sensors: BTreeMap::new(),
             sensor_stack: VecDeque::new(),
@@ -55,7 +55,7 @@ impl<S> Interdependencies<S> {
     }
 }
 
-impl<S: Hash + Ord + Copy + Debug> DirtyQueue<S> {
+impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
     pub(crate) fn set_subscription(&mut self, symbol: S, enabled: bool) -> bool {
         let subscribed = self
             .interdependencies
@@ -211,23 +211,23 @@ impl<S: Hash + Ord + Copy + Debug> DirtyQueue<S> {
         }
     }
 
-    pub(crate) fn mark_dependents_as_dirty(&mut self, symbol: S) {
-        fn mark_dependents_as_dirty<S: Hash + Ord + Copy>(
+    pub(crate) fn mark_dependents_as_stale(&mut self, symbol: S) {
+        fn mark_dependents_as_stale<S: Hash + Ord + Copy>(
             symbol: S,
             all_by_dependency: &BTreeMap<S, BTreeSet<S>>,
-            dirty_queue: &mut BTreeSet<S>,
+            stale_queue: &mut BTreeSet<S>,
         ) {
             for &dependent in all_by_dependency.get(&symbol).expect("unreachable") {
-                if dirty_queue.insert(dependent) {
-                    mark_dependents_as_dirty(dependent, all_by_dependency, dirty_queue)
+                if stale_queue.insert(dependent) {
+                    mark_dependents_as_stale(dependent, all_by_dependency, stale_queue)
                 }
             }
         }
 
-        mark_dependents_as_dirty(
+        mark_dependents_as_stale(
             symbol,
             &self.interdependencies.all_by_dependency,
-            &mut self.dirty_queue,
+            &mut self.stale_queue,
         )
     }
 
@@ -254,7 +254,7 @@ impl<S: Hash + Ord + Copy + Debug> DirtyQueue<S> {
             }
         }
 
-        self.dirty_queue.remove(&symbol);
+        self.stale_queue.remove(&symbol);
         for map in [
             &mut self.interdependencies.subscribers_by_dependency,
             &mut self.interdependencies.all_by_dependent,
@@ -311,12 +311,12 @@ impl<S: Hash + Ord + Copy + Debug> DirtyQueue<S> {
     }
 }
 
-impl<S: Copy + Ord> Iterator for DirtyQueue<S> {
+impl<S: Copy + Ord> Iterator for StaleQueue<S> {
     type Item = S;
 
     fn next(&mut self) -> Option<Self::Item> {
-        //FIXME: This is very inefficient! Dirty-marking propagates only forwards, so one step up in the call graph, a cursor can be used.
-        let next = self.dirty_queue.iter().copied().find(|next| {
+        //FIXME: This is very inefficient! Stale-marking propagates only forwards, so one step up in the call graph, a cursor can be used.
+        let next = self.stale_queue.iter().copied().find(|next| {
             !self
                 .interdependencies
                 .subscribers_by_dependency
@@ -325,7 +325,7 @@ impl<S: Copy + Ord> Iterator for DirtyQueue<S> {
                 .is_empty()
         });
         if let Some(next) = next {
-            assert!(self.dirty_queue.remove(&next));
+            assert!(self.stale_queue.remove(&next));
         }
         next
     }

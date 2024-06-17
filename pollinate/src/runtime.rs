@@ -10,11 +10,11 @@ use std::{
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
 };
 
-use dirty_queue::DirtyQueue;
+use stale_queue::StaleQueue;
 use parking_lot::ReentrantMutex;
 
 mod deferred_queue;
-mod dirty_queue;
+mod stale_queue;
 mod work_queue;
 
 pub trait SignalRuntimeRef: Clone {
@@ -56,7 +56,7 @@ unsafe impl Sync for ASignalRuntime {}
 
 #[derive(Default)]
 struct ASignalRuntime_ {
-    dirty_queue: DirtyQueue<ASymbol>,
+    stale_queue: StaleQueue<ASymbol>,
     stack: VecDeque<(ASymbol, BTreeSet<ASymbol>)>,
     callbacks: BTreeMap<ASymbol, (unsafe extern "C" fn(*const ()), *const ())>,
 }
@@ -64,7 +64,7 @@ struct ASignalRuntime_ {
 impl ASignalRuntime_ {
     const fn new() -> Self {
         Self {
-            dirty_queue: DirtyQueue::new(),
+            stale_queue: StaleQueue::new(),
             stack: VecDeque::new(),
             callbacks: BTreeMap::new(),
         }
@@ -86,9 +86,9 @@ impl ASignalRuntime {
         let lock = self.critical_mutex.lock();
         (*lock)
             .borrow_mut()
-            .dirty_queue
-            .mark_dependents_as_dirty(dependency);
-        while let Some(current) = (|| (*lock).borrow_mut().dirty_queue.next())() {
+            .stale_queue
+            .mark_dependents_as_stale(dependency);
+        while let Some(current) = (|| (*lock).borrow_mut().stale_queue.next())() {
             let mut borrow = (*lock).borrow_mut();
             if let Some(callback) = borrow.callbacks.get(&current).clone() {
                 let (f, d) = callback.clone();
@@ -103,9 +103,9 @@ impl ASignalRuntime {
                     resume_unwind(payload)
                 }
                 borrow
-                    .dirty_queue
+                    .stale_queue
                     .update_dependencies(current, touched_dependencies);
-                borrow.dirty_queue.mark_dependents_as_dirty(current);
+                borrow.stale_queue.mark_dependents_as_stale(current);
             }
         }
     }
@@ -149,7 +149,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
         let lock = self.critical_mutex.lock();
         {
             let mut borrow = (*lock).borrow_mut();
-            borrow.dirty_queue.register_id(id);
+            borrow.stale_queue.register_id(id);
             borrow.stack.push_back((id, BTreeSet::new()));
         }
         let r = catch_unwind(AssertUnwindSafe(f));
@@ -158,7 +158,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
             let (popped_id, touched_dependencies) = borrow.stack.pop_back().expect("infallible");
             assert_eq!(popped_id, id);
             borrow
-                .dirty_queue
+                .stale_queue
                 .update_dependencies(id, touched_dependencies);
             match borrow.callbacks.entry(id) {
                 Entry::Vacant(v) => {
@@ -182,7 +182,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
-        borrow.dirty_queue.set_subscription(id, enabled)
+        borrow.stale_queue.set_subscription(id, enabled)
     }
 
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
@@ -206,7 +206,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
             //TODO: Does this need to abort the process?
             panic!("Can't stop symbol while it is executing on the same thread.");
         }
-        borrow.dirty_queue.purge_id(id);
+        borrow.stale_queue.purge_id(id);
         borrow.callbacks.remove(&id);
     }
 
@@ -219,7 +219,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
 
-        borrow.dirty_queue.start_sensor(
+        borrow.stale_queue.start_sensor(
             id,
             unsafe {
                 //SAFETY: Due to `extern "C"`, these signatures are compatible.
@@ -235,7 +235,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn stop_sensor(&self, id: Self::Symbol) {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
-        borrow.dirty_queue.stop_sensor(id);
+        borrow.stale_queue.stop_sensor(id);
     }
 }
 
