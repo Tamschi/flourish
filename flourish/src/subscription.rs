@@ -1,6 +1,6 @@
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{Signal, SignalGuard};
+use crate::{source::DelegateSource, Signal, SignalGuard};
 
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct Subscription<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
@@ -28,5 +28,13 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Subscription<T, SR> {
         let this = Self(Signal::with_runtime(f, sr));
         this.0.pull();
         this
+    }
+}
+
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> DelegateSource for Subscription<T, SR> {
+    type DelegateValue = T;
+
+    fn delegate_source(&self) -> &impl crate::Source<Value = Self::DelegateValue> {
+        &self.0
     }
 }
