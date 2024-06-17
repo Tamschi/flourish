@@ -1,9 +1,7 @@
-use std::{mem, pin::Pin};
+use std::pin::Pin;
 
 use pin_project::pin_project;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
-
-use crate::{source::DelegateSource, Source};
 
 use super::{RawSignal, RawSignalGuard};
 
@@ -70,19 +68,4 @@ macro_rules! subscription {
 		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
 		$crate::__::__pull_subscription($name);
 	)*};
-}
-
-impl<'a, T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> DelegateSource
-    for Pin<&'a RawSubscription<T, F, SR>>
-where
-    Pin<&'a RawSignal<T, F, SR>>: Source<Value = T>,
-{
-    type DelegateValue = T;
-
-    fn delegate_source(&self) -> &impl Source<Value = T> {
-        unsafe {
-            // SAFETY: Legal because `RawSubscription` ist `#[repr(transparent)]` towards `RawSignal`.
-            mem::transmute::<&Pin<&RawSubscription<T, F, SR>>, &Pin<&RawSignal<T, F, SR>>>(self)
-        }
-    }
 }

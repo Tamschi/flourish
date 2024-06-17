@@ -11,9 +11,6 @@ pub use signal::{Signal, SignalGuard};
 mod subscription;
 pub use subscription::{Subscription, SubscriptionGuard};
 
-mod source;
-pub use source::{DelegateSource, Source};
-
 #[doc(hidden = "macro-only")]
 pub mod __ {
     pub use super::raw::__::*;
