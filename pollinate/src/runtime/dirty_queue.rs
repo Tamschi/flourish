@@ -1,6 +1,7 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
     convert::identity,
+    fmt::Debug,
     hash::Hash,
 };
 
@@ -8,6 +9,7 @@ use crate::runtime::dirty_queue;
 
 #[derive(Debug)]
 pub(crate) struct DirtyQueue<S> {
+    /// TODO: When projecting something, clean it if it's dirty!
     dirty_queue: BTreeSet<S>,
     interdependencies: Interdependencies<S>,
     sensors: BTreeMap<S, (unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
@@ -36,10 +38,9 @@ impl<S> DirtyQueue<S> {
 #[derive(Debug)]
 struct Interdependencies<S> {
     /// Note: While a symbol is flagged as subscribed explicitly,
-    ///       it is present as its own dependency here (by not in `all_by_dependency`!).
-    /// TODO: When cleaning dirty flags, use this to check whether to call the callback.
-    ///       If a symbol lacks subscribers, then the associated callback isn't called.
-    subscribed_by_dependent: BTreeMap<S, BTreeSet<S>>,
+    ///       it is present as its own subscriber here (by not in `all_by_dependency`!).
+    /// FIXME: This could store subscriber counts instead.
+    subscribers_by_dependency: BTreeMap<S, BTreeSet<S>>,
     all_by_dependent: BTreeMap<S, BTreeSet<S>>,
     all_by_dependency: BTreeMap<S, BTreeSet<S>>,
 }
@@ -47,40 +48,47 @@ struct Interdependencies<S> {
 impl<S> Interdependencies<S> {
     pub(crate) const fn new() -> Self {
         Self {
-            subscribed_by_dependent: BTreeMap::new(),
+            subscribers_by_dependency: BTreeMap::new(),
             all_by_dependent: BTreeMap::new(),
             all_by_dependency: BTreeMap::new(),
         }
     }
 }
 
-impl<S: Hash + Ord + Copy> DirtyQueue<S> {
+impl<S: Hash + Ord + Copy + Debug> DirtyQueue<S> {
     pub(crate) fn set_subscription(&mut self, symbol: S, enabled: bool) -> bool {
-        let subscribed_dependencies = self
+        let subscribed = self
             .interdependencies
-            .subscribed_by_dependent
-            .get_mut(&symbol)
-            .expect("`set_subscription` can only be called between `start` and `stop`");
-        if enabled {
-            let incremented = subscribed_dependencies.insert(symbol);
-            if incremented && subscribed_dependencies.len() == 1 {
-                //TODO: Propagate
-                //TODO: Subscriber notification mechanism!
-            }
-            incremented
+            .subscribers_by_dependency
+            .get(&symbol)
+            .expect("`set_subscription` can only be called between `start` and `stop`")
+            .contains(&symbol);
+        if enabled && !subscribed {
+            Self::subscribe_to_with(
+                symbol,
+                symbol,
+                &self.interdependencies.all_by_dependent,
+                &mut self.interdependencies.subscribers_by_dependency,
+            );
+            true
+        } else if !enabled && subscribed {
+            Self::unsubscribe_from_with(
+                symbol,
+                symbol,
+                &self.interdependencies.all_by_dependent,
+                &mut self.interdependencies.subscribers_by_dependency,
+            );
+            true
         } else {
-            let decremented = subscribed_dependencies.remove(&symbol);
-            if decremented && subscribed_dependencies.is_empty() {
-                //TODO: Propagate
-                //TODO: Subscriber notification mechanism!
-            }
-            decremented
+            false
         }
     }
 
     pub(crate) fn register_id(&mut self, symbol: S) {
         match (
-            self.interdependencies.subscribed_by_dependent.entry(symbol),
+            self.interdependencies
+                .subscribers_by_dependency
+                .entry(symbol),
             self.interdependencies.all_by_dependent.entry(symbol),
             self.interdependencies.all_by_dependency.entry(symbol),
         ) {
@@ -104,80 +112,101 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
         let added_dependencies = &new_dependencies - old_dependencies;
         let removed_dependencies = old_dependencies - &new_dependencies;
 
-        let was_subscribed = !self
-            .interdependencies
-            .subscribed_by_dependent
-            .get(&symbol)
-            .expect("unreachable")
-            .is_empty();
-        let new_subscribed_dependencies: BTreeSet<S> = new_dependencies
-            .iter()
-            .copied()
-            .filter(|d| {
-                !self
-                    .interdependencies
-                    .subscribed_by_dependent
-                    .get(d)
-                    .expect("unreachable")
-                    .is_empty()
-            })
-            .collect();
-        let is_subscribed = !new_subscribed_dependencies.is_empty();
-        drop(
-            self.interdependencies
-                .subscribed_by_dependent
-                .insert(symbol, new_subscribed_dependencies),
-        );
         drop(
             self.interdependencies
                 .all_by_dependent
                 .insert(symbol, new_dependencies)
                 .expect("old_dependencies"),
         );
-        for removed_dependency in removed_dependencies {
+        for removed_dependency in removed_dependencies.iter() {
             assert!(self
                 .interdependencies
                 .all_by_dependency
-                .get_mut(&removed_dependency)
+                .get_mut(removed_dependency)
                 .expect("unreachable")
-                .remove(&symbol));
-            if was_subscribed {
-                let subscribed_of_dependency = &mut self
-                    .interdependencies
-                    .subscribed_by_dependent
-                    .get_mut(&removed_dependency)
-                    .expect("unreachable");
-                assert!(subscribed_of_dependency.remove(&symbol));
-                if subscribed_of_dependency.is_empty() {
-                    //TODO: Propagate!
-                    //TODO: Notify!
-                }
+                .remove(&symbol))
+        }
+        for added_dependency in added_dependencies.iter() {
+            assert!(self
+                .interdependencies
+                .all_by_dependency
+                .get_mut(added_dependency)
+                .expect("unreachable")
+                .insert(symbol))
+        }
+
+        let is_subscribed = !self
+            .interdependencies
+            .subscribers_by_dependency
+            .get(&symbol)
+            .expect("unreachable")
+            .is_empty();
+        if is_subscribed {
+            for removed_dependency in removed_dependencies {
+                Self::unsubscribe_from_with(
+                    removed_dependency,
+                    symbol,
+                    &self.interdependencies.all_by_dependent,
+                    &mut self.interdependencies.subscribers_by_dependency,
+                )
+            }
+            for added_dependency in added_dependencies {
+                Self::subscribe_to_with(
+                    added_dependency,
+                    symbol,
+                    &self.interdependencies.all_by_dependent,
+                    &mut self.interdependencies.subscribers_by_dependency,
+                )
             }
         }
-        if was_subscribed && !is_subscribed {
-            //TODO: Propagate!
+    }
+
+    fn subscribe_to_with(
+        dependency: S,
+        dependent: S,
+        all_by_dependent: &BTreeMap<S, BTreeSet<S>>,
+        subscribers_by_dependency: &mut BTreeMap<S, BTreeSet<S>>,
+    ) {
+        println!("to {:?} with {:?}", dependency, dependent);
+        let subscribers = subscribers_by_dependency
+            .get_mut(&dependency)
+            .expect("unreachable");
+        let newly_subscribed = subscribers.is_empty();
+        assert!(subscribers.insert(dependent));
+        if newly_subscribed {
+            //TODO: Notify!
+            for &indirect_dependency in all_by_dependent.get(&dependency).expect("unreachable") {
+                Self::subscribe_to_with(
+                    indirect_dependency,
+                    dependency,
+                    all_by_dependent,
+                    subscribers_by_dependency,
+                )
+            }
         }
-        if !was_subscribed && is_subscribed {
-            //TODO: Propagate!
-        }
-        for added_dependency in added_dependencies {
-            assert!(self
-                .interdependencies
-                .all_by_dependency
-                .get_mut(&added_dependency)
-                .expect("unreachable")
-                .insert(symbol));
-            if is_subscribed {
-                let subscribed_of_dependency = &mut self
-                    .interdependencies
-                    .subscribed_by_dependent
-                    .get_mut(&added_dependency)
-                    .expect("unreachable");
-                assert!(subscribed_of_dependency.insert(symbol));
-                if subscribed_of_dependency.len() == 1 {
-                    //TODO: Propagate!
-                    //TODO: Notify!
-                }
+    }
+
+    fn unsubscribe_from_with(
+        dependency: S,
+        dependent: S,
+        all_by_dependent: &BTreeMap<S, BTreeSet<S>>,
+        subscribers_by_dependency: &mut BTreeMap<S, BTreeSet<S>>,
+    ) {
+        println!("from {:?} with {:?}", dependency, dependent);
+        let subscribers = subscribers_by_dependency
+            .get_mut(&dependency)
+            .expect("unreachable");
+        assert!(subscribers.remove(&dependent));
+        let newly_unsubscribed = subscribers.is_empty();
+        if newly_unsubscribed {
+            //TODO: Notify!
+            for &indirect_dependency in all_by_dependent.get(&dependency).expect("unreachable") {
+                Self::unsubscribe_from_with(
+                    indirect_dependency,
+                    dependency,
+                    all_by_dependent,
+                    subscribers_by_dependency,
+                )
             }
         }
     }
@@ -203,9 +232,31 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
     }
 
     pub(crate) fn purge_id(&mut self, symbol: S) {
+        let is_subscribed = !self
+            .interdependencies
+            .subscribers_by_dependency
+            .get(&symbol)
+            .expect("unreachable")
+            .is_empty();
+        if is_subscribed {
+            for &dependency in self
+                .interdependencies
+                .all_by_dependent
+                .get(&symbol)
+                .expect("unreachable")
+            {
+                Self::unsubscribe_from_with(
+                    dependency,
+                    symbol,
+                    &self.interdependencies.all_by_dependent,
+                    &mut self.interdependencies.subscribers_by_dependency,
+                )
+            }
+        }
+
         self.dirty_queue.remove(&symbol);
         for map in [
-            &mut self.interdependencies.subscribed_by_dependent,
+            &mut self.interdependencies.subscribers_by_dependency,
             &mut self.interdependencies.all_by_dependent,
             &mut self.interdependencies.all_by_dependency,
         ] {
@@ -224,7 +275,7 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
     ) {
         let has_subscribers = self
             .interdependencies
-            .subscribed_by_dependent
+            .subscribers_by_dependency
             .get(&symbol)
             .is_some_and(|subs| !subs.is_empty());
 
@@ -238,6 +289,8 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
         if has_subscribers {
             unsafe { on_subscription_change(on_subscription_change_data, true) }
         }
+
+        //TODO: Set up notification!
     }
 
     pub(crate) fn stop_sensor(&mut self, symbol: S) {
@@ -248,7 +301,7 @@ impl<S: Hash + Ord + Copy> DirtyQueue<S> {
         if let Some(old_sensor) = self.sensors.remove(&symbol) {
             let has_subscribers = self
                 .interdependencies
-                .subscribed_by_dependent
+                .subscribers_by_dependency
                 .get(&symbol)
                 .is_some_and(|subs| !subs.is_empty());
             if has_subscribers {
@@ -262,10 +315,11 @@ impl<S: Copy + Ord> Iterator for DirtyQueue<S> {
     type Item = S;
 
     fn next(&mut self) -> Option<Self::Item> {
+        //FIXME: This is very inefficient! Dirty-marking propagates only forwards, so one step up in the call graph, a cursor can be used.
         let next = self.dirty_queue.iter().copied().find(|next| {
             !self
                 .interdependencies
-                .subscribed_by_dependent
+                .subscribers_by_dependency
                 .get(&next)
                 .expect("unreachable")
                 .is_empty()
