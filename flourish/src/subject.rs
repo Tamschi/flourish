@@ -141,8 +141,8 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
     pub fn into_get_set<'a>(
         self,
     ) -> (
-        impl 'a + Clone + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Send + Sync + Fn(T),
+        impl 'a + Clone + Send + Sync + Unpin + Fn() -> T,
+        impl 'a + Clone + Send + Sync + Unpin + Fn(T),
     )
     where
         Self: 'a,
@@ -170,8 +170,8 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
     pub fn into_get_clone_set<'a>(
         self,
     ) -> (
-        impl 'a + Clone + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Send + Sync + Fn(T),
+        impl 'a + Clone + Send + Sync + Unpin + Fn() -> T,
+        impl 'a + Clone + Send + Sync + Unpin + Fn(T),
     )
     where
         Self: 'a,
@@ -243,47 +243,8 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
             move |new_value| this.set(new_value),
         )
     }
-}
 
-impl<T, SR: SignalRuntimeRef> Source for Subject<T, SR> {
-    type Value = T;
-
-    fn touch(&self) {
-        self.touch();
-    }
-
-    fn get(&self) -> Self::Value
-    where
-        Self::Value: Sync + Copy,
-    {
-        self.get()
-    }
-
-    fn get_clone(&self) -> Self::Value
-    where
-        Self::Value: Sync + Clone,
-    {
-        self.get_clone()
-    }
-
-    fn get_exclusive(&self) -> Self::Value
-    where
-        Self::Value: Copy,
-    {
-        self.get_exclusive()
-    }
-
-    fn get_clone_exclusive(&self) -> Self::Value
-    where
-        Self::Value: Copy,
-    {
-        self.get_clone_exclusive()
-    }
-
-    fn read(&self) -> Box<dyn '_ + Borrow<Self::Value>>
-    where
-        Self::Value: Sync,
-    {
-        Box::new(self.0.read())
+    pub fn as_source(&self) -> Pin<&dyn Source<Value = T>> {
+        self.0.as_ref()
     }
 }

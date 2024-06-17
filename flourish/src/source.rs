@@ -1,76 +1,70 @@
-use std::borrow::Borrow;
+use std::{borrow::Borrow, pin::Pin};
 
 pub trait Source {
     type Value: ?Sized;
 
-    fn touch(&self);
+    fn touch(self: Pin<&Self>);
 
-    fn get(&self) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Sync + Copy;
 
-    fn get_clone(&self) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Sync + Clone;
 
-    fn get_exclusive(&self) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Copy;
 
-    fn get_clone_exclusive(&self) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Copy;
 
-    fn read(&self) -> Box<dyn '_ + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
-        Self::Value: Sync;
+        Self::Value: 'a + Sync;
 }
 
-pub trait DelegateSource {
-    type DelegateValue: ?Sized;
+impl<F: ?Sized + Fn() -> T, T> Source for F {
+    type Value = T;
 
-    fn delegate_source(&self) -> &impl Source<Value = Self::DelegateValue>;
-}
-
-impl<T: ?Sized + DelegateSource> Source for T {
-    type Value = <T as DelegateSource>::DelegateValue;
-
-    fn touch(&self) {
-        self.delegate_source().touch()
+    fn touch(self: Pin<&Self>) {
+        self();
     }
 
-    fn get(&self) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Sync + Copy,
     {
-        self.delegate_source().get()
+        self()
     }
 
-    fn get_clone(&self) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Sync + Clone,
     {
-        self.delegate_source().get_clone()
+        self()
     }
 
-    fn get_exclusive(&self) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Copy,
     {
-        self.delegate_source().get_exclusive()
+        self()
     }
 
-    fn get_clone_exclusive(&self) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Copy,
     {
-        self.delegate_source().get_clone_exclusive()
+        self()
     }
 
-    fn read(&self) -> Box<dyn '_ + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
-        Self::Value: Sync,
+        Self::Value: 'a + Sync,
     {
-        self.delegate_source().read()
+        Box::new(self())
     }
 }

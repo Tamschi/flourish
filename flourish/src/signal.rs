@@ -139,6 +139,14 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
         let address = unsafe { self.0.as_ptr().read() }.0;
         unsafe { address.as_ref().pull() }
     }
+
+    pub fn as_source(&self) -> Pin<&(dyn Source<Value = T> + Sync)>
+    where
+        SR: Sync,
+    {
+        let address = unsafe { self.0.as_ptr().read() }.0;
+        unsafe { address.as_ref().as_source() }
+    }
 }
 
 /// FIXME: Once pointer-metadata is available, shrink this.
@@ -149,6 +157,9 @@ trait SignalDataAddress<T: Send + ?Sized, SR: SignalRuntimeRef> {
     unsafe fn drop_arc(&self);
     fn touch(&self) -> &RwLock<T>;
     fn pull(&self) -> &RwLock<T>;
+    fn as_source(&self) -> Pin<&(dyn Source<Value = T> + Sync)>
+    where
+        SR: Sync;
 }
 
 #[pin_project]
@@ -199,47 +210,17 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> SignalDataAddress<T,
         .signal
         .pull()
     }
-}
 
-impl<T: ?Sized + Send, SR: SignalRuntimeRef> Source for Signal<T, SR> {
-    type Value = T;
-
-    fn touch(&self) {
-        self.touch();
-    }
-
-    fn get(&self) -> Self::Value
+    fn as_source(&self) -> Pin<&(dyn Source<Value = T> + Sync)>
     where
-        Self::Value: Sync + Copy,
+        SR: Sync,
     {
-        self.get()
-    }
-
-    fn get_clone(&self) -> Self::Value
-    where
-        Self::Value: Sync + Clone,
-    {
-        self.get_clone()
-    }
-
-    fn get_exclusive(&self) -> Self::Value
-    where
-        Self::Value: Copy,
-    {
-        self.get_exclusive()
-    }
-
-    fn get_clone_exclusive(&self) -> Self::Value
-    where
-        Self::Value: Copy,
-    {
-        self.get_clone_exclusive()
-    }
-
-    fn read(&self) -> Box<dyn '_ + Borrow<Self::Value>>
-    where
-        Self::Value: Sync,
-    {
-        Box::new(self.read())
+        unsafe {
+            Pin::new_unchecked(&*from_exposed_addr::<SignalDataFull<T, F, SR>>(
+                Strict::addr(self as *const Self),
+            ))
+        }
+        .project_ref()
+        .signal
     }
 }

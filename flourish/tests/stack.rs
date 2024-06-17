@@ -1,4 +1,6 @@
-use flourish::{signal, subject, subscription};
+use std::pin::Pin;
+
+use flourish::{signal, subject, subscription, Source};
 mod _validator;
 use _validator::Validator;
 
@@ -15,25 +17,28 @@ fn use_macros() {
     signal! {
         let c => { x.push("c"); a.get() + b() };
         let d => { x.push("d"); a.get() - b() };
-        let aa =>{ x.push("aa");  c.get() + d.get() }; //TODO: Make this a cacheless signal.
     }
+    let aa = || {
+        x.push("aa");
+        c.get() + d.get()
+    };
     v.expect([]);
     x.expect([]);
 
     {
         subscription! {
-            let sub_aa => { x.push("sub_aa"); v.push(aa.get()) };
+            let sub_aa => { x.push("sub_aa"); v.push(Pin::new(&aa).get()) };
         }
         v.expect([2]);
         x.expect(["sub_aa", "aa", "c", "d"]);
 
         set_b(2);
         v.expect([2]);
-        x.expect(["c", "d", "aa", "sub_aa"]);
+        x.expect(["c", "d", "sub_aa", "aa"]);
 
         a.set(0);
         v.expect([0]);
-        x.expect(["c", "d", "aa", "sub_aa"]);
+        x.expect(["c", "d", "sub_aa", "aa"]);
     } // drop sub
 
     // These evaluate *no* closures!

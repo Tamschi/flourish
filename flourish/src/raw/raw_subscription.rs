@@ -1,9 +1,9 @@
-use std::{mem, pin::Pin};
+use std::{borrow::Borrow, pin::Pin};
 
 use pin_project::pin_project;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{source::DelegateSource, Source};
+use crate::Source;
 
 use super::{RawSignal, RawSignalGuard};
 
@@ -72,17 +72,47 @@ macro_rules! subscription {
 	)*};
 }
 
-impl<'a, T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> DelegateSource
-    for Pin<&'a RawSubscription<T, F, SR>>
-where
-    Pin<&'a RawSignal<T, F, SR>>: Source<Value = T>,
+impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> Source
+    for RawSubscription<T, F, SR>
 {
-    type DelegateValue = T;
+    type Value = T;
 
-    fn delegate_source(&self) -> &impl Source<Value = T> {
-        unsafe {
-            // SAFETY: Legal because `RawSubscription` ist `#[repr(transparent)]` towards `RawSignal`.
-            mem::transmute::<&Pin<&RawSubscription<T, F, SR>>, &Pin<&RawSignal<T, F, SR>>>(self)
-        }
+    fn touch(self: Pin<&Self>) {
+        self.project_ref().0.touch();
+    }
+
+    fn get(self: Pin<&Self>) -> Self::Value
+    where
+        Self::Value: Sync + Copy,
+    {
+        self.project_ref().0.get()
+    }
+
+    fn get_clone(self: Pin<&Self>) -> Self::Value
+    where
+        Self::Value: Sync + Clone,
+    {
+        self.project_ref().0.get_clone()
+    }
+
+    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    where
+        Self::Value: Copy,
+    {
+        self.project_ref().0.get_exclusive()
+    }
+
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    where
+        Self::Value: Copy,
+    {
+        self.project_ref().0.get_clone_exclusive()
+    }
+
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    where
+        Self::Value: 'a + Sync,
+    {
+        Box::new(self.project_ref().0.read())
     }
 }

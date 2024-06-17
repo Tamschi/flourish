@@ -1,6 +1,8 @@
+use std::pin::Pin;
+
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{source::DelegateSource, Signal, SignalGuard};
+use crate::{Signal, SignalGuard, Source};
 
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct Subscription<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
@@ -29,12 +31,11 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Subscription<T, SR> {
         this.0.pull();
         this
     }
-}
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> DelegateSource for Subscription<T, SR> {
-    type DelegateValue = T;
-
-    fn delegate_source(&self) -> &impl crate::Source<Value = Self::DelegateValue> {
-        &self.0
+    pub fn as_source(&self) -> Pin<&(dyn Source<Value = T> + Sync)>
+    where
+        SR: Sync,
+    {
+        self.0.as_source()
     }
 }

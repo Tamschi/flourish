@@ -53,7 +53,7 @@ impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
 
 pub struct RawSubjectGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
-impl<'a, T> Deref for RawSubjectGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for RawSubjectGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -61,7 +61,7 @@ impl<'a, T> Deref for RawSubjectGuard<'a, T> {
     }
 }
 
-impl<'a, T> Borrow<T> for RawSubjectGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
@@ -190,8 +190,8 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn get_set_blocking<'a>(
         self: Pin<&'a Self>,
     ) -> (
-        impl 'a + Clone + Copy + Fn() -> T,
-        impl 'a + Clone + Copy + Fn(T),
+        impl 'a + Clone + Copy + Unpin + Fn() -> T,
+        impl 'a + Clone + Copy + Unpin + Fn(T),
     )
     where
         T: 'static + Sync + Send + Copy,
@@ -202,8 +202,8 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn get_set<'a>(
         self: Pin<&'a Self>,
     ) -> (
-        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn(T),
     )
     where
         T: 'static + Sync + Send + Copy,
@@ -216,8 +216,8 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn get_clone_set_blocking<'a>(
         self: Pin<&'a Self>,
     ) -> (
-        impl 'a + Clone + Copy + Fn() -> T,
-        impl 'a + Clone + Copy + Fn(T),
+        impl 'a + Clone + Copy + Unpin + Fn() -> T,
+        impl 'a + Clone + Copy + Unpin + Fn(T),
     )
     where
         T: 'static + Sync + Send + Clone,
@@ -232,8 +232,8 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn get_clone_set<'a>(
         self: Pin<&'a Self>,
     ) -> (
-        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn(T),
     )
     where
         T: 'static + Sync + Send + Clone,
@@ -250,8 +250,8 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn into_get_exclusive_set_blocking<'a>(
         self: Pin<&'a Self>,
     ) -> (
-        impl 'a + Clone + Copy + Fn() -> T,
-        impl 'a + Clone + Copy + Fn(T),
+        impl 'a + Clone + Copy + Unpin + Fn() -> T,
+        impl 'a + Clone + Copy + Unpin + Fn(T),
     )
     where
         Self: 'a,
@@ -263,8 +263,8 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn into_get_exclusive_set<'a>(
         self: Pin<&'a Self>,
     ) -> (
-        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn(T),
     )
     where
         Self: 'a,
@@ -278,8 +278,8 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn into_get_clone_exclusive_set_blocking<'a>(
         self: Pin<&'a Self>,
     ) -> (
-        impl 'a + Clone + Copy + Fn() -> T,
-        impl 'a + Clone + Copy + Fn(T),
+        impl 'a + Clone + Copy + Unpin + Fn() -> T,
+        impl 'a + Clone + Copy + Unpin + Fn(T),
     )
     where
         Self: 'a,
@@ -295,8 +295,8 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn into_get_clone_exclusive_set<'a>(
         self: Pin<&'a Self>,
     ) -> (
-        impl 'a + Clone + Copy + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Copy + Send + Sync + Fn(T),
+        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn() -> T,
+        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn(T),
     )
     where
         Self: 'a,
@@ -324,45 +324,45 @@ macro_rules! subject {
 	)*};
 }
 
-impl<T: Send, SR: SignalRuntimeRef> crate::Source for Pin<&'_ RawSubject<T, SR>> {
+impl<T: ?Sized, SR: SignalRuntimeRef> crate::Source for RawSubject<T, SR> {
     type Value = T;
 
-    fn touch(&self) {
-        RawSubject::touch(self);
+    fn touch(self: Pin<&Self>) {
+        (*self).touch();
     }
 
-    fn get(&self) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Sync + Copy,
     {
-        RawSubject::get(self)
+        (*self).get()
     }
 
-    fn get_clone(&self) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Sync + Clone,
     {
-        RawSubject::get_clone(self)
+        (*self).get_clone()
     }
 
-    fn get_exclusive(&self) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Copy,
     {
-        RawSubject::get_exclusive(self)
+        (*self).get_exclusive()
     }
 
-    fn get_clone_exclusive(&self) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Copy,
     {
-        RawSubject::get_clone_exclusive(self)
+        (*self).get_clone_exclusive()
     }
 
-    fn read(&self) -> Box<dyn '_ + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
-        Self::Value: Sync,
+        Self::Value: 'a + Sync,
     {
-        Box::new(RawSubject::read(self))
+        Box::new(self.get_ref().read())
     }
 }

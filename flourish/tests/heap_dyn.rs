@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{pin::Pin, sync::Arc};
 
-use flourish::{shadow_clone, Signal, Source, Subject, Subscription};
+use flourish::{Signal, Source, Subject, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -9,35 +9,30 @@ fn use_constructors() {
     let v = &Validator::new();
     let x = &Validator::new();
 
-    let a = Subject::new(1);
+    let a = &Subject::new(1);
     let (b, set_b) = Subject::new(2).into_get_set();
-    let c = Signal::new({
-        shadow_clone!(a, b);
-        move || {
-            x.push("c");
-            a.get() + b()
-        }
+    let b: Pin<&(dyn Source<Value = _> + Sync + Unpin)> = Pin::new(&b);
+    let c = Signal::new(move || {
+        x.push("c");
+        a.get() + b.get()
     });
-    let d = Signal::new({
-        shadow_clone!(a, b);
-        move || {
-            x.push("d");
-            a.get() - b()
-        }
+    let c = c.as_source();
+    let d = Signal::new(move || {
+        x.push("d");
+        a.get() - b.get()
     });
-    let aa = Arc::pin({
-        shadow_clone!(c, d);
-        move || {
-            x.push("aa");
-            c.get() + d.get()
-        }
+    let d = d.as_source();
+    let aa = Arc::new(move || {
+        x.push("aa");
+        c.get() + d.get()
     });
+    let aa: Pin<&(dyn Source<Value = _> + Sync + Unpin)> = Pin::new(&*aa);
     v.expect([]);
     x.expect([]);
 
     let sub_aa = Subscription::new(move || {
         x.push("sub_aa");
-        v.push(aa.as_ref().get())
+        v.push(aa.get())
     });
     v.expect([2]);
     x.expect(["sub_aa", "aa", "c", "d"]);
@@ -59,17 +54,19 @@ fn use_constructors() {
     v.expect([]);
     x.expect([]);
 
-    let _sub_c = Subscription::new(move || {
+    let _sub_c = &Subscription::new(move || {
         x.push("_sub_c");
         v.push(c.get())
     });
+    let _sub_c = _sub_c.as_source();
     v.expect([8]);
     x.expect(["_sub_c", "c"]);
 
-    let _sub_d = Subscription::new(move || {
+    let _sub_d = &Subscription::new(move || {
         x.push("_sub_d");
         v.push(d.get())
     });
+    let _sub_d = _sub_d.as_source();
     v.expect([2]);
     x.expect(["_sub_d", "d"]);
 

@@ -57,9 +57,10 @@ impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
     }
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
+impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
     pub fn with_runtime(f: F, sr: SR) -> Self
     where
+        F: Sized,
         SR: SignalRuntimeRef,
     {
         Self(Source::with_runtime(ForceSyncUnpin(f.into()), sr))
@@ -136,8 +137,8 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> 
 }
 
 enum E {}
-impl<T: Send, F: Send + FnMut() -> T> Eval<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>>
-    for E
+impl<T: Send, F: Send + ?Sized + FnMut() -> T>
+    Eval<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>> for E
 {
     unsafe fn eval(f: Pin<&ForceSyncUnpin<UnsafeCell<F>>>, cache: Pin<&ForceSyncUnpin<RwLock<T>>>) {
         let new_value = (&mut *f.project_ref().0.get())();
@@ -153,7 +154,7 @@ impl<T: Send, F: Send + FnMut() -> T> Eval<ForceSyncUnpin<UnsafeCell<F>>, ForceS
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
+impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
     unsafe fn init<'a>(
         f: Pin<&'a ForceSyncUnpin<UnsafeCell<F>>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
@@ -174,47 +175,47 @@ macro_rules! signal {
 	)*};
 }
 
-impl<T: Send, F: Send + Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Source
-    for Pin<&RawSignal<T, F, SR>>
+impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Source
+    for RawSignal<T, F, SR>
 {
     type Value = T;
 
-    fn touch(&self) {
-        RawSignal::touch(*self);
+    fn touch(self: Pin<&Self>) {
+        self.touch();
     }
 
-    fn get(&self) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Sync + Copy,
     {
-        RawSignal::get(*self)
+        self.get()
     }
 
-    fn get_clone(&self) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Sync + Clone,
     {
-        RawSignal::get_clone(*self)
+        self.get_clone()
     }
 
-    fn get_exclusive(&self) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Copy,
     {
-        RawSignal::get_exclusive(*self)
+        self.get_exclusive()
     }
 
-    fn get_clone_exclusive(&self) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
         Self::Value: Copy,
     {
-        RawSignal::get_clone_exclusive(*self)
+        self.get_clone_exclusive()
     }
 
-    fn read(&self) -> Box<dyn '_ + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
-        Self::Value: Sync,
+        Self::Value: 'a + Sync,
     {
-        Box::new(RawSignal::read(*self))
+        Box::new(self.read())
     }
 }
