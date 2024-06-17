@@ -1,11 +1,8 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
-    convert::identity,
     fmt::Debug,
     hash::Hash,
 };
-
-use crate::runtime::stale_queue;
 
 #[derive(Debug)]
 pub(crate) struct StaleQueue<S> {
@@ -229,6 +226,10 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
             &self.interdependencies.all_by_dependency,
             &mut self.stale_queue,
         )
+    }
+
+    pub(crate) fn remove_stale(&mut self, symbol: S) -> bool {
+        self.stale_queue.remove(&symbol)
     }
 
     pub(crate) fn purge_id(&mut self, symbol: S) {

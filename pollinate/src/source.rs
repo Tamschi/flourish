@@ -63,6 +63,10 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         self.sr.propagate_from(self.id)
     }
 
+	fn refresh(&self) {
+		self.sr.refresh(self.id);
+	}
+
     fn stop(&self) {
         self.sr.stop(self.id)
     }
@@ -160,6 +164,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                 unsafe { lazy.assume_init() }
             })
         });
+		self.handle.refresh();
         unsafe { mem::transmute((eager, Pin::new_unchecked(lazy))) }
     }
 

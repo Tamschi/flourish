@@ -10,8 +10,8 @@ use std::{
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
 };
 
-use stale_queue::StaleQueue;
 use parking_lot::ReentrantMutex;
+use stale_queue::StaleQueue;
 
 mod deferred_queue;
 mod stale_queue;
@@ -35,6 +35,7 @@ pub trait SignalRuntimeRef: Clone {
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
+    fn refresh(&self, id: Self::Symbol);
     fn stop(&self, id: Self::Symbol);
 
     fn start_sensor<D: ?Sized>(
@@ -79,34 +80,6 @@ impl ASignalRuntime {
         Self {
             source_counter: AtomicU64::new(0),
             critical_mutex: ReentrantMutex::new(RefCell::new(ASignalRuntime_::new())),
-        }
-    }
-
-    pub(crate) fn eval_dependents(&self, dependency: ASymbol) {
-        let lock = self.critical_mutex.lock();
-        (*lock)
-            .borrow_mut()
-            .stale_queue
-            .mark_dependents_as_stale(dependency);
-        while let Some(current) = (|| (*lock).borrow_mut().stale_queue.next())() {
-            let mut borrow = (*lock).borrow_mut();
-            if let Some(callback) = borrow.callbacks.get(&current).clone() {
-                let (f, d) = callback.clone();
-                borrow.stack.push_back((current, BTreeSet::new()));
-                drop(borrow);
-                let r = catch_unwind(|| unsafe { f(d) });
-                let mut borrow = (*lock).borrow_mut();
-                let (popped_id, touched_dependencies) =
-                    borrow.stack.pop_back().expect("infallible");
-                assert_eq!(popped_id, current);
-                if let Err(payload) = r {
-                    resume_unwind(payload)
-                }
-                borrow
-                    .stale_queue
-                    .update_dependencies(current, touched_dependencies);
-                borrow.stale_queue.mark_dependents_as_stale(current);
-            }
         }
     }
 }
@@ -196,7 +169,52 @@ impl SignalRuntimeRef for &ASignalRuntime {
     }
 
     fn propagate_from(&self, id: Self::Symbol) {
-        self.eval_dependents(id)
+        let lock = (&self).critical_mutex.lock();
+        (*lock)
+            .borrow_mut()
+            .stale_queue
+            .mark_dependents_as_stale(id);
+        while let Some(current) = (|| (*lock).borrow_mut().stale_queue.next())() {
+            let mut borrow = (*lock).borrow_mut();
+            let &(f, d) = borrow.callbacks.get(&current).expect("unreachable");
+
+            borrow.stack.push_back((current, BTreeSet::new()));
+            drop(borrow);
+            let r = catch_unwind(|| unsafe { f(d) });
+            let mut borrow = (*lock).borrow_mut();
+            let (popped_id, touched_dependencies) = borrow.stack.pop_back().expect("infallible");
+            assert_eq!(popped_id, current);
+            if let Err(payload) = r {
+                resume_unwind(payload)
+            }
+
+            borrow
+                .stale_queue
+                .update_dependencies(current, touched_dependencies);
+        }
+    }
+
+    fn refresh(&self, id: Self::Symbol) {
+        let lock = self.critical_mutex.lock();
+        let mut borrow = (*lock).borrow_mut();
+        let is_stale = borrow.stale_queue.remove_stale(id);
+        if is_stale {
+            let &(f, d) = borrow.callbacks.get(&id).expect("unreachable");
+
+            borrow.stack.push_back((id, BTreeSet::new()));
+            drop(borrow);
+            let r = catch_unwind(|| unsafe { f(d) });
+            let mut borrow = (*lock).borrow_mut();
+            let (popped_id, touched_dependencies) = borrow.stack.pop_back().expect("infallible");
+            assert_eq!(popped_id, id);
+            if let Err(payload) = r {
+                resume_unwind(payload)
+            }
+
+            borrow
+                .stale_queue
+                .update_dependencies(id, touched_dependencies);
+        }
     }
 
     fn stop(&self, id: Self::Symbol) {
@@ -281,6 +299,10 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
 
     fn propagate_from(&self, id: Self::Symbol) {
         (&GLOBAL_SIGNAL_RUNTIME).propagate_from(id.0)
+    }
+
+    fn refresh(&self, id: Self::Symbol) {
+        (&GLOBAL_SIGNAL_RUNTIME).refresh(id.0)
     }
 
     fn stop(&self, id: Self::Symbol) {
