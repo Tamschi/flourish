@@ -1,5 +1,5 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
     fmt::Debug,
     hash::Hash,
 };
@@ -10,7 +10,28 @@ pub(crate) struct StaleQueue<S> {
     stale_queue: BTreeSet<S>,
     interdependencies: Interdependencies<S>,
     sensors: BTreeMap<S, (unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
-    sensor_stack: VecDeque<S>,
+}
+
+pub(crate) struct SensorNotification<S> {
+    pub(crate) symbol: S,
+    pub(crate) callback: unsafe extern "C" fn(*const (), subscribed: bool),
+    pub(crate) data: *const (),
+    pub(crate) value: bool,
+}
+
+impl<S> SensorNotification<S> {
+    pub(crate) fn from_sensor_option(
+        symbol: S,
+        sensor: Option<&(unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
+        value: bool,
+    ) -> Option<Self> {
+        sensor.map(|&(callback, data)| Self {
+            symbol,
+            callback,
+            data,
+            value,
+        })
+    }
 }
 
 unsafe impl<S> Send for StaleQueue<S> {}
@@ -27,7 +48,6 @@ impl<S> StaleQueue<S> {
             stale_queue: BTreeSet::new(),
             interdependencies: Interdependencies::new(),
             sensors: BTreeMap::new(),
-            sensor_stack: VecDeque::new(),
         }
     }
 }
@@ -53,7 +73,12 @@ impl<S> Interdependencies<S> {
 }
 
 impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
-    pub(crate) fn set_subscription(&mut self, symbol: S, enabled: bool) -> bool {
+    #[must_use]
+    pub(crate) fn set_subscription(
+        &mut self,
+        symbol: S,
+        enabled: bool,
+    ) -> (bool, impl IntoIterator<Item = SensorNotification<S>>) {
         let subscribed = self
             .interdependencies
             .subscribers_by_dependency
@@ -61,23 +86,33 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
             .expect("`set_subscription` can only be called between `start` and `stop`")
             .contains(&symbol);
         if enabled && !subscribed {
-            Self::subscribe_to_with(
-                symbol,
-                symbol,
-                &self.interdependencies.all_by_dependent,
-                &mut self.interdependencies.subscribers_by_dependency,
-            );
-            true
+            (
+                true,
+                Self::subscribe_to_with(
+                    symbol,
+                    symbol,
+                    &self.interdependencies.all_by_dependent,
+                    &mut self.interdependencies.subscribers_by_dependency,
+                    &self.sensors,
+                )
+                .into_iter()
+                .collect(),
+            )
         } else if !enabled && subscribed {
-            Self::unsubscribe_from_with(
-                symbol,
-                symbol,
-                &self.interdependencies.all_by_dependent,
-                &mut self.interdependencies.subscribers_by_dependency,
-            );
-            true
+            (
+                true,
+                Self::unsubscribe_from_with(
+                    symbol,
+                    symbol,
+                    &self.interdependencies.all_by_dependent,
+                    &mut self.interdependencies.subscribers_by_dependency,
+                    &self.sensors,
+                )
+                .into_iter()
+                .collect(),
+            )
         } else {
-            false
+            (false, Vec::new())
         }
     }
 
@@ -100,7 +135,12 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         }
     }
 
-    pub(crate) fn update_dependencies(&mut self, symbol: S, new_dependencies: BTreeSet<S>) {
+    #[must_use]
+    pub(crate) fn update_dependencies(
+        &mut self,
+        symbol: S,
+        new_dependencies: BTreeSet<S>,
+    ) -> impl IntoIterator<Item = SensorNotification<S>> {
         let old_dependencies = self
             .interdependencies
             .all_by_dependent
@@ -139,31 +179,42 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
             .expect("unreachable")
             .is_empty();
         if is_subscribed {
-            for removed_dependency in removed_dependencies {
-                Self::unsubscribe_from_with(
-                    removed_dependency,
-                    symbol,
-                    &self.interdependencies.all_by_dependent,
-                    &mut self.interdependencies.subscribers_by_dependency,
-                )
-            }
-            for added_dependency in added_dependencies {
-                Self::subscribe_to_with(
-                    added_dependency,
-                    symbol,
-                    &self.interdependencies.all_by_dependent,
-                    &mut self.interdependencies.subscribers_by_dependency,
-                )
-            }
+            removed_dependencies
+                .into_iter()
+                .flat_map(|removed_dependency| {
+                    Self::unsubscribe_from_with(
+                        removed_dependency,
+                        symbol,
+                        &self.interdependencies.all_by_dependent,
+                        &mut self.interdependencies.subscribers_by_dependency,
+                        &self.sensors,
+                    )
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .chain(added_dependencies.into_iter().flat_map(|added_dependency| {
+                    Self::subscribe_to_with(
+                        added_dependency,
+                        symbol,
+                        &self.interdependencies.all_by_dependent,
+                        &mut self.interdependencies.subscribers_by_dependency,
+                        &self.sensors,
+                    )
+                }))
+                .collect()
+        } else {
+            Vec::new()
         }
     }
 
+    #[must_use]
     fn subscribe_to_with(
         dependency: S,
         dependent: S,
         all_by_dependent: &BTreeMap<S, BTreeSet<S>>,
         subscribers_by_dependency: &mut BTreeMap<S, BTreeSet<S>>,
-    ) {
+        sensors: &BTreeMap<S, (unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
+    ) -> impl IntoIterator<Item = SensorNotification<S>> {
         println!("to {:?} with {:?}", dependency, dependent);
         let subscribers = subscribers_by_dependency
             .get_mut(&dependency)
@@ -171,24 +222,38 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         let newly_subscribed = subscribers.is_empty();
         assert!(subscribers.insert(dependent));
         if newly_subscribed {
-            //TODO: Notify!
-            for &indirect_dependency in all_by_dependent.get(&dependency).expect("unreachable") {
-                Self::subscribe_to_with(
-                    indirect_dependency,
-                    dependency,
-                    all_by_dependent,
-                    subscribers_by_dependency,
+            SensorNotification::from_sensor_option(dependency, sensors.get(&dependency), true)
+                .into_iter()
+                .chain(
+                    all_by_dependent
+                        .get(&dependency)
+                        .expect("unreachable")
+                        .iter()
+                        .copied()
+                        .flat_map(|indirect_dependency| {
+                            Self::subscribe_to_with(
+                                indirect_dependency,
+                                dependency,
+                                all_by_dependent,
+                                subscribers_by_dependency,
+                                sensors,
+                            )
+                        }),
                 )
-            }
+                .collect()
+        } else {
+            Vec::new()
         }
     }
 
+    #[must_use]
     fn unsubscribe_from_with(
         dependency: S,
         dependent: S,
         all_by_dependent: &BTreeMap<S, BTreeSet<S>>,
         subscribers_by_dependency: &mut BTreeMap<S, BTreeSet<S>>,
-    ) {
+        sensors: &BTreeMap<S, (unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
+    ) -> impl IntoIterator<Item = SensorNotification<S>> {
         println!("from {:?} with {:?}", dependency, dependent);
         let subscribers = subscribers_by_dependency
             .get_mut(&dependency)
@@ -196,15 +261,27 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         assert!(subscribers.remove(&dependent));
         let newly_unsubscribed = subscribers.is_empty();
         if newly_unsubscribed {
-            //TODO: Notify!
-            for &indirect_dependency in all_by_dependent.get(&dependency).expect("unreachable") {
-                Self::unsubscribe_from_with(
-                    indirect_dependency,
-                    dependency,
-                    all_by_dependent,
-                    subscribers_by_dependency,
+            SensorNotification::from_sensor_option(dependency, sensors.get(&dependency), false)
+                .into_iter()
+                .chain(
+                    all_by_dependent
+                        .get(&dependency)
+                        .expect("unreachable")
+                        .iter()
+                        .copied()
+                        .flat_map(|indirect_dependency| {
+                            Self::unsubscribe_from_with(
+                                indirect_dependency,
+                                dependency,
+                                all_by_dependent,
+                                subscribers_by_dependency,
+                                sensors,
+                            )
+                        }),
                 )
-            }
+                .collect()
+        } else {
+            Vec::new()
         }
     }
 
@@ -232,28 +309,37 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         self.stale_queue.remove(&symbol)
     }
 
-    pub(crate) fn purge_id(&mut self, symbol: S) {
+    #[must_use]
+    pub(crate) fn purge_id(
+        &mut self,
+        symbol: S,
+    ) -> impl IntoIterator<Item = SensorNotification<S>> {
         let is_subscribed = !self
             .interdependencies
             .subscribers_by_dependency
             .get(&symbol)
             .expect("unreachable")
             .is_empty();
-        if is_subscribed {
-            for &dependency in self
-                .interdependencies
+        let notifications = if is_subscribed {
+            self.interdependencies
                 .all_by_dependent
                 .get(&symbol)
                 .expect("unreachable")
-            {
-                Self::unsubscribe_from_with(
-                    dependency,
-                    symbol,
-                    &self.interdependencies.all_by_dependent,
-                    &mut self.interdependencies.subscribers_by_dependency,
-                )
-            }
-        }
+                .iter()
+                .copied()
+                .flat_map(|dependency| {
+                    Self::unsubscribe_from_with(
+                        dependency,
+                        symbol,
+                        &self.interdependencies.all_by_dependent,
+                        &mut self.interdependencies.subscribers_by_dependency,
+                        &self.sensors,
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         self.stale_queue.remove(&symbol);
         for map in [
@@ -266,6 +352,8 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
                 value.remove(&symbol);
             }
         }
+
+        notifications
     }
 
     pub(crate) fn start_sensor(
@@ -290,24 +378,31 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         if has_subscribers {
             unsafe { on_subscription_change(on_subscription_change_data, true) }
         }
-
-        //TODO: Set up notification!
     }
 
-    pub(crate) fn stop_sensor(&mut self, symbol: S) {
-        if self.sensor_stack.contains(&symbol) {
+    #[must_use]
+    pub(crate) fn stop_sensor(
+        &mut self,
+        symbol: S,
+        sensor_stack: &[S],
+    ) -> impl IntoIterator<Item = SensorNotification<S>> {
+        if sensor_stack.contains(&symbol) {
             //TODO: Does this need to abort the process?
             panic!("Can't stop symbol sensor while it is executing on the same thread.");
         }
         if let Some(old_sensor) = self.sensors.remove(&symbol) {
-            let has_subscribers = self
-                .interdependencies
+            self.interdependencies
                 .subscribers_by_dependency
                 .get(&symbol)
-                .is_some_and(|subs| !subs.is_empty());
-            if has_subscribers {
-                unsafe { old_sensor.0(old_sensor.1, false) }
-            }
+                .is_some_and(|subs| !subs.is_empty())
+                .then_some(SensorNotification {
+                    symbol,
+                    callback: old_sensor.0,
+                    data: old_sensor.1,
+                    value: false,
+                })
+        } else {
+            None
         }
     }
 }
