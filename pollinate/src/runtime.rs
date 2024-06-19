@@ -35,6 +35,7 @@ pub trait SignalRuntimeRef: Clone {
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
+    fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
     fn refresh(&self, id: Self::Symbol);
     fn stop(&self, id: Self::Symbol);
 
@@ -210,7 +211,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     }
 
     fn propagate_from(&self, id: Self::Symbol) {
-        let lock = (&self).critical_mutex.lock();
+        let lock = self.critical_mutex.lock();
         (*lock)
             .borrow_mut()
             .stale_queue
@@ -235,6 +236,18 @@ impl SignalRuntimeRef for &ASignalRuntime {
                 .update_dependencies(current, touched_dependencies);
             let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
         }
+    }
+
+    fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
+        let lock = self.critical_mutex.lock();
+        let mut borrow = (*lock).borrow_mut();
+        borrow.context_stack.push(None);
+        drop(borrow);
+        let r = catch_unwind(AssertUnwindSafe(f));
+        let mut borrow = (*lock).borrow_mut();
+        assert_eq!(borrow.context_stack.pop(), Some(None));
+        drop(borrow);
+        r.unwrap_or_else(|payload| resume_unwind(payload))
     }
 
     fn refresh(&self, id: Self::Symbol) {
@@ -352,6 +365,10 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
 
     fn propagate_from(&self, id: Self::Symbol) {
         (&GLOBAL_SIGNAL_RUNTIME).propagate_from(id.0)
+    }
+
+    fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
+        (&GLOBAL_SIGNAL_RUNTIME).run_detached(f)
     }
 
     fn refresh(&self, id: Self::Symbol) {
