@@ -8,6 +8,9 @@ pub use subject::{Subject, SubjectGuard};
 mod signal;
 pub use signal::{Signal, SignalGuard};
 
+mod fold;
+pub use fold::{Fold, FoldGuard};
+
 mod subscription;
 pub use subscription::{Subscription, SubscriptionGuard};
 

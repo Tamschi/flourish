@@ -17,7 +17,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct SourceId<SR: SignalRuntimeRef = GlobalSignalRuntime> {
     id: SR::Symbol,
-    sr: SR,
+    runtime: SR,
 }
 
 impl<SR: SignalRuntimeRef> SourceId<SR> {
@@ -28,16 +28,16 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         Self::with_runtime(SR::default())
     }
 
-    fn with_runtime(sr: SR) -> Self {
+    fn with_runtime(runtime: SR) -> Self {
         Self {
-            id: sr.next_id(),
-            sr,
+            id: runtime.next_id(),
+            runtime,
         }
     }
 
     fn mark<T>(&self, f: impl FnOnce() -> T) -> T {
-        self.sr.reentrant_critical(|| {
-            self.sr.touch(self.id);
+        self.runtime.reentrant_critical(|| {
+            self.runtime.touch(self.id);
             f()
         })
     }
@@ -48,27 +48,27 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         callback: *const CallbackTable<D>,
         callback_data: *const D,
     ) -> T {
-        self.sr.start(self.id, f, callback, callback_data)
+        self.runtime.start(self.id, f, callback, callback_data)
     }
 
     fn set_subscription(&self, enabled: bool) {
-        self.sr.set_subscription(self.id, enabled);
+        self.runtime.set_subscription(self.id, enabled);
     }
 
     fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce()) {
-        self.sr.update_or_enqueue(self.id, f);
+        self.runtime.update_or_enqueue(self.id, f);
     }
 
     fn propagate(&self) {
-        self.sr.propagate_from(self.id)
+        self.runtime.propagate_from(self.id)
     }
 
     fn refresh(&self) {
-        self.sr.refresh(self.id);
+        self.runtime.refresh(self.id);
     }
 
     fn stop(&self) {
-        self.sr.stop(self.id)
+        self.runtime.stop(self.id)
     }
 }
 
@@ -110,12 +110,12 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         Self::with_runtime(eager, SR::default())
     }
 
-    pub fn with_runtime(eager: Eager, sr: SR) -> Self
+    pub fn with_runtime(eager: Eager, runtime: SR) -> Self
     where
         Eager: Sized,
     {
         Self {
-            handle: SourceId::with_runtime(sr),
+            handle: SourceId::with_runtime(runtime),
             _pinned: PhantomPinned,
             lazy: OnceLock::new(),
             eager: eager.into(),

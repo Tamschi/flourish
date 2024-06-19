@@ -10,22 +10,22 @@ use std::{
 };
 
 use pin_project::pin_project;
-use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
+use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 use sptr::{from_exposed_addr, Strict};
 
-use crate::{raw::RawSignal, Source};
+use crate::{raw::RawFold, Source};
 
 #[derive(Debug)]
-pub struct Signal<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
+pub struct Fold<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
     /// In theory it's possible to store an invalid `*const T` here,
     /// in order to store pointer metadata, which would allow working with unsized type, maybe.
-    NonNull<SignalHeader<T, SR>>,
+    NonNull<FoldHeader<T, SR>>,
 );
 
-unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Send> Send for Signal<T, SR> {}
-unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for Signal<T, SR> {}
+unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Send> Send for Fold<T, SR> {}
+unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for Fold<T, SR> {}
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef + Clone> Clone for Signal<T, SR> {
+impl<T: Send + ?Sized, SR: SignalRuntimeRef + Clone> Clone for Fold<T, SR> {
     fn clone(&self) -> Self {
         Self(unsafe {
             // SAFETY: `Arc` uses enough `repr(C)` to increment the reference without the actual type.
@@ -37,7 +37,7 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef + Clone> Clone for Signal<T, SR> {
     }
 }
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> Drop for Signal<T, SR> {
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> Drop for Fold<T, SR> {
     fn drop(&mut self) {
         // I think this is synchronised by dropping the Arc.
         let address = unsafe { self.0.as_ptr().read() }.0;
@@ -45,9 +45,9 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Drop for Signal<T, SR> {
     }
 }
 
-pub struct SignalGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub struct FoldGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
-impl<'a, T: ?Sized> Deref for SignalGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for FoldGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -55,36 +55,43 @@ impl<'a, T: ?Sized> Deref for SignalGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for SignalGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for FoldGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<T: Send + ?Sized> Signal<T> {
-    pub fn new<F: Send + FnMut() -> T>(f: F) -> Self
+impl<T: Send + ?Sized> Fold<T> {
+    pub fn new<S: Send + FnMut() -> T, M: Send + FnMut(&mut T, T) -> Update>(
+        select: S,
+        merge: M,
+    ) -> Self
     where
         T: Sized,
     {
-        Self::with_runtime(f, GlobalSignalRuntime)
+        Self::with_runtime(select, merge, GlobalSignalRuntime)
     }
 }
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
-    pub fn with_runtime<F: Send + FnMut() -> T>(f: F, runtime: SR) -> Self
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> Fold<T, SR> {
+    pub fn with_runtime<S: Send + FnMut() -> T, M: Send + FnMut(&mut T, T) -> Update>(
+        select: S,
+        merge: M,
+        runtime: SR,
+    ) -> Self
     where
         T: Sized,
     {
-        let arc = Arc::new(SignalDataFull {
-            anchor: SignalDataAnchor(PhantomData),
+        let arc = Arc::new(FoldDataFull {
+            anchor: FoldDataAnchor(PhantomData),
             header: Cell::new(MaybeUninit::uninit()),
-            signal: RawSignal::with_runtime(f, runtime),
+            fold: RawFold::with_runtime(select, merge, runtime),
         });
         unsafe {
             arc.header
-                .set(MaybeUninit::new(SignalHeader(NonNull::new_unchecked(
-                    &arc.anchor as &dyn SignalDataAddress<T, SR> as *const _ as *mut _,
+                .set(MaybeUninit::new(FoldHeader(NonNull::new_unchecked(
+                    &arc.anchor as &dyn FoldDataAddress<T, SR> as *const _ as *mut _,
                 ))))
         };
 
@@ -109,11 +116,11 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
         self.read().clone()
     }
 
-    pub fn read<'a>(&'a self) -> SignalGuard<'a, T>
+    pub fn read<'a>(&'a self) -> FoldGuard<'a, T>
     where
         T: Sync,
     {
-        SignalGuard(self.touch().read().unwrap())
+        FoldGuard(self.touch().read().unwrap())
     }
 
     pub fn get_exclusive(&self) -> T
@@ -151,9 +158,9 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
 
 /// FIXME: Once pointer-metadata is available, shrink this.
 #[derive(Debug, Clone, Copy)]
-struct SignalHeader<T: Send + ?Sized, SR: SignalRuntimeRef>(NonNull<dyn SignalDataAddress<T, SR>>);
+struct FoldHeader<T: Send + ?Sized, SR: SignalRuntimeRef>(NonNull<dyn FoldDataAddress<T, SR>>);
 
-trait SignalDataAddress<T: Send + ?Sized, SR: SignalRuntimeRef> {
+trait FoldDataAddress<T: Send + ?Sized, SR: SignalRuntimeRef> {
     unsafe fn drop_arc(&self);
     fn touch(&self) -> &RwLock<T>;
     fn pull(&self) -> &RwLock<T>;
@@ -164,50 +171,62 @@ trait SignalDataAddress<T: Send + ?Sized, SR: SignalRuntimeRef> {
 
 #[pin_project]
 #[repr(C)]
-struct SignalDataFull<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> {
-    anchor: SignalDataAnchor<T, F, SR>,
-    header: Cell<MaybeUninit<SignalHeader<T, SR>>>,
+struct FoldDataFull<
+    T: Send,
+    S: Send + FnMut() -> T,
+    M: Send + FnMut(&mut T, T) -> Update,
+    SR: SignalRuntimeRef,
+> {
+    anchor: FoldDataAnchor<T, S, M, SR>,
+    header: Cell<MaybeUninit<FoldHeader<T, SR>>>,
     #[pin]
-    signal: RawSignal<T, F, SR>,
+    fold: RawFold<T, S, M, SR>,
 }
 
 /// MUST BE A ZST
-struct SignalDataAnchor<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef>(
-    PhantomData<*const SignalDataFull<T, F, SR>>,
-);
+struct FoldDataAnchor<
+    T: Send,
+    S: Send + FnMut() -> T,
+    M: Send + FnMut(&mut T, T) -> Update,
+    SR: SignalRuntimeRef,
+>(PhantomData<*const FoldDataFull<T, S, M, SR>>);
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> SignalDataAddress<T, SR>
-    for SignalDataAnchor<T, F, SR>
+impl<
+        T: Send,
+        S: Send + FnMut() -> T,
+        M: Send + FnMut(&mut T, T) -> Update,
+        SR: SignalRuntimeRef,
+    > FoldDataAddress<T, SR> for FoldDataAnchor<T, S, M, SR>
 {
     /// # Safety
     ///
     /// `Self` is a ZST, so it's not actually dereferenced.
     ///
     unsafe fn drop_arc(&self) {
-        drop(Arc::<SignalDataFull<T, F, SR>>::from_raw(
+        drop(Arc::<FoldDataFull<T, S, M, SR>>::from_raw(
             from_exposed_addr(Strict::addr(self as *const Self)),
         ))
     }
 
     fn touch(&self) -> &RwLock<T> {
         unsafe {
-            Pin::new_unchecked(&*from_exposed_addr::<SignalDataFull<T, F, SR>>(
+            Pin::new_unchecked(&*from_exposed_addr::<FoldDataFull<T, S, M, SR>>(
                 Strict::addr(self as *const Self),
             ))
         }
         .project_ref()
-        .signal
+        .fold
         .touch()
     }
 
     fn pull(&self) -> &RwLock<T> {
         unsafe {
-            Pin::new_unchecked(&*from_exposed_addr::<SignalDataFull<T, F, SR>>(
+            Pin::new_unchecked(&*from_exposed_addr::<FoldDataFull<T, S, M, SR>>(
                 Strict::addr(self as *const Self),
             ))
         }
         .project_ref()
-        .signal
+        .fold
         .pull()
     }
 
@@ -216,11 +235,11 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> SignalDataAddress<T,
         SR: Sync,
     {
         unsafe {
-            Pin::new_unchecked(&*from_exposed_addr::<SignalDataFull<T, F, SR>>(
+            Pin::new_unchecked(&*from_exposed_addr::<FoldDataFull<T, S, M, SR>>(
                 Strict::addr(self as *const Self),
             ))
         }
         .project_ref()
-        .signal
+        .fold
     }
 }

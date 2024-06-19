@@ -58,12 +58,12 @@ impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
 }
 
 impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
-    pub fn with_runtime(f: F, sr: SR) -> Self
+    pub fn with_runtime(f: F, runtime: SR) -> Self
     where
         F: Sized,
         SR: SignalRuntimeRef,
     {
-        Self(Source::with_runtime(ForceSyncUnpin(f.into()), sr))
+        Self(Source::with_runtime(ForceSyncUnpin(f.into()), runtime))
     }
 
     pub fn get(self: Pin<&Self>) -> T

@@ -75,12 +75,12 @@ impl<T> RawSubject<T> {
 }
 
 impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
-    pub fn with_runtime(initial_value: T, sr: SR) -> Self
+    pub fn with_runtime(initial_value: T, runtime: SR) -> Self
     where
         T: Sized,
     {
         Self {
-            source: Source::with_runtime(AssertSync(RwLock::new(initial_value)), sr),
+            source: Source::with_runtime(AssertSync(RwLock::new(initial_value)), runtime),
         }
     }
 

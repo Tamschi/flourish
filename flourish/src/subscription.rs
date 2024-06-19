@@ -23,11 +23,11 @@ impl<T: Send + ?Sized> Subscription<T> {
 }
 
 impl<T: Send + ?Sized, SR: SignalRuntimeRef> Subscription<T, SR> {
-    pub fn with_runtime<F: Send + FnMut() -> T>(f: F, sr: SR) -> Self
+    pub fn with_runtime<F: Send + FnMut() -> T>(f: F, runtime: SR) -> Self
     where
         T: Sized,
     {
-        let this = Self(Signal::with_runtime(f, sr));
+        let this = Self(Signal::with_runtime(f, runtime));
         this.0.pull();
         this
     }

@@ -40,9 +40,9 @@ pub fn __new_raw_unsubscribed_subscription_with_runtime<
     SR: SignalRuntimeRef,
 >(
     f: F,
-    sr: SR,
+    runtime: SR,
 ) -> RawSubscription<T, F, SR> {
-    RawSubscription(RawSignal::with_runtime(f, sr))
+    RawSubscription(RawSignal::with_runtime(f, runtime))
 }
 
 pub fn __pull_subscription<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(

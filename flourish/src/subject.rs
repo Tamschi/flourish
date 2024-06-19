@@ -54,13 +54,13 @@ where {
 }
 
 impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
-    pub fn with_runtime(initial_value: T, sr: SR) -> Self
+    pub fn with_runtime(initial_value: T, runtime: SR) -> Self
     where
         SR: Default,
     {
         Self(unsafe {
             mem::transmute::<Arc<RawSubject<T, SR>>, Pin<Arc<RawSubject<T, SR>>>>(Arc::new(
-                RawSubject::with_runtime(initial_value, sr),
+                RawSubject::with_runtime(initial_value, runtime),
             ))
         })
     }
