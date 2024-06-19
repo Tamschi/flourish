@@ -58,7 +58,7 @@ unsafe impl Sync for ASignalRuntime {}
 #[derive(Default)]
 struct ASignalRuntime_ {
     stale_queue: StaleQueue<ASymbol>,
-    context_stack: VecDeque<(ASymbol, BTreeSet<ASymbol>)>,
+    context_stack: VecDeque<Option<(ASymbol, BTreeSet<ASymbol>)>>,
     callbacks: BTreeMap<ASymbol, (unsafe extern "C" fn(*const ()), *const ())>,
 }
 
@@ -104,7 +104,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn touch(&self, id: Self::Symbol) {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
-        if let Some((context_id, touched)) = &mut borrow.context_stack.back_mut() {
+        if let Some(Some((context_id, touched))) = &mut borrow.context_stack.back_mut() {
             if id >= *context_id {
                 panic!("Tried to depend on later-created signal. To prevent loops, this isn't possible for now.");
             }
@@ -123,12 +123,16 @@ impl SignalRuntimeRef for &ASignalRuntime {
         {
             let mut borrow = (*lock).borrow_mut();
             borrow.stale_queue.register_id(id);
-            borrow.context_stack.push_back((id, BTreeSet::new()));
+            borrow.context_stack.push_back(Some((id, BTreeSet::new())));
         }
         let r = catch_unwind(AssertUnwindSafe(f));
         {
             let mut borrow = (*lock).borrow_mut();
-            let (popped_id, touched_dependencies) = borrow.context_stack.pop_back().expect("infallible");
+            let (popped_id, touched_dependencies) = borrow
+                .context_stack
+                .pop_back()
+                .flatten()
+                .expect("unreachable");
             assert_eq!(popped_id, id);
             borrow
                 .stale_queue
@@ -178,11 +182,17 @@ impl SignalRuntimeRef for &ASignalRuntime {
             let mut borrow = (*lock).borrow_mut();
             let &(f, d) = borrow.callbacks.get(&current).expect("unreachable");
 
-            borrow.context_stack.push_back((current, BTreeSet::new()));
+            borrow
+                .context_stack
+                .push_back(Some((current, BTreeSet::new())));
             drop(borrow);
             let r = catch_unwind(|| unsafe { f(d) });
             let mut borrow = (*lock).borrow_mut();
-            let (popped_id, touched_dependencies) = borrow.context_stack.pop_back().expect("infallible");
+            let (popped_id, touched_dependencies) = borrow
+                .context_stack
+                .pop_back()
+                .flatten()
+                .expect("unreachable");
             assert_eq!(popped_id, current);
             if let Err(payload) = r {
                 resume_unwind(payload)
@@ -201,11 +211,15 @@ impl SignalRuntimeRef for &ASignalRuntime {
         if is_stale {
             let &(f, d) = borrow.callbacks.get(&id).expect("unreachable");
 
-            borrow.context_stack.push_back((id, BTreeSet::new()));
+            borrow.context_stack.push_back(Some((id, BTreeSet::new())));
             drop(borrow);
             let r = catch_unwind(|| unsafe { f(d) });
             let mut borrow = (*lock).borrow_mut();
-            let (popped_id, touched_dependencies) = borrow.context_stack.pop_back().expect("infallible");
+            let (popped_id, touched_dependencies) = borrow
+                .context_stack
+                .pop_back()
+                .flatten()
+                .expect("unreachable");
             assert_eq!(popped_id, id);
             if let Err(payload) = r {
                 resume_unwind(payload)
@@ -220,7 +234,12 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn stop(&self, id: Self::Symbol) {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
-        if borrow.context_stack.iter().any(|(symbol, _)| *symbol == id) {
+        if borrow
+            .context_stack
+            .iter()
+            .filter_map(|s| s.as_ref())
+            .any(|(symbol, _)| *symbol == id)
+        {
             //TODO: Does this need to abort the process?
             panic!("Can't stop symbol while it is executing on the same thread.");
         }
