@@ -58,7 +58,7 @@ unsafe impl Sync for ASignalRuntime {}
 #[derive(Default)]
 struct ASignalRuntime_ {
     stale_queue: StaleQueue<ASymbol>,
-    stack: VecDeque<(ASymbol, BTreeSet<ASymbol>)>,
+    context_stack: VecDeque<(ASymbol, BTreeSet<ASymbol>)>,
     callbacks: BTreeMap<ASymbol, (unsafe extern "C" fn(*const ()), *const ())>,
 }
 
@@ -66,7 +66,7 @@ impl ASignalRuntime_ {
     const fn new() -> Self {
         Self {
             stale_queue: StaleQueue::new(),
-            stack: VecDeque::new(),
+            context_stack: VecDeque::new(),
             callbacks: BTreeMap::new(),
         }
     }
@@ -104,7 +104,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn touch(&self, id: Self::Symbol) {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
-        if let Some((context_id, touched)) = &mut borrow.stack.back_mut() {
+        if let Some((context_id, touched)) = &mut borrow.context_stack.back_mut() {
             if id >= *context_id {
                 panic!("Tried to depend on later-created signal. To prevent loops, this isn't possible for now.");
             }
@@ -123,12 +123,12 @@ impl SignalRuntimeRef for &ASignalRuntime {
         {
             let mut borrow = (*lock).borrow_mut();
             borrow.stale_queue.register_id(id);
-            borrow.stack.push_back((id, BTreeSet::new()));
+            borrow.context_stack.push_back((id, BTreeSet::new()));
         }
         let r = catch_unwind(AssertUnwindSafe(f));
         {
             let mut borrow = (*lock).borrow_mut();
-            let (popped_id, touched_dependencies) = borrow.stack.pop_back().expect("infallible");
+            let (popped_id, touched_dependencies) = borrow.context_stack.pop_back().expect("infallible");
             assert_eq!(popped_id, id);
             borrow
                 .stale_queue
@@ -160,7 +160,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
 
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
         match self.critical_mutex.try_lock() {
-            Some(lock) if (*lock).borrow().stack.is_empty() => {
+            Some(lock) if (*lock).borrow().context_stack.is_empty() => {
                 f();
                 self.propagate_from(id);
             }
@@ -178,11 +178,11 @@ impl SignalRuntimeRef for &ASignalRuntime {
             let mut borrow = (*lock).borrow_mut();
             let &(f, d) = borrow.callbacks.get(&current).expect("unreachable");
 
-            borrow.stack.push_back((current, BTreeSet::new()));
+            borrow.context_stack.push_back((current, BTreeSet::new()));
             drop(borrow);
             let r = catch_unwind(|| unsafe { f(d) });
             let mut borrow = (*lock).borrow_mut();
-            let (popped_id, touched_dependencies) = borrow.stack.pop_back().expect("infallible");
+            let (popped_id, touched_dependencies) = borrow.context_stack.pop_back().expect("infallible");
             assert_eq!(popped_id, current);
             if let Err(payload) = r {
                 resume_unwind(payload)
@@ -201,11 +201,11 @@ impl SignalRuntimeRef for &ASignalRuntime {
         if is_stale {
             let &(f, d) = borrow.callbacks.get(&id).expect("unreachable");
 
-            borrow.stack.push_back((id, BTreeSet::new()));
+            borrow.context_stack.push_back((id, BTreeSet::new()));
             drop(borrow);
             let r = catch_unwind(|| unsafe { f(d) });
             let mut borrow = (*lock).borrow_mut();
-            let (popped_id, touched_dependencies) = borrow.stack.pop_back().expect("infallible");
+            let (popped_id, touched_dependencies) = borrow.context_stack.pop_back().expect("infallible");
             assert_eq!(popped_id, id);
             if let Err(payload) = r {
                 resume_unwind(payload)
@@ -220,7 +220,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn stop(&self, id: Self::Symbol) {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
-        if borrow.stack.iter().any(|(symbol, _)| *symbol == id) {
+        if borrow.context_stack.iter().any(|(symbol, _)| *symbol == id) {
             //TODO: Does this need to abort the process?
             panic!("Can't stop symbol while it is executing on the same thread.");
         }
