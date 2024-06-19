@@ -11,7 +11,7 @@ use pin_project::pin_project;
 use pollinate::{
     runtime::{GlobalSignalRuntime, SignalRuntimeRef},
     slot::{Slot, Token},
-    source::{Eval, Source},
+    source::{Callbacks, Source},
 };
 
 use crate::utils::conjure_zst;
@@ -138,16 +138,35 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T
 
 enum E {}
 impl<T: Send, F: Send + ?Sized + FnMut() -> T>
-    Eval<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>> for E
+    Callbacks<ForceSyncUnpin<UnsafeCell<F>>, ForceSyncUnpin<RwLock<T>>> for E
 {
-    unsafe fn eval(f: Pin<&ForceSyncUnpin<UnsafeCell<F>>>, cache: Pin<&ForceSyncUnpin<RwLock<T>>>) {
-        let new_value = (&mut *f.project_ref().0.get())();
-        if needs_drop::<T>() || size_of::<T>() > 0 {
-            *cache.project_ref().0.write().unwrap() = new_value;
-        } else {
-            // The write is unobservable, so just skip locking.
+    const UPDATE: Option<
+        unsafe fn(
+            eager: Pin<&ForceSyncUnpin<UnsafeCell<F>>>,
+            lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
+        ),
+    > = {
+        unsafe fn eval<T: Send, F: Send + ?Sized + FnMut() -> T>(
+            f: Pin<&ForceSyncUnpin<UnsafeCell<F>>>,
+            cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
+        ) {
+            let new_value = (&mut *f.project_ref().0.get())();
+            if needs_drop::<T>() || size_of::<T>() > 0 {
+                *cache.project_ref().0.write().unwrap() = new_value;
+            } else {
+                // The write is unobservable, so just skip locking.
+            }
         }
-    }
+        Some(eval)
+    };
+
+    const ON_SUBSCRIBED_CHANGE: Option<
+        unsafe fn(
+            eager: Pin<&ForceSyncUnpin<UnsafeCell<F>>>,
+            lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
+            subscribed: bool,
+        ),
+    > = None;
 }
 
 /// # Safety

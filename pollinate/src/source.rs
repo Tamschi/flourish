@@ -4,7 +4,6 @@ use core::{
     pin::Pin,
 };
 use std::{
-    borrow::Borrow,
     collections::{btree_map::Entry, BTreeMap},
     mem::{self, MaybeUninit},
     sync::{Mutex, OnceLock},
@@ -134,7 +133,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     /// After `init` returns, `E::eval` may be called any number of times with the state initialised by `init`, but at most once at a time.
     ///
     /// [`Source`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
-    pub unsafe fn project_or_init<E: Eval<Eager, Lazy>>(
+    pub unsafe fn project_or_init<C: Callbacks<Eager, Lazy>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
@@ -145,8 +144,10 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                 let init = || drop(init(eager, Slot::new(&mut lazy)));
                 let callback_table = match CALLBACK_TABLES.lock().expect("unreachable").entry(
                     CallbackTable {
-                        update: Some(callback::<Eager, Lazy, SR, E>),
-                        on_subscribed_change: None,
+                        update: C::UPDATE.is_some().then_some(update::<Eager, Lazy, SR, C>),
+                        on_subscribed_change: C::ON_SUBSCRIBED_CHANGE
+                            .is_some()
+                            .then_some(on_subscribed_change::<Eager, Lazy, SR, C>),
                     }
                     .into_erased(),
                 ) {
@@ -166,20 +167,38 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
                 > = Mutex::new(BTreeMap::new());
 
-                unsafe extern "C" fn callback<
+                unsafe extern "C" fn update<
                     Eager: Sync + ?Sized,
                     Lazy: Sync,
                     SR: SignalRuntimeRef,
-                    E: Eval<Eager, Lazy>,
+                    C: Callbacks<Eager, Lazy>,
                 >(
                     this: *const Source<Eager, Lazy, SR>,
                 ) {
                     let this = &*this;
-                    E::eval(
+                    C::UPDATE.expect("unreachable")(
                         Pin::new_unchecked(&this.eager),
                         Pin::new_unchecked(this.lazy.get().expect("unreachable")),
                     )
                 }
+
+                unsafe extern "C" fn on_subscribed_change<
+                    Eager: Sync + ?Sized,
+                    Lazy: Sync,
+                    SR: SignalRuntimeRef,
+                    C: Callbacks<Eager, Lazy>,
+                >(
+                    this: *const Source<Eager, Lazy, SR>,
+                    subscribed: bool,
+                ) {
+                    let this = &*this;
+                    C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
+                        Pin::new_unchecked(&this.eager),
+                        Pin::new_unchecked(this.lazy.get().expect("unreachable")),
+                        subscribed,
+                    )
+                }
+
                 unsafe { lazy.assume_init() }
             })
         });
@@ -194,7 +213,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     /// # Safety
     ///
     /// This function has the same safety requirements as [`Self::project_or_init`].
-    pub unsafe fn pull_or_init<E: Eval<Eager, Lazy>>(
+    pub unsafe fn pull_or_init<E: Callbacks<Eager, Lazy>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
@@ -242,14 +261,24 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eag
     }
 }
 
-pub trait Eval<Eager: ?Sized, Lazy> {
+pub trait Callbacks<Eager: ?Sized, Lazy> {
     /// # Safety
     ///
     /// Only called once at a time for each initialised [`Source`].
-    unsafe fn eval(eager: Pin<&Eager>, lazy: Pin<&Lazy>);
+    const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)>;
+
+    /// # Safety
+    ///
+    /// Only called once at a time for each initialised [`Source`], and not concurrently with [`Self::UPDATE`].
+    const ON_SUBSCRIBED_CHANGE: Option<
+        unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>, subscribed: bool),
+    >;
 }
 
-pub enum NoEval {}
-impl<Eager: ?Sized, Lazy> Eval<Eager, Lazy> for NoEval {
-    unsafe fn eval(_: Pin<&Eager>, _: Pin<&Lazy>) {}
+pub enum NoCallbacks {}
+impl<Eager: ?Sized, Lazy> Callbacks<Eager, Lazy> for NoCallbacks {
+    const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)> = None;
+    const ON_SUBSCRIBED_CHANGE: Option<
+        unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>, subscribed: bool),
+    > = None;
 }
