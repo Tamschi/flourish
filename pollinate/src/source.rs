@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{
-    runtime::{CallbackTable, GlobalSignalRuntime, SignalRuntimeRef},
+    runtime::{CallbackTable, GlobalSignalRuntime, SignalRuntimeRef, Update},
     slot::{Slot, Token},
 };
 
@@ -174,7 +174,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     C: Callbacks<Eager, Lazy>,
                 >(
                     this: *const Source<Eager, Lazy, SR>,
-                ) {
+                ) -> Update {
                     let this = &*this;
                     C::UPDATE.expect("unreachable")(
                         Pin::new_unchecked(&this.eager),
@@ -265,7 +265,7 @@ pub trait Callbacks<Eager: ?Sized, Lazy> {
     /// # Safety
     ///
     /// Only called once at a time for each initialised [`Source`].
-    const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)>;
+    const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update>;
 
     /// # Safety
     ///
@@ -277,7 +277,7 @@ pub trait Callbacks<Eager: ?Sized, Lazy> {
 
 pub enum NoCallbacks {}
 impl<Eager: ?Sized, Lazy> Callbacks<Eager, Lazy> for NoCallbacks {
-    const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>)> = None;
+    const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update> = None;
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>, subscribed: bool),
     > = None;

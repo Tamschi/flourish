@@ -4,6 +4,9 @@ pub use raw_signal::{RawSignal, RawSignalGuard};
 mod raw_subject;
 pub use raw_subject::{RawSubject, RawSubjectGuard};
 
+mod raw_fold;
+pub use raw_fold::{RawFold, RawFoldGuard};
+
 mod raw_subscription;
 pub use raw_subscription::{RawSubscription, RawSubscriptionGuard};
 

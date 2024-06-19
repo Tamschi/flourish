@@ -214,19 +214,21 @@ impl SignalRuntimeRef for &ASignalRuntime {
             {
                 borrow.context_stack.push(Some((current, BTreeSet::new())));
                 drop(borrow);
-                let r = catch_unwind(|| unsafe { update(data) });
+                let update = catch_unwind(|| unsafe { update(data) });
                 let mut borrow = (*lock).borrow_mut();
                 let (popped_id, touched_dependencies) =
                     borrow.context_stack.pop().flatten().expect("unreachable");
                 assert_eq!(popped_id, current);
-                if let Err(payload) = r {
-                    resume_unwind(payload)
+                match update {
+                    Ok(Update::Propagate) => {
+                        let notifications = borrow
+                            .stale_queue
+                            .update_dependencies(current, touched_dependencies);
+                        let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
+                    }
+                    Ok(Update::Halt) => (),
+                    Err(payload) => resume_unwind(payload),
                 }
-
-                let notifications = borrow
-                    .stale_queue
-                    .update_dependencies(current, touched_dependencies);
-                let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
             }
         }
     }
@@ -367,7 +369,7 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
 #[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CallbackTable<T: ?Sized> {
-    pub update: Option<unsafe extern "C" fn(*const T)>,
+    pub update: Option<unsafe extern "C" fn(*const T) -> Update>,
     pub on_subscribed_change: Option<unsafe extern "C" fn(*const T, subscribed: bool)>,
 }
 
@@ -379,4 +381,9 @@ impl<T: ?Sized> CallbackTable<T> {
     pub fn into_erased(self) -> CallbackTable<()> {
         unsafe { mem::transmute(self) }
     }
+}
+
+pub enum Update {
+    Propagate,
+    Halt,
 }
