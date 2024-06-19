@@ -4,13 +4,14 @@ use core::{
     pin::Pin,
 };
 use std::{
-    cell::Cell,
+    borrow::Borrow,
+    collections::{btree_map::Entry, BTreeMap},
     mem::{self, MaybeUninit},
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
 };
 
 use crate::{
-    runtime::{GlobalSignalRuntime, SignalRuntimeRef},
+    runtime::{CallbackTable, GlobalSignalRuntime, SignalRuntimeRef},
     slot::{Slot, Token},
 };
 
@@ -45,7 +46,7 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
     unsafe fn start<T, D: ?Sized>(
         &self,
         f: impl FnOnce() -> T,
-        callback: unsafe extern "C" fn(*const D),
+        callback: *const CallbackTable<D>,
         callback_data: *const D,
     ) -> T {
         self.sr.start(self.id, f, callback, callback_data)
@@ -63,9 +64,9 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         self.sr.propagate_from(self.id)
     }
 
-	fn refresh(&self) {
-		self.sr.refresh(self.id);
-	}
+    fn refresh(&self) {
+        self.sr.refresh(self.id);
+    }
 
     fn stop(&self) {
         self.sr.stop(self.id)
@@ -142,11 +143,29 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
             self.lazy.get_or_init(|| {
                 let mut lazy = MaybeUninit::uninit();
                 let init = || drop(init(eager, Slot::new(&mut lazy)));
+                let callback_table = match CALLBACK_TABLES.lock().expect("unreachable").entry(
+                    CallbackTable {
+                        update: Some(callback::<Eager, Lazy, SR, E>),
+                        on_subscribed_change: None,
+                    }
+                    .into_erased(),
+                ) {
+                    Entry::Vacant(v) => {
+                        let table = v.key().clone();
+                        &**v.insert(Box::pin(table)) as *const _
+                    }
+                    Entry::Occupied(o) => &**o.get() as *const _,
+                };
                 self.handle.start(
                     init,
-                    callback::<_, _, _, E>,
-                    Pin::into_inner_unchecked(self) as *const _,
+                    callback_table,
+                    (Pin::into_inner_unchecked(self) as *const Self).cast(),
                 );
+
+                static CALLBACK_TABLES: Mutex<
+                    BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
+                > = Mutex::new(BTreeMap::new());
+
                 unsafe extern "C" fn callback<
                     Eager: Sync + ?Sized,
                     Lazy: Sync,
@@ -164,7 +183,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                 unsafe { lazy.assume_init() }
             })
         });
-		self.handle.refresh();
+        self.handle.refresh();
         unsafe { mem::transmute((eager, Pin::new_unchecked(lazy))) }
     }
 

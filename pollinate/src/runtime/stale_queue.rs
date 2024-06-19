@@ -2,6 +2,7 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
     fmt::Debug,
     hash::Hash,
+    iter,
 };
 
 #[derive(Debug)]
@@ -9,28 +10,16 @@ pub(crate) struct StaleQueue<S> {
     /// TODO: When projecting something, clean it if it's stale!
     stale_queue: BTreeSet<S>,
     interdependencies: Interdependencies<S>,
-    sensors: BTreeMap<S, (unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
 }
 
 pub(crate) struct SensorNotification<S> {
     pub(crate) symbol: S,
-    pub(crate) callback: unsafe extern "C" fn(*const (), subscribed: bool),
-    pub(crate) data: *const (),
     pub(crate) value: bool,
 }
 
 impl<S> SensorNotification<S> {
-    pub(crate) fn from_sensor_option(
-        symbol: S,
-        sensor: Option<&(unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
-        value: bool,
-    ) -> Option<Self> {
-        sensor.map(|&(callback, data)| Self {
-            symbol,
-            callback,
-            data,
-            value,
-        })
+    fn new(symbol: S, value: bool) -> Self {
+        Self { symbol, value }
     }
 }
 
@@ -47,7 +36,6 @@ impl<S> StaleQueue<S> {
         Self {
             stale_queue: BTreeSet::new(),
             interdependencies: Interdependencies::new(),
-            sensors: BTreeMap::new(),
         }
     }
 }
@@ -93,7 +81,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
                     symbol,
                     &self.interdependencies.all_by_dependent,
                     &mut self.interdependencies.subscribers_by_dependency,
-                    &self.sensors,
                 )
                 .into_iter()
                 .collect(),
@@ -106,7 +93,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
                     symbol,
                     &self.interdependencies.all_by_dependent,
                     &mut self.interdependencies.subscribers_by_dependency,
-                    &self.sensors,
                 )
                 .into_iter()
                 .collect(),
@@ -187,7 +173,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
                         symbol,
                         &self.interdependencies.all_by_dependent,
                         &mut self.interdependencies.subscribers_by_dependency,
-                        &self.sensors,
                     )
                 })
                 .collect::<Vec<_>>()
@@ -198,7 +183,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
                         symbol,
                         &self.interdependencies.all_by_dependent,
                         &mut self.interdependencies.subscribers_by_dependency,
-                        &self.sensors,
                     )
                 }))
                 .collect()
@@ -213,7 +197,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         dependent: S,
         all_by_dependent: &BTreeMap<S, BTreeSet<S>>,
         subscribers_by_dependency: &mut BTreeMap<S, BTreeSet<S>>,
-        sensors: &BTreeMap<S, (unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
     ) -> impl IntoIterator<Item = SensorNotification<S>> {
         println!("to {:?} with {:?}", dependency, dependent);
         let subscribers = subscribers_by_dependency
@@ -222,8 +205,7 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         let newly_subscribed = subscribers.is_empty();
         assert!(subscribers.insert(dependent));
         if newly_subscribed {
-            SensorNotification::from_sensor_option(dependency, sensors.get(&dependency), true)
-                .into_iter()
+            iter::once(SensorNotification::new(dependency, true))
                 .chain(
                     all_by_dependent
                         .get(&dependency)
@@ -236,7 +218,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
                                 dependency,
                                 all_by_dependent,
                                 subscribers_by_dependency,
-                                sensors,
                             )
                         }),
                 )
@@ -252,7 +233,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         dependent: S,
         all_by_dependent: &BTreeMap<S, BTreeSet<S>>,
         subscribers_by_dependency: &mut BTreeMap<S, BTreeSet<S>>,
-        sensors: &BTreeMap<S, (unsafe extern "C" fn(*const (), subscribed: bool), *const ())>,
     ) -> impl IntoIterator<Item = SensorNotification<S>> {
         println!("from {:?} with {:?}", dependency, dependent);
         let subscribers = subscribers_by_dependency
@@ -261,8 +241,7 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         assert!(subscribers.remove(&dependent));
         let newly_unsubscribed = subscribers.is_empty();
         if newly_unsubscribed {
-            SensorNotification::from_sensor_option(dependency, sensors.get(&dependency), false)
-                .into_iter()
+            iter::once(SensorNotification::new(dependency, false))
                 .chain(
                     all_by_dependent
                         .get(&dependency)
@@ -275,7 +254,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
                                 dependency,
                                 all_by_dependent,
                                 subscribers_by_dependency,
-                                sensors,
                             )
                         }),
                 )
@@ -303,6 +281,15 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
             &self.interdependencies.all_by_dependency,
             &mut self.stale_queue,
         )
+    }
+
+    pub(crate) fn is_subscribed(&self, id: S) -> bool {
+        !self
+            .interdependencies
+            .subscribers_by_dependency
+            .get(&id)
+            .expect("unreachable")
+            .is_empty()
     }
 
     pub(crate) fn remove_stale(&mut self, symbol: S) -> bool {
@@ -333,7 +320,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
                         symbol,
                         &self.interdependencies.all_by_dependent,
                         &mut self.interdependencies.subscribers_by_dependency,
-                        &self.sensors,
                     )
                 })
                 .collect()
@@ -354,56 +340,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         }
 
         notifications
-    }
-
-    pub(crate) fn start_sensor(
-        &mut self,
-        symbol: S,
-        on_subscription_change: unsafe extern "C" fn(*const (), subscribed: bool),
-        on_subscription_change_data: *const (),
-    ) {
-        let has_subscribers = self
-            .interdependencies
-            .subscribers_by_dependency
-            .get(&symbol)
-            .is_some_and(|subs| !subs.is_empty());
-
-        match self.sensors.entry(symbol) {
-            Entry::Vacant(e) => e.insert((on_subscription_change, on_subscription_change_data)),
-            Entry::Occupied(_) => {
-                panic!("For now, please call `stop_sensor` before setting up another one.")
-            }
-        };
-
-        if has_subscribers {
-            unsafe { on_subscription_change(on_subscription_change_data, true) }
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn stop_sensor(
-        &mut self,
-        symbol: S,
-        sensor_stack: &[S],
-    ) -> impl IntoIterator<Item = SensorNotification<S>> {
-        if sensor_stack.contains(&symbol) {
-            //TODO: Does this need to abort the process?
-            panic!("Can't stop symbol sensor while it is executing on the same thread.");
-        }
-        if let Some(old_sensor) = self.sensors.remove(&symbol) {
-            self.interdependencies
-                .subscribers_by_dependency
-                .get(&symbol)
-                .is_some_and(|subs| !subs.is_empty())
-                .then_some(SensorNotification {
-                    symbol,
-                    callback: old_sensor.0,
-                    data: old_sensor.1,
-                    value: false,
-                })
-        } else {
-            None
-        }
     }
 }
 

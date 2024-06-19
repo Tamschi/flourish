@@ -26,7 +26,7 @@ pub trait SignalRuntimeRef: Clone {
         &self,
         id: Self::Symbol,
         f: impl FnOnce() -> T,
-        callback: unsafe extern "C" fn(*const D),
+        callback_table: *const CallbackTable<D>,
         callback_data: *const D,
     ) -> T;
     /// # Returns
@@ -38,14 +38,6 @@ pub trait SignalRuntimeRef: Clone {
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
     fn refresh(&self, id: Self::Symbol);
     fn stop(&self, id: Self::Symbol);
-
-    fn start_sensor<D: ?Sized>(
-        &self,
-        id: Self::Symbol,
-        on_subscription_change: unsafe extern "C" fn(*const D, subscribed: bool),
-        on_subscription_change_data: *const D,
-    );
-    fn stop_sensor(&self, id: Self::Symbol);
 }
 
 #[derive(Default)]
@@ -60,7 +52,7 @@ unsafe impl Sync for ASignalRuntime {}
 struct ASignalRuntime_ {
     stale_queue: StaleQueue<ASymbol>,
     context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
-    callbacks: BTreeMap<ASymbol, (unsafe extern "C" fn(*const ()), *const ())>,
+    callbacks: BTreeMap<ASymbol, (*const CallbackTable<()>, *const ())>,
     sensor_stack: Vec<ASymbol>,
 }
 
@@ -94,25 +86,29 @@ impl ASignalRuntime {
     ) -> RefMut<'b, ASignalRuntime_> {
         fn notify<'a: 'b, 'b>(
             lock: &'a ReentrantMutexGuard<RefCell<ASignalRuntime_>>,
-            SensorNotification {
-                symbol,
-                callback,
-                data,
-                value,
-            }: SensorNotification<ASymbol>,
+            SensorNotification { symbol, value }: SensorNotification<ASymbol>,
             mut borrow: RefMut<'b, ASignalRuntime_>,
         ) -> RefMut<'b, ASignalRuntime_> {
-            borrow.context_stack.push(None);
-            borrow.sensor_stack.push(symbol);
-            drop(borrow);
-            let r = catch_unwind(|| unsafe { callback(data, value) });
-            let mut borrow = (*lock).borrow_mut();
-            assert_eq!(borrow.context_stack.pop(), Some(None));
-            assert_eq!(borrow.sensor_stack.pop().expect("unreachable"), symbol);
-            if let Err(payload) = r {
-                resume_unwind(payload)
+            let &(callback_table, data) = borrow.callbacks.get(&symbol).expect("unreachable");
+            if let &CallbackTable {
+                on_subscribed_change: Some(on_subscribed_change),
+                ..
+            } = unsafe { &*callback_table }
+            {
+                borrow.context_stack.push(None);
+                borrow.sensor_stack.push(symbol);
+                drop(borrow);
+                let r = catch_unwind(|| unsafe { on_subscribed_change(data, value) });
+                let mut borrow = (*lock).borrow_mut();
+                assert_eq!(borrow.context_stack.pop(), Some(None));
+                assert_eq!(borrow.sensor_stack.pop().expect("unreachable"), symbol);
+                if let Err(payload) = r {
+                    resume_unwind(payload)
+                }
+                borrow
+            } else {
+                borrow
             }
-            borrow
         }
 
         for notification in notifications {
@@ -154,7 +150,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
         &self,
         id: Self::Symbol,
         f: impl FnOnce() -> T,
-        callback: unsafe extern "C" fn(*const D),
+        callback_table: *const CallbackTable<D>,
         callback_data: *const D,
     ) -> T {
         let lock = self.critical_mutex.lock();
@@ -173,18 +169,10 @@ impl SignalRuntimeRef for &ASignalRuntime {
                 .stale_queue
                 .update_dependencies(id, touched_dependencies);
             match borrow.callbacks.entry(id) {
-                Entry::Vacant(v) => {
-                    v.insert((
-                        unsafe {
-                            //SAFETY: Due to `extern "C"`, these signatures are compatible.
-                            mem::transmute::<
-                                unsafe extern "C" fn(*const D),
-                                unsafe extern "C" fn(*const ()),
-                            >(callback)
-                        },
-                        callback_data.cast(),
-                    ))
-                }
+                Entry::Vacant(v) => v.insert((
+                    CallbackTable::into_erased_ptr(callback_table),
+                    callback_data.cast(),
+                )),
                 Entry::Occupied(_) => panic!("Can't call `start` again before calling `stop`."),
             };
             let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
@@ -218,23 +206,28 @@ impl SignalRuntimeRef for &ASignalRuntime {
             .mark_dependents_as_stale(id);
         while let Some(current) = (|| (*lock).borrow_mut().stale_queue.next())() {
             let mut borrow = (*lock).borrow_mut();
-            let &(f, d) = borrow.callbacks.get(&current).expect("unreachable");
+            let &(callback_table, data) = borrow.callbacks.get(&current).expect("unreachable");
+            if let &CallbackTable {
+                update: Some(update),
+                ..
+            } = unsafe { &*callback_table }
+            {
+                borrow.context_stack.push(Some((current, BTreeSet::new())));
+                drop(borrow);
+                let r = catch_unwind(|| unsafe { update(data) });
+                let mut borrow = (*lock).borrow_mut();
+                let (popped_id, touched_dependencies) =
+                    borrow.context_stack.pop().flatten().expect("unreachable");
+                assert_eq!(popped_id, current);
+                if let Err(payload) = r {
+                    resume_unwind(payload)
+                }
 
-            borrow.context_stack.push(Some((current, BTreeSet::new())));
-            drop(borrow);
-            let r = catch_unwind(|| unsafe { f(d) });
-            let mut borrow = (*lock).borrow_mut();
-            let (popped_id, touched_dependencies) =
-                borrow.context_stack.pop().flatten().expect("unreachable");
-            assert_eq!(popped_id, current);
-            if let Err(payload) = r {
-                resume_unwind(payload)
+                let notifications = borrow
+                    .stale_queue
+                    .update_dependencies(current, touched_dependencies);
+                let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
             }
-
-            let notifications = borrow
-                .stale_queue
-                .update_dependencies(current, touched_dependencies);
-            let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
         }
     }
 
@@ -255,23 +248,28 @@ impl SignalRuntimeRef for &ASignalRuntime {
         let mut borrow = (*lock).borrow_mut();
         let is_stale = borrow.stale_queue.remove_stale(id);
         if is_stale {
-            let &(f, d) = borrow.callbacks.get(&id).expect("unreachable");
+            let &(callback_table, data) = borrow.callbacks.get(&id).expect("unreachable");
+            if let &CallbackTable {
+                update: Some(update),
+                ..
+            } = unsafe { &*callback_table }
+            {
+                borrow.context_stack.push(Some((id, BTreeSet::new())));
+                drop(borrow);
+                let r = catch_unwind(|| unsafe { update(data) });
+                let mut borrow = (*lock).borrow_mut();
+                let (popped_id, touched_dependencies) =
+                    borrow.context_stack.pop().flatten().expect("unreachable");
+                assert_eq!(popped_id, id);
+                if let Err(payload) = r {
+                    resume_unwind(payload)
+                }
 
-            borrow.context_stack.push(Some((id, BTreeSet::new())));
-            drop(borrow);
-            let r = catch_unwind(|| unsafe { f(d) });
-            let mut borrow = (*lock).borrow_mut();
-            let (popped_id, touched_dependencies) =
-                borrow.context_stack.pop().flatten().expect("unreachable");
-            assert_eq!(popped_id, id);
-            if let Err(payload) = r {
-                resume_unwind(payload)
+                let notifications = borrow
+                    .stale_queue
+                    .update_dependencies(id, touched_dependencies);
+                let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
             }
-
-            let notifications = borrow
-                .stale_queue
-                .update_dependencies(id, touched_dependencies);
-            let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
         }
     }
 
@@ -287,39 +285,24 @@ impl SignalRuntimeRef for &ASignalRuntime {
             //TODO: Does this need to abort the process?
             panic!("Can't stop symbol while it is executing on the same thread.");
         }
+        if borrow.stale_queue.is_subscribed(id) {
+            let &(callback_table, data) = borrow
+                .callbacks
+                .get(&id)
+                .expect("Tried to stop callbacks for a symbol that wasn't started.");
+            {
+                if let &CallbackTable {
+                    on_subscribed_change: Some(on_subscribed_change),
+                    ..
+                } = unsafe { &*callback_table }
+                {
+                    unsafe { on_subscribed_change(data, false) }
+                }
+            }
+        }
         let notifications = borrow.stale_queue.purge_id(id);
         let mut borrow = ASignalRuntime::notify_all(&lock, notifications, borrow);
         borrow.callbacks.remove(&id);
-    }
-
-    fn start_sensor<D: ?Sized>(
-        &self,
-        id: Self::Symbol,
-        on_subscription_change: unsafe extern "C" fn(*const D, subscribed: bool),
-        on_subscription_change_data: *const D,
-    ) {
-        let lock = self.critical_mutex.lock();
-        let mut borrow = (*lock).borrow_mut();
-
-        borrow.stale_queue.start_sensor(
-            id,
-            unsafe {
-                //SAFETY: Due to `extern "C"`, these signatures are compatible.
-                mem::transmute::<
-                    unsafe extern "C" fn(*const D, subscribed: bool),
-                    unsafe extern "C" fn(*const (), subscribed: bool),
-                >(on_subscription_change)
-            },
-            on_subscription_change_data.cast(),
-        );
-    }
-
-    fn stop_sensor(&self, id: Self::Symbol) {
-        let lock = self.critical_mutex.lock();
-        let mut borrow = (*lock).borrow_mut();
-        let borrowed = &mut *borrow;
-        let notifications = borrowed.stale_queue.stop_sensor(id, &borrowed.sensor_stack);
-        let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
     }
 }
 
@@ -349,10 +332,10 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
         &self,
         id: Self::Symbol,
         f: impl FnOnce() -> T,
-        callback: unsafe extern "C" fn(*const D),
+        callback_table: *const CallbackTable<D>,
         callback_data: *const D,
     ) -> T {
-        (&GLOBAL_SIGNAL_RUNTIME).start(id.0, f, callback, callback_data)
+        (&GLOBAL_SIGNAL_RUNTIME).start(id.0, f, callback_table, callback_data)
     }
 
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool {
@@ -378,21 +361,22 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
     fn stop(&self, id: Self::Symbol) {
         (&GLOBAL_SIGNAL_RUNTIME).stop(id.0)
     }
+}
 
-    fn start_sensor<D: ?Sized>(
-        &self,
-        id: Self::Symbol,
-        on_subscription_change: unsafe extern "C" fn(*const D, subscribed: bool),
-        on_subscription_change_data: *const D,
-    ) {
-        (&GLOBAL_SIGNAL_RUNTIME).start_sensor(
-            id.0,
-            on_subscription_change,
-            on_subscription_change_data,
-        )
+#[repr(C)]
+#[non_exhaustive]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CallbackTable<T: ?Sized> {
+    pub update: Option<unsafe extern "C" fn(*const T)>,
+    pub on_subscribed_change: Option<unsafe extern "C" fn(*const T, subscribed: bool)>,
+}
+
+impl<T: ?Sized> CallbackTable<T> {
+    pub fn into_erased_ptr(this: *const Self) -> *const CallbackTable<()> {
+        unsafe { mem::transmute(this) }
     }
 
-    fn stop_sensor(&self, id: Self::Symbol) {
-        (&GLOBAL_SIGNAL_RUNTIME).stop_sensor(id.0)
+    pub fn into_erased(self) -> CallbackTable<()> {
+        unsafe { mem::transmute(self) }
     }
 }
