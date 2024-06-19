@@ -27,3 +27,6 @@ macro_rules! shadow_clone {
 }
 
 mod utils;
+
+#[doc = include_str!("../README.md")]
+mod readme {}
