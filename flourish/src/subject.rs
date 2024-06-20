@@ -11,7 +11,7 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::{
     raw::{RawSubject, RawSubjectGuard},
-    Source,
+    AsSource, Source,
 };
 
 #[derive(Clone)]
@@ -246,5 +246,13 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
 
     pub fn as_source(&self) -> Pin<&dyn Source<Value = T>> {
         self.0.as_ref()
+    }
+}
+
+impl<'a, T: 'a + Send, SR: 'a + Sync + SignalRuntimeRef> AsSource<'a> for Subject<T, SR> {
+    type Source = dyn 'a + Source<Value = T> + Sync;
+
+    fn as_source(self: Pin<&Self>) -> Pin<&Self::Source> {
+        unsafe { self.map_unchecked(|this| &*this.0) }
     }
 }

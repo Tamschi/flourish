@@ -13,7 +13,7 @@ use pin_project::pin_project;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 use sptr::{from_exposed_addr, Strict};
 
-use crate::{raw::RawSignal, Source};
+use crate::{raw::RawSignal, AsSource, Source};
 
 #[derive(Debug)]
 pub struct Signal<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
@@ -222,5 +222,14 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> SignalDataAddress<T,
         }
         .project_ref()
         .signal
+    }
+}
+
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + Sync + SignalRuntimeRef> AsSource<'a> for Signal<T, SR> {
+    type Source = dyn 'a + Source<Value = T> + Sync;
+
+    fn as_source(self: Pin<&Self>) -> Pin<&Self::Source> {
+        let address = unsafe { self.0.as_ptr().read() }.0;
+        unsafe { address.as_ref().as_source() }
     }
 }

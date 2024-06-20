@@ -68,3 +68,19 @@ impl<F: ?Sized + Fn() -> T, T> Source for F {
         Box::new(self())
     }
 }
+
+pub trait AsSource<'a> {
+    type Source: 'a + ?Sized;
+    fn as_source(self: Pin<&Self>) -> Pin<&Self::Source>;
+}
+
+impl<'a, T: 'a + ?Sized> AsSource<'a> for T
+where
+    T: Source,
+{
+    type Source = Self;
+
+    fn as_source(self: Pin<&Self>) -> Pin<&Self::Source> {
+        self
+    }
+}

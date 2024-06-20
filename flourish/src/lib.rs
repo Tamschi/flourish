@@ -15,7 +15,9 @@ mod subscription;
 pub use subscription::{Subscription, SubscriptionGuard};
 
 mod source;
-pub use source::Source;
+pub use source::{AsSource, Source};
+
+pub use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 #[doc(hidden = "macro-only")]
 pub mod __ {

@@ -1,3 +1,3 @@
 [workspace]
-members = ["flourish", "pollinate"]
+members = ["flourish", "flourish-extra", "pollinate"]
 resolver = "2"
