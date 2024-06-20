@@ -266,21 +266,27 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
     pub(crate) fn mark_dependents_as_stale(&mut self, symbol: S) {
         fn mark_dependents_as_stale<S: Hash + Ord + Copy>(
             symbol: S,
-            all_by_dependency: &BTreeMap<S, BTreeSet<S>>,
+            interdependencies: &Interdependencies<S>,
             stale_queue: &mut BTreeSet<S>,
         ) {
-            for &dependent in all_by_dependency.get(&symbol).expect("unreachable") {
-                if stale_queue.insert(dependent) {
-                    mark_dependents_as_stale(dependent, all_by_dependency, stale_queue)
+            for &dependent in interdependencies
+                .all_by_dependency
+                .get(&symbol)
+                .expect("unreachable")
+            {
+                if stale_queue.insert(dependent)
+                    && interdependencies
+                        .subscribers_by_dependency
+                        .get(&dependent)
+                        .expect("unreachable")
+                        .is_empty()
+                {
+                    mark_dependents_as_stale(dependent, interdependencies, stale_queue)
                 }
             }
         }
 
-        mark_dependents_as_stale(
-            symbol,
-            &self.interdependencies.all_by_dependency,
-            &mut self.stale_queue,
-        )
+        mark_dependents_as_stale(symbol, &self.interdependencies, &mut self.stale_queue)
     }
 
     pub(crate) fn is_subscribed(&self, id: S) -> bool {

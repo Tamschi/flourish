@@ -4,14 +4,16 @@ use flourish::{
     raw::RawFold, AsSource, Fold, GlobalSignalRuntime, SignalRuntimeRef, Source, Update,
 };
 
-pub fn debounce<T: Send + Sync + Copy + PartialEq>(
-    source: impl for<'a> AsSource<'a, Source: Source<Value = T>> + Send,
+//TODO: Hide that `debounce` returns `Fold`?
+
+pub fn debounce<'a, T: Send + Sync + Copy + PartialEq>(
+    source: impl AsSource<'a, Source: Source<Value = T>> + Send,
 ) -> Fold<T> {
     debounce_with_runtime(source, GlobalSignalRuntime)
 }
 
-pub fn debounce_with_runtime<T: Send + Sync + Copy + PartialEq, SR: SignalRuntimeRef>(
-    source: impl for<'a> AsSource<'a, Source: Source<Value = T>> + Send,
+pub fn debounce_with_runtime<'a, T: Send + Sync + Copy + PartialEq, SR: SignalRuntimeRef>(
+    source: impl AsSource<'a, Source: Source<Value = T>> + Send,
     runtime: SR,
 ) -> Fold<T, SR> {
     Fold::with_runtime(

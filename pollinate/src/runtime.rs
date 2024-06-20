@@ -219,13 +219,12 @@ impl SignalRuntimeRef for &ASignalRuntime {
                 let (popped_id, touched_dependencies) =
                     borrow.context_stack.pop().flatten().expect("unreachable");
                 assert_eq!(popped_id, current);
+                let notifications = borrow
+                    .stale_queue
+                    .update_dependencies(current, touched_dependencies);
+                borrow = ASignalRuntime::notify_all(&lock, notifications, borrow);
                 match update {
-                    Ok(Update::Propagate) => {
-                        let notifications = borrow
-                            .stale_queue
-                            .update_dependencies(current, touched_dependencies);
-                        let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
-                    }
+                    Ok(Update::Propagate) => borrow.stale_queue.mark_dependents_as_stale(current),
                     Ok(Update::Halt) => (),
                     Err(payload) => resume_unwind(payload),
                 }
