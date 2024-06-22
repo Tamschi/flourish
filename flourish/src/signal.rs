@@ -15,10 +15,12 @@ use sptr::{from_exposed_addr, Strict};
 
 use crate::{raw::RawSignal, AsSource, Source};
 
+//TODO: I'd like to unify these source-like handles into just one kind of type-erased slim handle.
+
 #[derive(Debug)]
 pub struct Signal<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
     /// In theory it's possible to store an invalid `*const T` here,
-    /// in order to store pointer metadata, which would allow working with unsized type, maybe.
+    /// in order to store pointer metadata, which would allow working with unsized types, maybe.
     NonNull<SignalHeader<T, SR>>,
 );
 
