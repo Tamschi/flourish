@@ -18,7 +18,7 @@ use crate::utils::conjure_zst;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub struct RawSignal<
+pub struct RawComputed<
     T: Send,
     F: Send + ?Sized + FnMut() -> T,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
@@ -28,9 +28,9 @@ pub struct RawSignal<
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-pub struct RawSignalGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub struct RawComputedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
-impl<'a, T: ?Sized> Deref for RawSignalGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for RawComputedGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -38,7 +38,7 @@ impl<'a, T: ?Sized> Deref for RawSignalGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawSignalGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawComputedGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
@@ -46,18 +46,18 @@ impl<'a, T: ?Sized> Borrow<T> for RawSignalGuard<'a, T> {
 
 /// TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
-    for RawSignal<T, F, SR>
+    for RawComputed<T, F, SR>
 {
 }
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<T: Send, F: Send + FnMut() -> T> RawSignal<T, F> {
+impl<T: Send, F: Send + FnMut() -> T> RawComputed<T, F> {
     pub fn new(f: F) -> Self {
         Self::with_runtime(f, GlobalSignalRuntime)
     }
 }
 
-impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
+impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
     pub fn with_runtime(f: F, runtime: SR) -> Self
     where
         F: Sized,
@@ -86,11 +86,11 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T
         self.read().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> RawSignalGuard<'a, T>
+    pub fn read<'a>(self: Pin<&'a Self>) -> RawComputedGuard<'a, T>
     where
         T: Sync,
     {
-        RawSignalGuard(self.touch().read().unwrap())
+        RawComputedGuard(self.touch().read().unwrap())
     }
 
     pub fn get_exclusive(self: Pin<&Self>) -> T
@@ -174,7 +174,7 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T, F, SR> {
+impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
     unsafe fn init<'a>(
         f: Pin<&'a ForceSyncUnpin<UnsafeCell<F>>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
@@ -186,17 +186,17 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSignal<T
 #[macro_export]
 macro_rules! signal {
 	{$runtime:expr=> $(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawSignal::with_runtime(|| $f, $runtime));
+		let $name = ::std::pin::pin!($crate::raw::RawComputed::with_runtime(|| $f, $runtime));
 		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
 	)*};
     {$(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawSignal::new(|| $f));
+		let $name = ::std::pin::pin!($crate::raw::RawComputed::new(|| $f));
 		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
 	)*};
 }
 
 impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Source
-    for RawSignal<T, F, SR>
+    for RawComputed<T, F, SR>
 {
     type Value = T;
 

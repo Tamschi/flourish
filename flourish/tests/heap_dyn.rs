@@ -1,6 +1,6 @@
 use std::{pin::Pin, sync::Arc};
 
-use flourish::{Signal, Source, Subject, Subscription};
+use flourish::{Computed, Source, Subject, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -12,12 +12,12 @@ fn use_constructors() {
     let a = &Subject::new(1);
     let (b, set_b) = Subject::new(2).into_get_set();
     let b: Pin<&(dyn Source<Value = _> + Sync + Unpin)> = Pin::new(&b);
-    let c = Signal::new(move || {
+    let c = Computed::new(move || {
         x.push("c");
         a.get() + b.get()
     });
     let c = c.as_source();
-    let d = Signal::new(move || {
+    let d = Computed::new(move || {
         x.push("d");
         a.get() - b.get()
     });

@@ -95,6 +95,7 @@ impl ASignalRuntime {
                 ..
             } = unsafe { &*callback_table }
             {
+				//TODO: Dirty queue isolation!
                 borrow.context_stack.push(None);
                 borrow.sensor_stack.push(symbol);
                 drop(borrow);
@@ -235,6 +236,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
+		//TODO: Dirty queue isolation!
         borrow.context_stack.push(None);
         drop(borrow);
         let r = catch_unwind(AssertUnwindSafe(f));

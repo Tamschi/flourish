@@ -2,15 +2,15 @@ use std::pin::Pin;
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{Signal, SignalGuard, Source};
+use crate::{Computed, ComputedGuard, Source};
 
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct Subscription<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
-    Signal<T, SR>,
+    Computed<T, SR>,
 );
 
 //TODO: Implementations
-pub struct SubscriptionGuard<'a, T>(SignalGuard<'a, T>);
+pub struct SubscriptionGuard<'a, T>(ComputedGuard<'a, T>);
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<T: Send + ?Sized> Subscription<T> {
@@ -27,7 +27,7 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Subscription<T, SR> {
     where
         T: Sized,
     {
-        let this = Self(Signal::with_runtime(f, runtime));
+        let this = Self(Computed::with_runtime(f, runtime));
         this.0.pull();
         this
     }

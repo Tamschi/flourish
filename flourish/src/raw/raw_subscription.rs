@@ -5,7 +5,7 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::Source;
 
-use super::{RawSignal, RawSignalGuard};
+use super::{RawComputed, RawComputedGuard};
 
 #[pin_project]
 #[must_use = "Subscriptions are cancelled when dropped."]
@@ -14,10 +14,10 @@ pub struct RawSubscription<
     T: Send,
     F: Send + ?Sized + FnMut() -> T,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
->(#[pin] RawSignal<T, F, SR>);
+>(#[pin] RawComputed<T, F, SR>);
 
 //TODO: Implementations
-pub struct RawSubscriptionGuard<'a, T>(RawSignalGuard<'a, T>);
+pub struct RawSubscriptionGuard<'a, T>(RawComputedGuard<'a, T>);
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<T: Send, F: Send + ?Sized + FnMut() -> T> RawSubscription<T, F> {
@@ -31,7 +31,7 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSubscrip
 pub fn __new_raw_unsubscribed_subscription<T: Send, F: Send + FnMut() -> T>(
     f: F,
 ) -> RawSubscription<T, F> {
-    RawSubscription(RawSignal::new(f))
+    RawSubscription(RawComputed::new(f))
 }
 
 pub fn __new_raw_unsubscribed_subscription_with_runtime<
@@ -42,7 +42,7 @@ pub fn __new_raw_unsubscribed_subscription_with_runtime<
     f: F,
     runtime: SR,
 ) -> RawSubscription<T, F, SR> {
-    RawSubscription(RawSignal::with_runtime(f, runtime))
+    RawSubscription(RawComputed::with_runtime(f, runtime))
 }
 
 pub fn __pull_subscription<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(

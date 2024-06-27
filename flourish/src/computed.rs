@@ -13,21 +13,21 @@ use pin_project::pin_project;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 use sptr::{from_exposed_addr, Strict};
 
-use crate::{raw::RawSignal, AsSource, Source};
+use crate::{raw::RawComputed, AsSource, Source};
 
 //TODO: I'd like to unify these source-like handles into just one kind of type-erased slim handle.
 
 #[derive(Debug)]
-pub struct Signal<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
+pub struct Computed<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
     /// In theory it's possible to store an invalid `*const T` here,
     /// in order to store pointer metadata, which would allow working with unsized types, maybe.
-    NonNull<SignalHeader<T, SR>>,
+    NonNull<ComputedHeader<T, SR>>,
 );
 
-unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Send> Send for Signal<T, SR> {}
-unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for Signal<T, SR> {}
+unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Send> Send for Computed<T, SR> {}
+unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for Computed<T, SR> {}
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef + Clone> Clone for Signal<T, SR> {
+impl<T: Send + ?Sized, SR: SignalRuntimeRef + Clone> Clone for Computed<T, SR> {
     fn clone(&self) -> Self {
         Self(unsafe {
             // SAFETY: `Arc` uses enough `repr(C)` to increment the reference without the actual type.
@@ -39,7 +39,7 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef + Clone> Clone for Signal<T, SR> {
     }
 }
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> Drop for Signal<T, SR> {
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> Drop for Computed<T, SR> {
     fn drop(&mut self) {
         // I think this is synchronised by dropping the Arc.
         let address = unsafe { self.0.as_ptr().read() }.0;
@@ -47,9 +47,9 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Drop for Signal<T, SR> {
     }
 }
 
-pub struct SignalGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub struct ComputedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
-impl<'a, T: ?Sized> Deref for SignalGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for ComputedGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -57,14 +57,14 @@ impl<'a, T: ?Sized> Deref for SignalGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for SignalGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for ComputedGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<T: Send + ?Sized> Signal<T> {
+impl<T: Send + ?Sized> Computed<T> {
     pub fn new<F: Send + FnMut() -> T>(f: F) -> Self
     where
         T: Sized,
@@ -73,7 +73,7 @@ impl<T: Send + ?Sized> Signal<T> {
     }
 }
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> Computed<T, SR> {
     pub fn with_runtime<F: Send + FnMut() -> T>(f: F, runtime: SR) -> Self
     where
         T: Sized,
@@ -81,11 +81,11 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
         let arc = Arc::new(SignalDataFull {
             anchor: SignalDataAnchor(PhantomData),
             header: Cell::new(MaybeUninit::uninit()),
-            signal: RawSignal::with_runtime(f, runtime),
+            signal: RawComputed::with_runtime(f, runtime),
         });
         unsafe {
             arc.header
-                .set(MaybeUninit::new(SignalHeader(NonNull::new_unchecked(
+                .set(MaybeUninit::new(ComputedHeader(NonNull::new_unchecked(
                     &arc.anchor as &dyn SignalDataAddress<T, SR> as *const _ as *mut _,
                 ))))
         };
@@ -111,11 +111,11 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
         self.read().clone()
     }
 
-    pub fn read<'a>(&'a self) -> SignalGuard<'a, T>
+    pub fn read<'a>(&'a self) -> ComputedGuard<'a, T>
     where
         T: Sync,
     {
-        SignalGuard(self.touch().read().unwrap())
+        ComputedGuard(self.touch().read().unwrap())
     }
 
     pub fn get_exclusive(&self) -> T
@@ -153,7 +153,7 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Signal<T, SR> {
 
 /// FIXME: Once pointer-metadata is available, shrink this.
 #[derive(Debug, Clone, Copy)]
-struct SignalHeader<T: Send + ?Sized, SR: SignalRuntimeRef>(NonNull<dyn SignalDataAddress<T, SR>>);
+struct ComputedHeader<T: Send + ?Sized, SR: SignalRuntimeRef>(NonNull<dyn SignalDataAddress<T, SR>>);
 
 trait SignalDataAddress<T: Send + ?Sized, SR: SignalRuntimeRef> {
     unsafe fn drop_arc(&self);
@@ -168,9 +168,9 @@ trait SignalDataAddress<T: Send + ?Sized, SR: SignalRuntimeRef> {
 #[repr(C)]
 struct SignalDataFull<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> {
     anchor: SignalDataAnchor<T, F, SR>,
-    header: Cell<MaybeUninit<SignalHeader<T, SR>>>,
+    header: Cell<MaybeUninit<ComputedHeader<T, SR>>>,
     #[pin]
-    signal: RawSignal<T, F, SR>,
+    signal: RawComputed<T, F, SR>,
 }
 
 /// MUST BE A ZST
@@ -227,7 +227,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> SignalDataAddress<T,
     }
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + Sync + SignalRuntimeRef> AsSource<'a> for Signal<T, SR> {
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + Sync + SignalRuntimeRef> AsSource<'a> for Computed<T, SR> {
     type Source = dyn 'a + Source<Value = T> + Sync;
 
     fn as_source(self: Pin<&Self>) -> Pin<&Self::Source> {

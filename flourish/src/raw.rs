@@ -1,5 +1,5 @@
-mod raw_signal;
-pub use raw_signal::{RawSignal, RawSignalGuard};
+mod raw_computed;
+pub use raw_computed::{RawComputed, RawComputedGuard};
 
 mod raw_subject;
 pub use raw_subject::{RawSubject, RawSubjectGuard};

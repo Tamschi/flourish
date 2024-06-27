@@ -2,11 +2,13 @@
 
 pub mod raw;
 
+//TODO: Inter-runtime signals (i.e. takes two signal runtimes as parameters, acts as source for one and dynamic subscriber for the other).
+
 mod subject;
 pub use subject::{Subject, SubjectGuard};
 
-mod signal;
-pub use signal::{Signal, SignalGuard};
+mod computed;
+pub use computed::{Computed, ComputedGuard};
 
 mod fold;
 pub use fold::{Fold, FoldGuard};
