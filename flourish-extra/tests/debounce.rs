@@ -1,4 +1,4 @@
-use flourish::{Signal, Subject, Subscription};
+use flourish::{Signal, Subject, SubscriptionSR};
 use flourish_extra::debounce;
 
 mod _validator;
@@ -14,7 +14,7 @@ fn debounce_test() {
         x.push("d");
         get()
     }));
-    let _sub = Subscription::<_>::new(move || {
+    let _sub = SubscriptionSR::<_>::new(move || {
         x.push("s");
         v.push(debounced.get())
     });

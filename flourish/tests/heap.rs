@@ -33,7 +33,7 @@ fn use_constructors() {
     v.expect([]);
     x.expect([]);
 
-    let sub_aa = Subscription::<_>::new(move || {
+    let sub_aa = Subscription::new(move || {
         x.push("sub_aa");
         v.push(Source::<GlobalSignalRuntime>::get(aa.as_ref()))
     });
@@ -57,14 +57,14 @@ fn use_constructors() {
     v.expect([]);
     x.expect([]);
 
-    let _sub_c = Subscription::<_>::new(move || {
+    let _sub_c = Subscription::new(move || {
         x.push("_sub_c");
         v.push(c.get())
     });
     v.expect([8]);
     x.expect(["_sub_c", "c"]);
 
-    let _sub_d = Subscription::<_>::new(move || {
+    let _sub_d = Subscription::new(move || {
         x.push("_sub_d");
         v.push(d.get())
     });

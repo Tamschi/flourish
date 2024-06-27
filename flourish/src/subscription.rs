@@ -7,8 +7,10 @@ use crate::{
     SignalGuard, Source,
 };
 
+pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
+
 #[must_use = "Subscriptions are cancelled when dropped."]
-pub struct Subscription<
+pub struct SubscriptionSR<
     'a,
     T: 'a + Send + ?Sized + Clone,
     SR: 'a + ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
@@ -18,7 +20,7 @@ pub struct Subscription<
 }
 
 impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Drop
-    for Subscription<'a, T, SR>
+    for SubscriptionSR<'a, T, SR>
 {
     fn drop(&mut self) {
         unsafe { Arc::decrement_strong_count(self.source) }
@@ -29,7 +31,7 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Drop
 pub struct SubscriptionGuard<'a, T>(SignalGuard<'a, T>);
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> Subscription<'a, T, SR> {
+impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
     pub fn new<S: 'a + Source<SR, Value = T>>(source: S) -> Self
     where
         T: Sized,

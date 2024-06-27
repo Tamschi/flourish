@@ -113,12 +113,12 @@ pub use crate::uncached;
 
 #[macro_export]
 macro_rules! signals_helper {
-	{let $name:ident = subject!($source:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::subject($source));
+	{let $name:ident = subject!($initial_value:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::subject($initial_value));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = subject_sr!($source:expr, $runtime:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::subject_sr($source, $runtime));
+	{let $name:ident = subject_sr!($initial_value:expr, $runtime:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::subject_sr($initial_value, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = computed!($source:expr);} => {
