@@ -45,10 +45,11 @@ macro_rules! subject_sr {
 }
 pub use crate::subject_sr;
 
-pub fn computed<'a, T: 'a + Send>(
-    f: impl 'a + Send + FnMut() -> T,
-) -> impl 'a + Source<GlobalSignalRuntime, Value = T> {
-    computed_sr(f, GlobalSignalRuntime)
+pub fn computed<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
+) -> impl 'a + Source<SR, Value = T> {
+    let runtime = source.clone_runtime_ref();
+    RawComputed::<T, _, SR>::with_runtime(source, runtime)
 }
 #[macro_export]
 macro_rules! computed {
@@ -58,23 +59,6 @@ macro_rules! computed {
 	}};
 }
 pub use crate::computed;
-
-pub fn computed_sr<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
-    f: impl 'a + Send + FnMut() -> T,
-    runtime: SR,
-) -> impl 'a + Source<SR, Value = T> {
-    RawComputed::with_runtime(f, runtime)
-}
-#[macro_export]
-macro_rules! computed_sr {
-    ($source:expr, $runtime:expr) => {{
-		super let computed_sr = ::core::pin::pin!($crate::raw::computed_sr(
-            $source, $runtime
-        ));
-        ::core::pin::Pin::into_ref(computed_sr)
-	}};
-}
-pub use crate::computed_sr;
 
 pub fn fold<'a, T: 'a + Send>(
     select: impl 'a + Send + FnMut() -> T,
@@ -109,10 +93,14 @@ macro_rules! fold_sr {
 }
 pub use crate::fold_sr;
 
-pub fn uncached<'a, T: 'a + Send>(
-    source: impl 'a + Source<GlobalSignalRuntime, Value = T>,
-) -> impl 'a + Source<GlobalSignalRuntime, Value = T> {
-    uncached_sr(source, GlobalSignalRuntime)
+pub fn uncached<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
+) -> impl 'a + Source<SR, Value = T> {
+    let clone_runtime_ref = source.clone_runtime_ref();
+    {
+        let _ = clone_runtime_ref;
+        source
+    }
 }
 #[macro_export]
 macro_rules! uncached {
@@ -122,23 +110,6 @@ macro_rules! uncached {
     }};
 }
 pub use crate::uncached;
-
-pub fn uncached_sr<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
-    _: SR,
-) -> impl 'a + Source<SR, Value = T> {
-    source
-}
-#[macro_export]
-macro_rules! uncached_sr {
-    ($source:expr, $runtime:expr) => {
-		super let uncached_sr = ::core::pin::pin!($crate::raw::uncached_sr(
-            $source, $runtime
-        ));
-        ::core::pin::Pin::into_ref(uncached_sr)
-    };
-}
-pub use crate::uncached_sr;
 
 #[macro_export]
 macro_rules! signals_helper {

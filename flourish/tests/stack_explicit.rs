@@ -1,4 +1,4 @@
-use flourish::Source;
+use flourish::{GlobalSignalRuntime, Source};
 mod _validator;
 use _validator::Validator;
 
@@ -12,20 +12,29 @@ fn use_macros() {
     let b = ::core::pin::pin!(flourish::raw::subject(2));
     let b = b.into_ref();
     let (b, set_b) = b.get_set();
-    let c = ::core::pin::pin!(flourish::raw::computed(|| {
-        x.push("c");
-        a.get() + b()
-    }));
+    let c = ::core::pin::pin!(flourish::raw::computed((
+        || {
+            x.push("c");
+            a.get() + b()
+        },
+        GlobalSignalRuntime
+    )));
     let c = c.into_ref();
-    let d = ::core::pin::pin!(flourish::raw::computed(|| {
-        x.push("d");
-        a.get() - b()
-    }));
+    let d = ::core::pin::pin!(flourish::raw::computed((
+        || {
+            x.push("d");
+            a.get() - b()
+        },
+        GlobalSignalRuntime
+    )));
     let d = d.into_ref();
-    let aa = ::core::pin::pin!(flourish::raw::uncached(|| {
-        x.push("aa");
-        c.get() + d.get()
-    }));
+    let aa = ::core::pin::pin!(flourish::raw::uncached((
+        || {
+            x.push("aa");
+            c.get() + d.get()
+        },
+        GlobalSignalRuntime
+    )));
     let aa = aa.into_ref();
     v.expect([]);
     x.expect([]);

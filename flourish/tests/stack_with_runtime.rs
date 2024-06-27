@@ -13,18 +13,18 @@ fn use_macros() {
     }
     let (b, set_b) = b.get_set();
     signals_helper! {
-        let c = computed_sr!(|| {
+        let c = computed!((|| {
             x.push("c");
             a.get() + b()
-        }, GlobalSignalRuntime);
-        let d = computed_sr!(|| {
+        }, GlobalSignalRuntime));
+        let d = computed!((|| {
             x.push("d");
             a.get() - b()
-        }, GlobalSignalRuntime);
-        let aa = uncached_sr!(|| {
+        }, GlobalSignalRuntime));
+        let aa = uncached!((|| {
             x.push("aa");
             c.get() + d.get()
-        }, GlobalSignalRuntime);
+        }, GlobalSignalRuntime));
     }
     v.expect([]);
     x.expect([]);

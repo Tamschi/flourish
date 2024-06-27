@@ -90,6 +90,56 @@ impl<F: ?Sized + Send + Sync + Fn() -> T, T: Send, SR: ?Sized + SignalRuntimeRef
     }
 }
 
+impl<F: Send + Sync + Fn() -> T, T: Send, SR: ?Sized + SignalRuntimeRef> Source<SR> for (F, SR) {
+    type Value = T;
+
+    fn touch(self: Pin<&Self>) {
+        self.0();
+    }
+
+    fn get(self: Pin<&Self>) -> Self::Value
+    where
+        Self::Value: Sync + Copy,
+    {
+        self.0()
+    }
+
+    fn get_clone(self: Pin<&Self>) -> Self::Value
+    where
+        Self::Value: Sync + Clone,
+    {
+        self.0()
+    }
+
+    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    where
+        Self::Value: Copy,
+    {
+        self.0()
+    }
+
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    where
+        Self::Value: Clone,
+    {
+        self.0()
+    }
+
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    where
+        Self::Value: 'a + Sync,
+    {
+        Box::new(self.0())
+    }
+
+    fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized,
+    {
+        self.1.clone()
+    }
+}
+
 pub trait AsSource<'a, SR: SignalRuntimeRef> {
     type Source: 'a + ?Sized;
     fn as_source(&self) -> Pin<&Self::Source>;

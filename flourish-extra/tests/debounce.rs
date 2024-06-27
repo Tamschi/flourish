@@ -14,7 +14,7 @@ fn debounce_test() {
         x.push("d");
         get()
     }));
-    let _sub = Subscription::new(move || {
+    let _sub = Subscription::<_>::new(move || {
         x.push("s");
         v.push(debounced.get())
     });

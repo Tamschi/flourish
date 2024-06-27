@@ -133,7 +133,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     /// After `init` returns, `E::eval` may be called any number of times with the state initialised by `init`, but at most once at a time.
     ///
     /// [`Source`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
-    pub unsafe fn project_or_init<C: Callbacks<Eager, Lazy>>(
+    pub unsafe fn project_or_init<C: Callbacks<Eager, Lazy, SR>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
@@ -171,7 +171,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     Eager: Sync + ?Sized,
                     Lazy: Sync,
                     SR: SignalRuntimeRef,
-                    C: Callbacks<Eager, Lazy>,
+                    C: Callbacks<Eager, Lazy, SR>,
                 >(
                     this: *const Source<Eager, Lazy, SR>,
                 ) -> Update {
@@ -186,7 +186,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     Eager: Sync + ?Sized,
                     Lazy: Sync,
                     SR: SignalRuntimeRef,
-                    C: Callbacks<Eager, Lazy>,
+                    C: Callbacks<Eager, Lazy, SR>,
                 >(
                     this: *const Source<Eager, Lazy, SR>,
                     subscribed: bool,
@@ -213,7 +213,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     /// # Safety
     ///
     /// This function has the same safety requirements as [`Self::project_or_init`].
-    pub unsafe fn pull_or_init<E: Callbacks<Eager, Lazy>>(
+    pub unsafe fn pull_or_init<E: Callbacks<Eager, Lazy, SR>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
@@ -268,7 +268,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eag
     }
 }
 
-pub trait Callbacks<Eager: ?Sized, Lazy> {
+pub trait Callbacks<Eager: ?Sized, Lazy, SR: SignalRuntimeRef> {
     /// # Safety
     ///
     /// Only called once at a time for each initialised [`Source`].
@@ -283,7 +283,7 @@ pub trait Callbacks<Eager: ?Sized, Lazy> {
 }
 
 pub enum NoCallbacks {}
-impl<Eager: ?Sized, Lazy> Callbacks<Eager, Lazy> for NoCallbacks {
+impl<Eager: ?Sized, Lazy, SR: SignalRuntimeRef> Callbacks<Eager, Lazy, SR> for NoCallbacks {
     const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update> = None;
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>, subscribed: bool),

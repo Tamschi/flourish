@@ -1,6 +1,8 @@
 use std::pin::Pin;
 
-use flourish::{raw::fold_sr, AsSource, SignalRuntimeRef, Source, Update};
+use flourish::{
+    raw::fold_sr, AsSource, GlobalSignalRuntime, Signal, SignalRuntimeRef, Source, Update,
+};
 
 //TODO: Hide that `debounce` returns `Fold`?
 

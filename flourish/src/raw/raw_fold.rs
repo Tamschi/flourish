@@ -151,8 +151,12 @@ impl<
 }
 
 enum E {}
-impl<T: Send, S: Send + FnMut() -> T, M: Send + ?Sized + FnMut(&mut T, T) -> Update>
-    Callbacks<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>> for E
+impl<
+        T: Send,
+        S: Send + FnMut() -> T,
+        M: Send + ?Sized + FnMut(&mut T, T) -> Update,
+        SR: SignalRuntimeRef,
+    > Callbacks<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
     const UPDATE: Option<
         unsafe fn(

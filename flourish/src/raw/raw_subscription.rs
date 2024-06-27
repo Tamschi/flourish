@@ -11,36 +11,27 @@ use super::{RawComputed, RawComputedGuard};
 #[must_use = "Subscriptions are cancelled when dropped."]
 #[repr(transparent)]
 pub struct RawSubscription<
-    T: Send,
-    F: Send + ?Sized + FnMut() -> T,
+    T: Send + Clone,
+    S: Source<SR, Value = T>,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
->(#[pin] RawComputed<T, F, SR>);
+>(#[pin] RawComputed<T, S, SR>);
 
 //TODO: Implementations
 pub struct RawSubscriptionGuard<'a, T>(RawComputedGuard<'a, T>);
 
-/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<T: Send, F: Send + ?Sized + FnMut() -> T> RawSubscription<T, F> {
-    //TODO
-}
-
-impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSubscription<T, F, SR> {
-    //TODO
-}
-
 pub fn new_raw_unsubscribed_subscription_with_runtime<
-    T: Send,
-    F: Send + FnMut() -> T,
+    T: Send + Clone,
+    S: Source<SR, Value = T>,
     SR: SignalRuntimeRef,
 >(
-    f: F,
+    source: S,
     runtime: SR,
-) -> RawSubscription<T, F, SR> {
-    RawSubscription(RawComputed::with_runtime(f, runtime))
+) -> RawSubscription<T, S, SR> {
+    RawSubscription(RawComputed::with_runtime(source, runtime))
 }
 
-pub fn pull_subscription<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
-    subscription: Pin<&RawSubscription<T, F, SR>>,
+pub fn pull_subscription<T: Send + Clone, S: Source<SR, Value = T>, SR: SignalRuntimeRef>(
+    subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
     subscription.project_ref().0.pull();
 }
@@ -51,8 +42,8 @@ pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalRuntimeRef>(
     pin
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
-    for RawSubscription<T, F, SR>
+impl<T: Send + Clone, S: Source<SR, Value = T>, SR: SignalRuntimeRef> Source<SR>
+    for RawSubscription<T, S, SR>
 {
     type Value = T;
 
