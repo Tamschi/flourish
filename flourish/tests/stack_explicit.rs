@@ -1,4 +1,9 @@
-use flourish::{GlobalSignalRuntime, Source};
+use std::pin::pin;
+
+use flourish::{
+    raw::{computed, subject, uncached},
+    GlobalSignalRuntime, Source,
+};
 mod _validator;
 use _validator::Validator;
 
@@ -7,12 +12,12 @@ fn use_macros() {
     let v = &Validator::new();
     let x = &Validator::new();
 
-    let a = ::core::pin::pin!(flourish::raw::subject(1));
+    let a = pin!(subject(1));
     let a = a.into_ref();
-    let b = ::core::pin::pin!(flourish::raw::subject(2));
+    let b = pin!(subject(2));
     let b = b.into_ref();
     let (b, set_b) = b.get_set();
-    let c = ::core::pin::pin!(flourish::raw::computed((
+    let c = pin!(computed((
         || {
             x.push("c");
             a.get() + b()
@@ -20,7 +25,7 @@ fn use_macros() {
         GlobalSignalRuntime
     )));
     let c = c.into_ref();
-    let d = ::core::pin::pin!(flourish::raw::computed((
+    let d = pin!(computed((
         || {
             x.push("d");
             a.get() - b()
@@ -28,7 +33,7 @@ fn use_macros() {
         GlobalSignalRuntime
     )));
     let d = d.into_ref();
-    let aa = ::core::pin::pin!(flourish::raw::uncached((
+    let aa = pin!(uncached((
         || {
             x.push("aa");
             c.get() + d.get()
@@ -40,7 +45,7 @@ fn use_macros() {
     x.expect([]);
 
     {
-        let sub_aa = ::core::pin::pin!(
+        let sub_aa = pin!(
             flourish::__::new_raw_unsubscribed_subscription_with_runtime(
                 || {
                     x.push("sub_aa");
@@ -70,7 +75,7 @@ fn use_macros() {
     v.expect([]);
     x.expect([]);
 
-    let sub_c = ::core::pin::pin!(
+    let sub_c = pin!(
         flourish::__::new_raw_unsubscribed_subscription_with_runtime(
             || {
                 x.push("sub_c");
@@ -81,7 +86,7 @@ fn use_macros() {
     );
     let sub_c = sub_c.into_ref();
     flourish::__::pull_subscription(sub_c);
-    let sub_d = ::core::pin::pin!(
+    let sub_d = pin!(
         flourish::__::new_raw_unsubscribed_subscription_with_runtime(
             || {
                 x.push("sub_d");
