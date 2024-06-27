@@ -1,6 +1,6 @@
 use std::{pin::Pin, sync::Arc};
 
-use flourish::{Computed, GlobalSignalRuntime, Signal, Source, Subject, Subscription};
+use flourish::{Computed, GlobalSignalRuntime, SignalSR, Source, Subject, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -22,7 +22,7 @@ fn use_constructors() {
         a.get() - b.get()
     });
     let d = d.as_source();
-    let aa = Signal::uncached(move || {
+    let aa = SignalSR::uncached(move || {
         x.push("aa");
         c.get() + d.get()
     });

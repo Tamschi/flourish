@@ -14,7 +14,7 @@ mod source;
 pub use source::{AsSource, Source};
 
 mod signal;
-pub use signal::{GlobalSignal, Signal, SignalGuard};
+pub use signal::{Signal, SignalSR, SignalGuard};
 
 pub use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use flourish::{shadow_clone, GlobalSignal, GlobalSignalRuntime, Source, Subject, Subscription};
+use flourish::{shadow_clone, Signal, GlobalSignalRuntime, Source, Subject, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -11,14 +11,14 @@ fn use_constructors() {
 
     let a = Subject::new(1);
     let (b, set_b) = Subject::new(2).into_get_set();
-    let c = GlobalSignal::computed({
+    let c = Signal::computed({
         shadow_clone!(a, b);
         move || {
             x.push("c");
             a.get() + b()
         }
     });
-    let d = GlobalSignal::computed({
+    let d = Signal::computed({
         shadow_clone!(a, b);
         move || {
             x.push("d");

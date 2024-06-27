@@ -4,10 +4,10 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::{raw::RawComputed, AsSource, Source};
 
-pub type GlobalSignal<T> = Signal<T, GlobalSignalRuntime>;
+pub type Signal<T> = SignalSR<T, GlobalSignalRuntime>;
 
 #[repr(transparent)]
-pub struct Signal<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef = GlobalSignalRuntime> {
+pub struct SignalSR<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef = GlobalSignalRuntime> {
     source: Pin<*const dyn Source<SR, Value = T>>,
     _phantom: PhantomData<(Arc<dyn Source<SR, Value = T>>, SR)>,
 }
@@ -21,9 +21,9 @@ pub struct SignalGuard<'a, T>(PhantomData<&'a T>);
 //     }
 // }
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Signal<T, SR> {
-    pub fn uncached(source: impl Source<SR, Value = T>) -> Signal<T, SR> {
-        Signal {
+impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> SignalSR<T, SR> {
+    pub fn uncached(source: impl Source<SR, Value = T>) -> SignalSR<T, SR> {
+        SignalSR {
             source: unsafe {
                 mem::transmute::<
                     *const dyn Source<SR, Value = T>,
@@ -57,9 +57,9 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Signal<T, SR> {
     }
 }
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Signal<T, SR> {}
+impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> SignalSR<T, SR> {}
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Signal<T, SR> {}
+impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> SignalSR<T, SR> {}
 
 #[repr(transparent)]
 pub struct SignalRef<'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef = GlobalSignalRuntime>
@@ -69,7 +69,7 @@ pub struct SignalRef<'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef = 
 }
 
 impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> ToOwned for SignalRef<'a, T, SR> {
-    type Owned = Signal<T, SR>;
+    type Owned = SignalSR<T, SR>;
 
     fn to_owned(&self) -> Self::Owned {
         unsafe {
@@ -91,7 +91,7 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> ToOwned for SignalRef<
 }
 
 impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Borrow<SignalRef<'a, T, SR>>
-    for Signal<T, SR>
+    for SignalSR<T, SR>
 {
     fn borrow(&self) -> &SignalRef<'a, T, SR> {
         unsafe { &*((self as *const Self).cast()) }
@@ -99,7 +99,7 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Borrow<SignalRef<'a, T
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> AsSource<'a, SR>
-    for Signal<T, SR>
+    for SignalSR<T, SR>
 {
     type Source = dyn Source<SR, Value = T>;
 

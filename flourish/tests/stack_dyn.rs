@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use flourish::{signal, subject, subscription, AsSource, Signal, Source};
+use flourish::{signal, subject, subscription, AsSource, SignalSR, Source};
 mod _validator;
 use _validator::Validator;
 
@@ -14,7 +14,7 @@ fn use_macros() {
         let b := 2;
     }
     let (b, set_b) = b.get_set();
-    let b = Signal::uncached(b);
+    let b = SignalSR::uncached(b);
     signal! {
         let c => { x.push("c"); a.get() + b.as_source().get() };
         let d => { x.push("d"); a.get() - b.get() };
