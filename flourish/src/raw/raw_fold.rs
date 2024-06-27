@@ -221,7 +221,7 @@ impl<
         S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
-    > crate::Source for RawFold<T, S, M, SR>
+    > crate::Source<SR> for RawFold<T, S, M, SR>
 {
     type Value = T;
 
@@ -252,7 +252,7 @@ impl<
 
     fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
-        Self::Value: Copy,
+        Self::Value: Clone,
     {
         self.get_clone_exclusive()
     }

@@ -195,7 +195,7 @@ macro_rules! signal {
 	)*};
 }
 
-impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Source
+impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
     for RawComputed<T, F, SR>
 {
     type Value = T;
@@ -227,7 +227,7 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Sour
 
     fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
-        Self::Value: Copy,
+        Self::Value: Clone,
     {
         self.get_clone_exclusive()
     }

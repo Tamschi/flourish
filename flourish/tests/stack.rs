@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use flourish::{signal, subject, subscription, Source};
+use flourish::{signal, subject, subscription, GlobalSignalRuntime, Source};
 mod _validator;
 use _validator::Validator;
 
@@ -27,7 +27,7 @@ fn use_macros() {
 
     {
         subscription! {
-            let sub_aa => { x.push("sub_aa"); v.push(Pin::new(&aa).get()) };
+            let sub_aa => { x.push("sub_aa"); v.push(Source::<GlobalSignalRuntime>::get(Pin::new(&aa))) };
         }
         v.expect([2]);
         x.expect(["sub_aa", "aa", "c", "d"]);

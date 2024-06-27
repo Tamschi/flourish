@@ -1,13 +1,18 @@
 use std::{borrow::Borrow, pin::Pin};
 
-pub trait Source {
+use pollinate::runtime::SignalRuntimeRef;
+
+pub trait Source<SR: ?Sized + SignalRuntimeRef> {
     type Value: ?Sized;
 
     fn touch(self: Pin<&Self>);
 
     fn get(self: Pin<&Self>) -> Self::Value
     where
-        Self::Value: Sync + Copy;
+        Self::Value: Sync + Copy,
+    {
+        self.get_clone()
+    }
 
     fn get_clone(self: Pin<&Self>) -> Self::Value
     where
@@ -15,18 +20,21 @@ pub trait Source {
 
     fn get_exclusive(self: Pin<&Self>) -> Self::Value
     where
-        Self::Value: Copy;
+        Self::Value: Copy,
+    {
+        self.get_clone_exclusive()
+    }
 
     fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
-        Self::Value: Copy;
+        Self::Value: Clone;
 
     fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
         Self::Value: 'a + Sync;
 }
 
-impl<F: ?Sized + Fn() -> T, T> Source for F {
+impl<F: ?Sized + Fn() -> T, T, SR: ?Sized + SignalRuntimeRef> Source<SR> for F {
     type Value = T;
 
     fn touch(self: Pin<&Self>) {
@@ -56,7 +64,7 @@ impl<F: ?Sized + Fn() -> T, T> Source for F {
 
     fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
-        Self::Value: Copy,
+        Self::Value: Clone,
     {
         self()
     }
@@ -69,18 +77,18 @@ impl<F: ?Sized + Fn() -> T, T> Source for F {
     }
 }
 
-pub trait AsSource<'a> {
+pub trait AsSource<'a, SR: SignalRuntimeRef> {
     type Source: 'a + ?Sized;
-    fn as_source(self: Pin<&Self>) -> Pin<&Self::Source>;
+    fn as_source(&self) -> Pin<&Self::Source>;
 }
 
-impl<'a, T: 'a + ?Sized> AsSource<'a> for T
+impl<'a, T: 'a + ?Sized, SR: SignalRuntimeRef> AsSource<'a, SR> for Pin<&T>
 where
-    T: Source,
+    T: Source<SR>,
 {
-    type Source = Self;
+    type Source = T;
 
-    fn as_source(self: Pin<&Self>) -> Pin<&Self::Source> {
-        self
+    fn as_source(&self) -> Pin<&Self::Source> {
+        self.as_ref()
     }
 }

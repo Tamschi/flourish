@@ -72,7 +72,7 @@ macro_rules! subscription {
 	)*};
 }
 
-impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> Source
+impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
     for RawSubscription<T, F, SR>
 {
     type Value = T;
@@ -104,7 +104,7 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> Source
 
     fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
-        Self::Value: Copy,
+        Self::Value: Clone,
     {
         self.project_ref().0.get_clone_exclusive()
     }

@@ -28,7 +28,7 @@ fn use_macros() {
 
     {
         subscription! {GlobalSignalRuntime=>
-            let sub_aa => { x.push("sub_aa"); v.push(Pin::new(&aa).get()) };
+            let sub_aa => { x.push("sub_aa"); v.push(Source::<GlobalSignalRuntime>::get(Pin::new(&aa))) };
         }
         v.expect([2]);
         x.expect(["sub_aa", "aa", "c", "d"]);

@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use flourish::{signal, subject, subscription, Source};
+use flourish::{signal, subject, subscription, AsSource, Signal, Source};
 mod _validator;
 use _validator::Validator;
 
@@ -14,16 +14,15 @@ fn use_macros() {
         let b := 2;
     }
     let (b, set_b) = b.get_set();
-    let b: Pin<&(dyn Source<Value = _> + Sync + Unpin)> = Pin::new(&b);
+    let b = Signal::uncached(b);
     signal! {
-        let c => { x.push("c"); a.get() + b.get() };
+        let c => { x.push("c"); a.get() + b.as_source().get() };
         let d => { x.push("d"); a.get() - b.get() };
     }
     let aa = || {
         x.push("aa");
         c.get() + d.get()
     };
-    let aa: Pin<&(dyn Source<Value = _> + Sync + Unpin)> = Pin::new(&aa);
     v.expect([]);
     x.expect([]);
 
@@ -31,7 +30,6 @@ fn use_macros() {
         subscription! {
             let sub_aa => { x.push("sub_aa"); v.push(aa.get()) };
         }
-        let _sub_aa: Pin<&(dyn Source<Value = _> + Sync)> = sub_aa;
         v.expect([2]);
         x.expect(["sub_aa", "aa", "c", "d"]);
 

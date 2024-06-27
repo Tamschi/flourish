@@ -17,7 +17,7 @@ mod deferred_queue;
 mod stale_queue;
 mod work_queue;
 
-pub trait SignalRuntimeRef: Clone {
+pub trait SignalRuntimeRef: Send + Sync + Clone {
     type Symbol: Clone + Copy;
     fn next_id(&self) -> Self::Symbol;
     fn reentrant_critical<T>(&self, f: impl FnOnce() -> T) -> T;
@@ -95,7 +95,7 @@ impl ASignalRuntime {
                 ..
             } = unsafe { &*callback_table }
             {
-				//TODO: Dirty queue isolation!
+                //TODO: Dirty queue isolation!
                 borrow.context_stack.push(None);
                 borrow.sensor_stack.push(symbol);
                 drop(borrow);
@@ -236,7 +236,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
         let lock = self.critical_mutex.lock();
         let mut borrow = (*lock).borrow_mut();
-		//TODO: Dirty queue isolation!
+        //TODO: Dirty queue isolation!
         borrow.context_stack.push(None);
         drop(borrow);
         let r = catch_unwind(AssertUnwindSafe(f));

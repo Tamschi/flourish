@@ -7,17 +7,14 @@ pub mod raw;
 mod subject;
 pub use subject::{Subject, SubjectGuard};
 
-mod computed;
-pub use computed::{Computed, ComputedGuard};
-
-mod fold;
-pub use fold::{Fold, FoldGuard};
-
 mod subscription;
 pub use subscription::{Subscription, SubscriptionGuard};
 
 mod source;
 pub use source::{AsSource, Source};
+
+mod signal;
+pub use signal::{GlobalSignal, Signal, SignalGuard};
 
 pub use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 

@@ -244,15 +244,15 @@ impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
         )
     }
 
-    pub fn as_source(&self) -> Pin<&dyn Source<Value = T>> {
+    pub fn as_source(&self) -> Pin<&dyn Source<SR, Value = T>> {
         self.0.as_ref()
     }
 }
 
-impl<'a, T: 'a + Send, SR: 'a + Sync + SignalRuntimeRef> AsSource<'a> for Subject<T, SR> {
-    type Source = dyn 'a + Source<Value = T> + Sync;
+impl<'a, T: 'a + Send, SR: 'a + Sync + SignalRuntimeRef> AsSource<'a, SR> for Subject<T, SR> {
+    type Source = dyn 'a + Source<SR, Value = T> + Sync;
 
-    fn as_source(self: Pin<&Self>) -> Pin<&Self::Source> {
-        unsafe { self.map_unchecked(|this| &*this.0) }
+    fn as_source(&self) -> Pin<&Self::Source> {
+        self.0.as_ref()
     }
 }

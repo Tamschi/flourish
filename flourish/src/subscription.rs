@@ -1,16 +1,20 @@
-use std::pin::Pin;
+use std::{marker::PhantomData, mem, pin::Pin, sync::Arc};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{Computed, ComputedGuard, Source};
+use crate::{
+    SignalGuard, Source,
+    __::{__new_raw_unsubscribed_subscription_with_runtime, __pull_subscription},
+};
 
 #[must_use = "Subscriptions are cancelled when dropped."]
-pub struct Subscription<T: Send + ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
-    Computed<T, SR>,
-);
+pub struct Subscription<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef = GlobalSignalRuntime> {
+    source: Pin<*const dyn Source<SR, Value = T>>,
+    _phantom: PhantomData<(Arc<dyn Source<SR, Value = T>>, SR)>,
+}
 
 //TODO: Implementations
-pub struct SubscriptionGuard<'a, T>(ComputedGuard<'a, T>);
+pub struct SubscriptionGuard<'a, T>(SignalGuard<'a, T>);
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<T: Send + ?Sized> Subscription<T> {
@@ -27,15 +31,25 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Subscription<T, SR> {
     where
         T: Sized,
     {
-        let this = Self(Computed::with_runtime(f, runtime));
-        this.0.pull();
-        this
+        let arc = Arc::pin(__new_raw_unsubscribed_subscription_with_runtime(f, runtime));
+        __pull_subscription(arc.as_ref());
+        Self {
+            source: unsafe {
+                mem::transmute::<
+                    *const dyn Source<SR, Value = T>,
+                    Pin<*const dyn Source<SR, Value = T>>,
+                >(Arc::into_raw(Pin::into_inner_unchecked(arc)))
+            },
+            _phantom: PhantomData,
+        }
     }
 
-    pub fn as_source(&self) -> Pin<&(dyn Source<Value = T> + Sync)>
-    where
-        SR: Sync,
-    {
-        self.0.as_source()
+    pub fn as_source(&self) -> Pin<&(dyn Source<SR, Value = T>)> {
+        unsafe {
+            Pin::new_unchecked(&*mem::transmute::<
+                Pin<*const dyn Source<SR, Value = T>>,
+                *const dyn Source<SR, Value = T>,
+            >(self.source))
+        }
     }
 }

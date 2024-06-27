@@ -324,7 +324,7 @@ macro_rules! subject {
 	)*};
 }
 
-impl<T: ?Sized, SR: SignalRuntimeRef> crate::Source for RawSubject<T, SR> {
+impl<T: ?Sized, SR: SignalRuntimeRef> crate::Source<SR> for RawSubject<T, SR> {
     type Value = T;
 
     fn touch(self: Pin<&Self>) {
@@ -354,7 +354,7 @@ impl<T: ?Sized, SR: SignalRuntimeRef> crate::Source for RawSubject<T, SR> {
 
     fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
     where
-        Self::Value: Copy,
+        Self::Value: Clone,
     {
         (*self).get_clone_exclusive()
     }
