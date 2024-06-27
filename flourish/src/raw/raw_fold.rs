@@ -204,18 +204,6 @@ impl<
     }
 }
 
-#[macro_export]
-macro_rules! fold {
-	{$runtime:expr=> $(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawFold::with_runtime(|| $f, $runtime));
-		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
-	)*};
-    {$(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawFold::new(|| $f));
-		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
-	)*};
-}
-
 impl<
         T: Send,
         S: Send + FnMut() -> T,
@@ -262,5 +250,12 @@ impl<
         Self::Value: 'a + Sync,
     {
         Box::new(self.read())
+    }
+
+    fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized,
+    {
+        self.0.clone_runtime_ref()
     }
 }

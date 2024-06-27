@@ -1,55 +1,21 @@
 use std::pin::Pin;
 
-use flourish::{
-    raw::RawFold, AsSource, Fold, GlobalSignalRuntime, SignalRuntimeRef, Source, Update,
-};
+use flourish::{raw::fold_sr, AsSource, SignalRuntimeRef, Source, Update};
 
 //TODO: Hide that `debounce` returns `Fold`?
 
-pub fn debounce<'a, T: Send + Sync + Copy + PartialEq>(
-    source: impl AsSource<'a, Source: Source<Value = T>> + Send,
-) -> Fold<T> {
-    debounce_with_runtime(source, GlobalSignalRuntime)
+pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
+) -> impl 'a + Source<SR, Value = T> {
+    let runtime = source.clone_runtime_ref();
+    debounce_sr(source, runtime)
 }
 
-pub fn debounce_with_runtime<'a, T: Send + Sync + Copy + PartialEq, SR: SignalRuntimeRef>(
-    source: impl AsSource<'a, Source: Source<Value = T>> + Send,
+pub fn debounce_sr<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
     runtime: SR,
-) -> Fold<T, SR> {
-    Fold::with_runtime(
-        move || {
-            unsafe { Pin::new_unchecked(&source) }
-                .as_ref()
-                .as_source()
-                .get()
-        },
-        |current, next| {
-            if current != &next {
-                *current = next;
-                Update::Propagate
-            } else {
-                Update::Halt
-            }
-        },
-        runtime,
-    )
-}
-
-pub fn raw_debounce<'a, T: 'a + Send + Sync + Copy + PartialEq>(
-    source: impl 'a + AsSource<'a, Source: Source<Value = T>> + Send,
-) -> impl AsSource<'a, Source: Source<Value = T>> + Send {
-    raw_debounce_with_runtime(source, GlobalSignalRuntime)
-}
-
-pub fn raw_debounce_with_runtime<
-    'a,
-    T: 'a + Send + Sync + Copy + PartialEq,
-    SR: 'a + Send + SignalRuntimeRef<Symbol: Send>,
->(
-    source: impl 'a + AsSource<'a, Source: Source<Value = T>> + Send,
-    runtime: SR,
-) -> impl AsSource<'a, Source: Source<Value = T>> + Send {
-    RawFold::with_runtime(
+) -> impl 'a + Source<SR, Value = T> {
+    fold_sr(
         move || {
             unsafe { Pin::new_unchecked(&source) }
                 .as_ref()

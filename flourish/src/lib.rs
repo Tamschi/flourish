@@ -14,13 +14,15 @@ mod source;
 pub use source::{AsSource, Source};
 
 mod signal;
-pub use signal::{Signal, SignalSR, SignalGuard};
+pub use signal::{Signal, SignalGuard, SignalSR};
 
 pub use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 #[doc(hidden = "macro-only")]
 pub mod __ {
-    pub use super::raw::__::*;
+    pub use super::raw::raw_subscription::{
+        new_raw_unsubscribed_subscription_with_runtime, pull_subscription,pin_into_pin_impl_source
+    };
 }
 
 #[macro_export]

@@ -1,5 +1,5 @@
-use flourish::{Subject, Subscription};
-use flourish_extra::{debounce, pipe, raw_debounce};
+use flourish::{Signal, Subject, Subscription};
+use flourish_extra::{debounce, pipe};
 
 mod _validator;
 use _validator::Validator;
@@ -9,7 +9,7 @@ fn concise() {
     let v = &Validator::new();
 
     let (get, set) = Subject::new(0).into_get_set();
-    let debounced = pipe((get, raw_debounce, debounce));
+    let debounced = Signal::uncached(pipe((get, debounce, debounce)));
     let _sub = Subscription::new(move || v.push(debounced.get()));
     v.expect([0]);
 

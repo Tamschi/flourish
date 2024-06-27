@@ -28,13 +28,7 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawSubscrip
     //TODO
 }
 
-pub fn __new_raw_unsubscribed_subscription<T: Send, F: Send + FnMut() -> T>(
-    f: F,
-) -> RawSubscription<T, F> {
-    RawSubscription(RawComputed::new(f))
-}
-
-pub fn __new_raw_unsubscribed_subscription_with_runtime<
+pub fn new_raw_unsubscribed_subscription_with_runtime<
     T: Send,
     F: Send + FnMut() -> T,
     SR: SignalRuntimeRef,
@@ -45,34 +39,19 @@ pub fn __new_raw_unsubscribed_subscription_with_runtime<
     RawSubscription(RawComputed::with_runtime(f, runtime))
 }
 
-pub fn __pull_subscription<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
+pub fn pull_subscription<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
     subscription: Pin<&RawSubscription<T, F, SR>>,
 ) {
     subscription.project_ref().0.pull();
 }
 
-pub(crate) mod __ {
-    pub use super::{
-        __new_raw_unsubscribed_subscription, __new_raw_unsubscribed_subscription_with_runtime,
-        __pull_subscription,
-    };
+pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalRuntimeRef>(
+    pin: Pin<&'a impl Source<SR, Value = T>>,
+) -> Pin<&'a impl Source<SR, Value = T>> {
+    pin
 }
 
-#[macro_export]
-macro_rules! subscription {
-	{$runtime:expr=> $(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::__::__new_raw_unsubscribed_subscription_with_runtime(|| $f, $runtime));
-		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
-		$crate::__::__pull_subscription($name);
-	)*};
-    {$(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::__::__new_raw_unsubscribed_subscription(|| $f));
-		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
-		$crate::__::__pull_subscription($name);
-	)*};
-}
-
-impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
     for RawSubscription<T, F, SR>
 {
     type Value = T;
@@ -114,5 +93,12 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
         Self::Value: 'a + Sync,
     {
         Box::new(self.project_ref().0.read())
+    }
+
+    fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized,
+    {
+        self.0.clone_runtime_ref()
     }
 }

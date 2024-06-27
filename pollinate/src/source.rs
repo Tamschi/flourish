@@ -253,6 +253,13 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         }
         self.handle.propagate()
     }
+
+    pub fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized,
+    {
+        self.handle.runtime.clone()
+    }
 }
 
 impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eager, Lazy, SR> {

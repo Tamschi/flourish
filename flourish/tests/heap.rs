@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use flourish::{shadow_clone, Signal, GlobalSignalRuntime, Source, Subject, Subscription};
+use flourish::{shadow_clone, GlobalSignalRuntime, Signal, Source, Subject, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -25,7 +23,7 @@ fn use_constructors() {
             a.get() - b()
         }
     });
-    let aa = Arc::pin({
+    let aa = Signal::uncached({
         shadow_clone!(c, d);
         move || {
             x.push("aa");

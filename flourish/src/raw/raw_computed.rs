@@ -183,19 +183,7 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> RawComputed
     }
 }
 
-#[macro_export]
-macro_rules! signal {
-	{$runtime:expr=> $(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawComputed::with_runtime(|| $f, $runtime));
-		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
-	)*};
-    {$(let $(mut $(@@ $_mut:ident)?)? $name:ident => $f:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawComputed::new(|| $f));
-		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
-	)*};
-}
-
-impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
     for RawComputed<T, F, SR>
 {
     type Value = T;
@@ -237,5 +225,12 @@ impl<T: Send, F: Send + ?Sized + FnMut() -> T, SR: SignalRuntimeRef> crate::Sour
         Self::Value: 'a + Sync,
     {
         Box::new(self.read())
+    }
+
+    fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized,
+    {
+        self.0.clone_runtime_ref()
     }
 }

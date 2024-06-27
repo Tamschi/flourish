@@ -1,7 +1,4 @@
-use std::pin::Pin;
-
-use flourish::{signal, subject, subscription, Source};
-use pollinate::runtime::GlobalSignalRuntime;
+use flourish::{signals_helper, GlobalSignalRuntime, Source};
 mod _validator;
 use _validator::Validator;
 
@@ -10,25 +7,31 @@ fn use_macros() {
     let v = &Validator::new();
     let x = &Validator::new();
 
-    subject! {GlobalSignalRuntime=>
-        let a := 1;
-        let b := 2;
+    signals_helper! {
+        let a = subject_sr!(1, GlobalSignalRuntime);
+        let b = subject_sr!(2, GlobalSignalRuntime);
     }
     let (b, set_b) = b.get_set();
-    signal! {GlobalSignalRuntime=>
-        let c => { x.push("c"); a.get() + b() };
-        let d => { x.push("d"); a.get() - b() };
+    signals_helper! {
+        let c = computed_sr!(|| {
+            x.push("c");
+            a.get() + b()
+        }, GlobalSignalRuntime);
+        let d = computed_sr!(|| {
+            x.push("d");
+            a.get() - b()
+        }, GlobalSignalRuntime);
+        let aa = uncached_sr!(|| {
+            x.push("aa");
+            c.get() + d.get()
+        }, GlobalSignalRuntime);
     }
-    let aa = || {
-        x.push("aa");
-        c.get() + d.get()
-    };
     v.expect([]);
     x.expect([]);
 
     {
-        subscription! {GlobalSignalRuntime=>
-            let sub_aa => { x.push("sub_aa"); v.push(Source::<GlobalSignalRuntime>::get(Pin::new(&aa))) };
+        signals_helper! {
+            let _sub_aa = subscription_sr!(|| { x.push("sub_aa"); v.push(aa.get()) }, GlobalSignalRuntime);
         }
         v.expect([2]);
         x.expect(["sub_aa", "aa", "c", "d"]);
@@ -49,9 +52,9 @@ fn use_macros() {
     v.expect([]);
     x.expect([]);
 
-    subscription! {GlobalSignalRuntime=>
-        let sub_c => { x.push("sub_c"); v.push(c.get()) };
-        let sub_d => { x.push("sub_d"); v.push(d.get()) };
+    signals_helper! {
+        let _sub_c = subscription_sr!(|| { x.push("sub_c"); v.push(c.get()) }, GlobalSignalRuntime);
+        let _sub_d = subscription_sr!(|| { x.push("sub_d"); v.push(d.get()) }, GlobalSignalRuntime);
     }
     v.expect([8, 2]);
     x.expect(["sub_c", "c", "sub_d", "d"]);

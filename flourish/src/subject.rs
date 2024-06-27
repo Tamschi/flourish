@@ -15,11 +15,11 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct Subject<T: ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime>(
+pub struct Subject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime>(
     Pin<Arc<RawSubject<T, SR>>>,
 );
 
-impl<T: ?Sized + std::fmt::Debug, SR: SignalRuntimeRef + std::fmt::Debug> std::fmt::Debug
+impl<T: ?Sized + std::fmt::Debug + Send, SR: SignalRuntimeRef + std::fmt::Debug> std::fmt::Debug
     for Subject<T, SR>
 where
     SR::Symbol: Debug,
@@ -46,14 +46,14 @@ impl<'a, T> Borrow<T> for SubjectGuard<'a, T> {
 }
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<T> Subject<T> {
+impl<T: Send> Subject<T> {
     pub fn new(initial_value: T) -> Self
 where {
         Self::with_runtime(initial_value, GlobalSignalRuntime)
     }
 }
 
-impl<T, SR: SignalRuntimeRef> Subject<T, SR> {
+impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
     pub fn with_runtime(initial_value: T, runtime: SR) -> Self
     where
         SR: Default,

@@ -1,6 +1,4 @@
-use std::pin::Pin;
-
-use flourish::{signal, subject, subscription, GlobalSignalRuntime, Source};
+use flourish::{signals_helper, Source};
 mod _validator;
 use _validator::Validator;
 
@@ -9,25 +7,31 @@ fn use_macros() {
     let v = &Validator::new();
     let x = &Validator::new();
 
-    subject! {
-        let a := 1;
-        let b := 2;
+    signals_helper! {
+        let a = subject!(1);
+        let b = subject!(2);
     }
     let (b, set_b) = b.get_set();
-    signal! {
-        let c => { x.push("c"); a.get() + b() };
-        let d => { x.push("d"); a.get() - b() };
+    signals_helper! {
+        let c = computed!(|| {
+            x.push("c");
+            a.get() + b()
+        });
+        let d = computed!(|| {
+            x.push("d");
+            a.get() - b()
+        });
+        let aa = uncached!(|| {
+            x.push("aa");
+            c.get() + d.get()
+        });
     }
-    let aa = || {
-        x.push("aa");
-        c.get() + d.get()
-    };
     v.expect([]);
     x.expect([]);
 
     {
-        subscription! {
-            let sub_aa => { x.push("sub_aa"); v.push(Source::<GlobalSignalRuntime>::get(Pin::new(&aa))) };
+        signals_helper! {
+            let _sub_aa = subscription!(|| { x.push("sub_aa"); v.push(aa.get()) });
         }
         v.expect([2]);
         x.expect(["sub_aa", "aa", "c", "d"]);
@@ -48,9 +52,9 @@ fn use_macros() {
     v.expect([]);
     x.expect([]);
 
-    subscription! {
-        let sub_c => { x.push("sub_c"); v.push(c.get()) };
-        let sub_d => { x.push("sub_d"); v.push(d.get()) };
+    signals_helper! {
+        let _sub_c = subscription!(|| { x.push("sub_c"); v.push(c.get()) });
+        let _sub_d = subscription!(|| { x.push("sub_d"); v.push(d.get()) });
     }
     v.expect([8, 2]);
     x.expect(["sub_c", "c", "sub_d", "d"]);

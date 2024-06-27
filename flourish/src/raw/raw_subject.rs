@@ -16,12 +16,12 @@ use pollinate::{
 use crate::utils::conjure_zst;
 
 #[pin_project]
-pub struct RawSubject<T: ?Sized, SR: SignalRuntimeRef = GlobalSignalRuntime> {
+pub struct RawSubject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime> {
     #[pin]
     source: Source<AssertSync<RwLock<T>>, (), SR>,
 }
 
-impl<T: ?Sized + Debug, SR: SignalRuntimeRef + Debug> Debug for RawSubject<T, SR>
+impl<T: ?Sized + Send + Debug, SR: SignalRuntimeRef + Debug> Debug for RawSubject<T, SR>
 where
     SR::Symbol: Debug,
 {
@@ -33,7 +33,7 @@ where
 }
 
 /// TODO: Safety.
-unsafe impl<T, SR: SignalRuntimeRef + Sync> Sync for RawSubject<T, SR> {}
+unsafe impl<T: Send, SR: SignalRuntimeRef + Sync> Sync for RawSubject<T, SR> {}
 
 struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
@@ -68,13 +68,13 @@ impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuard<'a, T> {
 }
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<T> RawSubject<T> {
+impl<T: Send> RawSubject<T> {
     pub fn new(initial_value: T) -> Self {
         Self::with_runtime(initial_value, GlobalSignalRuntime)
     }
 }
 
-impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
+impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub fn with_runtime(initial_value: T, runtime: SR) -> Self
     where
         T: Sized,
@@ -312,19 +312,7 @@ impl<T: ?Sized, SR: SignalRuntimeRef> RawSubject<T, SR> {
     }
 }
 
-#[macro_export]
-macro_rules! subject {
-	{$runtime:expr=> $(let $(mut $(@@ $_mut:ident)?)? $name:ident := $initial_value:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawSubject::with_runtime($initial_value, $runtime));
-		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
-	)*};
-    {$(let $(mut $(@@ $_mut:ident)?)? $name:ident := $initial_value:expr;)*} => {$(
-		let $name = ::std::pin::pin!($crate::raw::RawSubject::new($initial_value));
-		let $(mut $(@@ $_mut)?)? $name = $name.into_ref();
-	)*};
-}
-
-impl<T: ?Sized, SR: SignalRuntimeRef> crate::Source<SR> for RawSubject<T, SR> {
+impl<T: Send, SR: SignalRuntimeRef> crate::Source<SR> for RawSubject<T, SR> {
     type Value = T;
 
     fn touch(self: Pin<&Self>) {
@@ -364,5 +352,12 @@ impl<T: ?Sized, SR: SignalRuntimeRef> crate::Source<SR> for RawSubject<T, SR> {
         Self::Value: 'a + Sync,
     {
         Box::new(self.get_ref().read())
+    }
+
+    fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized,
+    {
+        self.source.clone_runtime_ref()
     }
 }

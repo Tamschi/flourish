@@ -2,8 +2,8 @@ use std::{borrow::Borrow, pin::Pin};
 
 use pollinate::runtime::SignalRuntimeRef;
 
-pub trait Source<SR: ?Sized + SignalRuntimeRef> {
-    type Value: ?Sized;
+pub trait Source<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
+    type Value: ?Sized + Send;
 
     fn touch(self: Pin<&Self>);
 
@@ -32,9 +32,15 @@ pub trait Source<SR: ?Sized + SignalRuntimeRef> {
     fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
         Self::Value: 'a + Sync;
+
+    fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized;
 }
 
-impl<F: ?Sized + Fn() -> T, T, SR: ?Sized + SignalRuntimeRef> Source<SR> for F {
+impl<F: ?Sized + Send + Sync + Fn() -> T, T: Send, SR: ?Sized + SignalRuntimeRef + Default>
+    Source<SR> for F
+{
     type Value = T;
 
     fn touch(self: Pin<&Self>) {
@@ -74,6 +80,13 @@ impl<F: ?Sized + Fn() -> T, T, SR: ?Sized + SignalRuntimeRef> Source<SR> for F {
         Self::Value: 'a + Sync,
     {
         Box::new(self())
+    }
+
+    fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized,
+    {
+        SR::default()
     }
 }
 

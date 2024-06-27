@@ -18,7 +18,7 @@ mod stale_queue;
 mod work_queue;
 
 pub trait SignalRuntimeRef: Send + Sync + Clone {
-    type Symbol: Clone + Copy;
+    type Symbol: Clone + Copy + Send;
     fn next_id(&self) -> Self::Symbol;
     fn reentrant_critical<T>(&self, f: impl FnOnce() -> T) -> T;
     fn touch(&self, id: Self::Symbol);
