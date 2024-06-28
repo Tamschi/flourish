@@ -51,7 +51,7 @@ signals_helper! {
 `flourish` detects and updates dependencies automatically:
 
 ```rust
-use flourish::{shadow_clone, Signal, Subject, Subscription, Update};
+use flourish::{shadow_clone, Subject, Subscription};
 
 let a = Subject::new("a");
 let b = Subject::new("b");
