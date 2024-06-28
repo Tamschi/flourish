@@ -21,17 +21,17 @@ fn use_macros() {
             x.push("d");
             a.get() - b()
         }, GlobalSignalRuntime);
-        let aa = uncached_from_source!((|| {
+        let aa = computed_uncached_with_runtime!(|| {
             x.push("aa");
             c.get() + d.get()
-        }, GlobalSignalRuntime));
+        }, GlobalSignalRuntime);
     }
     v.expect([]);
     x.expect([]);
 
     {
         signals_helper! {
-            let _sub_aa = subscription_from_source!((|| { x.push("sub_aa"); v.push(aa.get()) }, GlobalSignalRuntime));
+            let _sub_aa = subscription_with_runtime!(|| { x.push("sub_aa"); v.push(aa.get()) }, GlobalSignalRuntime);
         }
         v.expect([2]);
         x.expect(["sub_aa", "aa", "c", "d"]);
@@ -53,8 +53,8 @@ fn use_macros() {
     x.expect([]);
 
     signals_helper! {
-        let _sub_c = subscription_from_source!((|| { x.push("sub_c"); v.push(c.get()) }, GlobalSignalRuntime));
-        let _sub_d = subscription_from_source!((|| { x.push("sub_d"); v.push(d.get()) }, GlobalSignalRuntime));
+        let _sub_c = subscription_with_runtime!(|| { x.push("sub_c"); v.push(c.get()) }, GlobalSignalRuntime);
+        let _sub_d = subscription_with_runtime!(|| { x.push("sub_d"); v.push(d.get()) }, GlobalSignalRuntime);
     }
     v.expect([8, 2]);
     x.expect(["sub_c", "c", "sub_d", "d"]);

@@ -1,4 +1,4 @@
-use flourish::{Signal, Subject, Subscription};
+use flourish::{raw::computed, GlobalSignalRuntime, Signal, Subject, Subscription};
 use flourish_extra::debounce;
 
 mod _validator;
@@ -10,14 +10,20 @@ fn debounce_test() {
     let x = &Validator::new();
 
     let (get, set) = Subject::new(0).into_get_set();
-    let debounced = Signal::uncached(debounce(move || {
-        x.push("d");
-        get()
-    }));
-    let _sub = Subscription::new(move || {
-        x.push("s");
-        v.push(debounced.get())
-    });
+    let debounced = Signal::new(debounce(computed(
+        move || {
+            x.push("d");
+            get()
+        },
+        GlobalSignalRuntime,
+    )));
+    let _sub = Subscription::new(computed(
+        move || {
+            x.push("s");
+            v.push(debounced.get())
+        },
+        GlobalSignalRuntime,
+    ));
     v.expect([0]);
     x.expect(["s", "d"]);
 

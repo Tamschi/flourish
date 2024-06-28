@@ -10,7 +10,7 @@ use std::{
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-    raw::{cached, computed, merged},
+    raw::{cached, computed, computed_uncached, computed_uncached_mut, merged},
     AsSource, Source,
 };
 
@@ -72,15 +72,11 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop for Sig
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {
-    fn new(source: impl 'a + Source<SR, Value = T>) -> Self {
+    pub fn new(source: impl 'a + Source<SR, Value = T>) -> Self {
         SignalSR {
             source: Arc::into_raw(Arc::new(source)),
             _phantom: PhantomData,
         }
-    }
-
-    pub fn uncached(source: impl 'a + Source<SR, Value = T>) -> Self {
-        Self::new(source)
     }
 
     pub fn cached(source: impl 'a + Send + Source<SR, Value = T>) -> Self
@@ -103,6 +99,36 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         T: Send + Sync + Sized + Clone,
     {
         Self::new(computed(f, runtime))
+    }
+
+    pub fn computed_uncached(f: impl 'a + Send + Sync + Fn() -> T) -> Self
+    where
+        T: Send + Sync + Sized + Clone,
+        SR: Default,
+    {
+        Self::new(computed_uncached(f, SR::default()))
+    }
+
+    pub fn computed_uncached_with_runtime(f: impl 'a + Send + Sync + Fn() -> T, runtime: SR) -> Self
+    where
+        T: Send + Sync + Sized + Clone,
+    {
+        Self::new(computed_uncached(f, runtime))
+    }
+
+    pub fn computed_uncached_mut(f: impl 'a + Send + FnMut() -> T) -> Self
+    where
+        T: Send + Sync + Sized + Clone,
+        SR: Default,
+    {
+        Self::new(computed_uncached_mut(f, SR::default()))
+    }
+
+    pub fn computed_uncached_mut_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
+    where
+        T: Send + Sync + Sized + Clone,
+    {
+        Self::new(computed_uncached_mut(f, runtime))
     }
 
     pub fn merged(

@@ -4,7 +4,7 @@ use std::{
 };
 
 use flourish::{
-    raw::{cached, computed, folded, merged},
+    raw::{computed, folded, merged},
     SignalRuntimeRef, Source, SubscriptionSR, Update,
 };
 use num_traits::Zero;
@@ -31,24 +31,14 @@ pub fn delta<
 >(
     source: impl 'a + Source<SR, Value = T>,
 ) -> impl 'a + Source<SR, Value = T::Output> {
-    let folded = folded(
-        source,
-        (None, T::Output::zero()),
-        |(previous, delta), next| {
-            if let Some(previous) = previous {
-                *delta = next - *previous;
-                *previous = next;
-            } else {
-                *previous = Some(next);
-            }
-            Update::Propagate
-        },
-    );
-    let clone_runtime_ref = folded.clone_runtime_ref();
-    cached((
-        move || unsafe { Pin::new_unchecked(&folded) }.read().borrow().1,
-        clone_runtime_ref,
-    ))
+    let mut previous = None;
+    folded(source, T::Output::zero(), move |delta, next| {
+        if let Some(previous) = previous {
+            *delta = next - previous;
+        }
+        previous = Some(next);
+        Update::Propagate
+    })
 }
 
 pub fn sparse_tally<

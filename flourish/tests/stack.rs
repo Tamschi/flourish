@@ -21,7 +21,7 @@ fn use_macros() {
             x.push("d");
             a.get() - b()
         });
-        let aa = uncached!(|| {
+        let aa = computed_uncached!(|| {
             x.push("aa");
             c.get() + d.get()
         });

@@ -1,4 +1,6 @@
-use flourish::{shadow_clone, Signal, Subject, Subscription};
+use flourish::{
+    raw::computed_uncached, shadow_clone, GlobalSignalRuntime, Signal, Subject, Subscription,
+};
 use flourish_extra::delta;
 
 mod _validator;
@@ -9,8 +11,8 @@ fn delta_test() {
     let v = &Validator::new();
 
     let (get, set) = Subject::new(1).into_get_set();
-    let delta = Signal::uncached(delta(get));
-    let sub = Subscription::new({
+    let delta = Signal::new(delta(computed_uncached(get, GlobalSignalRuntime)));
+    let sub = Subscription::computed({
         shadow_clone!(delta);
         move || v.push(delta.get())
     });
@@ -25,7 +27,7 @@ fn delta_test() {
     set(5);
     set(9);
     v.expect([]);
-    let _sub = Subscription::new(move || v.push(delta.get()));
+    let _sub = Subscription::computed(move || v.push(delta.get()));
     v.expect([9]);
     set(9);
     v.expect([0]);

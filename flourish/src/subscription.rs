@@ -3,7 +3,10 @@ use std::{marker::PhantomData, pin::Pin, sync::Arc};
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::{
-    raw::{new_raw_unsubscribed_subscription, pull_subscription},
+    raw::{
+        computed, computed_uncached, computed_uncached_mut, new_raw_unsubscribed_subscription,
+        pull_subscription,
+    },
     AsSource, SignalGuard, Source,
 };
 
@@ -44,6 +47,21 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a,
                 _phantom: PhantomData,
             }
         }
+    }
+
+    pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
+    where
+        T: Send + Sync + Sized + Clone,
+        SR: Default,
+    {
+        Self::new(computed(f, SR::default()))
+    }
+
+    pub fn computed_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
+    where
+        T: Send + Sync + Sized + Clone,
+    {
+        Self::new(computed(f, runtime))
     }
 }
 

@@ -2,10 +2,16 @@ use pollinate::runtime::Update;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 mod raw_cached;
-pub(crate) use raw_cached::{RawCached, RawCachedGuard};
+pub(crate) use raw_cached::RawCached;
 
 mod raw_computed;
 pub(crate) use raw_computed::{RawComputed, RawComputedGuard};
+
+mod raw_computed_uncached;
+pub(crate) use raw_computed_uncached::RawComputedUncached;
+
+mod raw_computed_uncached_mut;
+pub(crate) use raw_computed_uncached_mut::RawComputedUncachedMut;
 
 mod raw_subject;
 pub(crate) use raw_subject::{RawSubject, RawSubjectGuard};
@@ -58,7 +64,7 @@ pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
 #[macro_export]
 macro_rules! cached {
     ($f:expr) => {{
-		super let cached = ::core::pin::pin!($crate::raw::cached(($f, $crate::GlobalSignalRuntime)));
+		super let cached = ::core::pin::pin!($crate::raw::computed($f, $crate::GlobalSignalRuntime));
         ::core::pin::Pin::into_ref(cached)
 	}};
 }
@@ -99,6 +105,62 @@ macro_rules! computed_with_runtime {
 	}};
 }
 pub use crate::computed_with_runtime;
+
+pub fn computed_uncached<
+    'a,
+    T: 'a + Send + Clone,
+    F: 'a + Send + Sync + Fn() -> T,
+    SR: 'a + SignalRuntimeRef,
+>(
+    f: F,
+    runtime: SR,
+) -> impl 'a + Source<SR, Value = T> {
+    RawComputedUncached::<T, _, SR>::new(f, runtime)
+}
+#[macro_export]
+macro_rules! computed_uncached {
+    ($f:expr) => {{
+		super let computed_uncached = ::core::pin::pin!($crate::raw::computed_uncached($f, $crate::GlobalSignalRuntime));
+        ::core::pin::Pin::into_ref(computed_uncached)
+	}};
+}
+pub use crate::computed_uncached;
+#[macro_export]
+macro_rules! computed_uncached_with_runtime {
+    ($source:expr, $runtime:expr) => {{
+		super let computed_uncached_with_runtime = ::core::pin::pin!($crate::raw::computed_uncached($source, $runtime));
+        ::core::pin::Pin::into_ref(computed_uncached_with_runtime)
+	}};
+}
+pub use crate::computed_uncached_with_runtime;
+
+pub fn computed_uncached_mut<
+    'a,
+    T: 'a + Send + Clone,
+    F: 'a + Send + FnMut() -> T,
+    SR: 'a + SignalRuntimeRef,
+>(
+    f: F,
+    runtime: SR,
+) -> impl 'a + Source<SR, Value = T> {
+    RawComputedUncachedMut::<T, _, SR>::new(f, runtime)
+}
+#[macro_export]
+macro_rules! computed_uncached_mut {
+    ($f:expr) => {{
+		super let computed_uncached_mut = ::core::pin::pin!($crate::raw::computed_uncached_mut($f, $crate::GlobalSignalRuntime));
+        ::core::pin::Pin::into_ref(computed_uncached_mut)
+	}};
+}
+pub use crate::computed_uncached_mut;
+#[macro_export]
+macro_rules! computed_uncached_mut_with_runtime {
+    ($source:expr, $runtime:expr) => {{
+		super let computed_uncached_mut_with_runtime = ::core::pin::pin!($crate::raw::computed_uncached_mut($source, $runtime));
+        ::core::pin::Pin::into_ref(computed_uncached_mut_with_runtime)
+	}};
+}
+pub use crate::computed_uncached_mut_with_runtime;
 
 pub fn folded<'a, B: 'a + Send, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
@@ -147,32 +209,6 @@ macro_rules! merged_from_source {
 }
 pub use crate::merged_from_source;
 
-pub fn uncached<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
-) -> impl 'a + Source<SR, Value = T> {
-    let clone_runtime_ref = source.clone_runtime_ref();
-    {
-        let _ = clone_runtime_ref;
-        source
-    }
-}
-#[macro_export]
-macro_rules! uncached {
-    ($f:expr) => {{
-		super let uncached = ::core::pin::pin!($crate::raw::uncached(($f, $crate::GlobalSignalRuntime)));
-        ::core::pin::Pin::into_ref(uncached)
-    }};
-}
-pub use crate::uncached;
-#[macro_export]
-macro_rules! uncached_from_source {
-    ($source:expr) => {{
-		super let uncached = ::core::pin::pin!($crate::raw::uncached($source));
-        ::core::pin::Pin::into_ref(uncached)
-    }};
-}
-pub use crate::uncached_from_source;
-
 #[macro_export]
 macro_rules! signals_helper {
 	{let $name:ident = subject!($initial_value:expr);} => {
@@ -195,8 +231,24 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::computed($f, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = computed_with_runtime!($source:expr, $runtime:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed($source, $runtime));
+	{let $name:ident = computed_with_runtime!($f:expr, $runtime:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed($f, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = computed_uncached!($f:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed_uncached($f, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = computed_uncached_with_runtime!($f:expr, $runtime:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed_uncached($f, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = computed_uncached_mut!($f:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($f, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = computed_uncached_mut_with_runtime!($f:expr, $runtime:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($f, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = merged!($selector:expr, $fold:expr);} => {
@@ -207,16 +259,14 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::merged($source, $f));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = uncached!($f:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::uncached(($f, $crate::GlobalSignalRuntime)));
-		let $name = ::core::pin::Pin::into_ref($name);
-	};
-	{let $name:ident = uncached_from_source!($source:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::uncached($source));
-		let $name = ::core::pin::Pin::into_ref($name);
-	};
 	{let $name:ident = subscription!($f:expr);} => {
-		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription(($f, $crate::GlobalSignalRuntime)));
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::raw::computed($f, $crate::GlobalSignalRuntime)));
+		let $name = ::core::pin::Pin::into_ref($name);
+		$crate::__::pull_subscription($name);
+		let $name = $crate::__::pin_into_pin_impl_source($name);
+	};
+	{let $name:ident = subscription_with_runtime!($f:expr, $runtime:expr);} => {
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::raw::computed($f, $runtime)));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$crate::__::pull_subscription($name);
 		let $name = $crate::__::pin_into_pin_impl_source($name);

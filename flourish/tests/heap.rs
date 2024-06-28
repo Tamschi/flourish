@@ -1,4 +1,4 @@
-use flourish::{shadow_clone, GlobalSignalRuntime, Signal, Source, Subject, Subscription};
+use flourish::{shadow_clone, Signal, Subject, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -23,7 +23,7 @@ fn use_constructors() {
             a.get() - b()
         }
     });
-    let aa = Signal::uncached({
+    let aa = Signal::computed_uncached({
         shadow_clone!(c, d);
         move || {
             x.push("aa");
@@ -33,9 +33,9 @@ fn use_constructors() {
     v.expect([]);
     x.expect([]);
 
-    let sub_aa = Subscription::new(move || {
+    let sub_aa = Subscription::computed(move || {
         x.push("sub_aa");
-        v.push(Source::<GlobalSignalRuntime>::get(aa.as_ref()))
+        v.push(aa.get())
     });
     v.expect([2]);
     x.expect(["sub_aa", "aa", "c", "d"]);
@@ -57,14 +57,14 @@ fn use_constructors() {
     v.expect([]);
     x.expect([]);
 
-    let _sub_c = Subscription::new(move || {
+    let _sub_c = Subscription::computed(move || {
         x.push("_sub_c");
         v.push(c.get())
     });
     v.expect([8]);
     x.expect(["_sub_c", "c"]);
 
-    let _sub_d = Subscription::new(move || {
+    let _sub_d = Subscription::computed(move || {
         x.push("_sub_d");
         v.push(d.get())
     });
