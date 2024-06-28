@@ -1,39 +1,16 @@
-use std::pin::Pin;
-
-use flourish::{
-    raw::fold_sr, AsSource, GlobalSignalRuntime, Signal, SignalRuntimeRef, Source, Update,
-};
-
-//TODO: Hide that `debounce` returns `Fold`?
+use flourish::{raw::fold, SignalRuntimeRef, Source, Update};
 
 pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
 ) -> impl 'a + Source<SR, Value = T> {
-    let runtime = source.clone_runtime_ref();
-    debounce_sr(source, runtime)
-}
-
-pub fn debounce_sr<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
-    runtime: SR,
-) -> impl 'a + Source<SR, Value = T> {
-    fold_sr(
-        move || {
-            unsafe { Pin::new_unchecked(&source) }
-                .as_ref()
-                .as_source()
-                .get()
-        },
-        |current, next| {
-            if current != &next {
-                *current = next;
-                Update::Propagate
-            } else {
-                Update::Halt
-            }
-        },
-        runtime,
-    )
+    fold(source, |current, next| {
+        if current != &next {
+            *current = next;
+            Update::Propagate
+        } else {
+            Update::Halt
+        }
+    })
 }
 
 pub fn pipe<P: IntoPipe>(pipe: P) -> P::Pipe {

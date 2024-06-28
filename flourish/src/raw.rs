@@ -61,11 +61,11 @@ macro_rules! computed {
 }
 pub use crate::computed;
 
-pub fn fold<'a, T: 'a + Send>(
-    select: impl 'a + Send + FnMut() -> T,
-    merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
-) -> impl 'a + Source<GlobalSignalRuntime, Value = T> {
-    fold_sr(select, merge, GlobalSignalRuntime)
+pub fn fold<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
+    f: impl 'a + Send + FnMut(&mut T, T) -> Update,
+) -> impl 'a + Source<SR, Value = T> {
+    RawFold::new(source, f)
 }
 #[macro_export]
 macro_rules! fold {
@@ -75,24 +75,6 @@ macro_rules! fold {
 	}};
 }
 pub use crate::fold;
-
-pub fn fold_sr<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
-    select: impl 'a + Send + FnMut() -> T,
-    merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
-    runtime: SR,
-) -> impl 'a + Source<SR, Value = T> {
-    RawFold::with_runtime(select, merge, runtime)
-}
-#[macro_export]
-macro_rules! fold_sr {
-    ($source:expr, $runtime:expr) => {{
-		super let fold_sr = ::core::pin::pin!($crate::raw::fold_sr(
-            $source, $runtime
-        ));
-        ::core::pin::Pin::into_ref(fold_sr)
-	}};
-}
-pub use crate::fold_sr;
 
 pub fn uncached<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
