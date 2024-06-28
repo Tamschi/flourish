@@ -10,7 +10,7 @@ use std::{
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-    raw::{computed, computed_uncached, computed_uncached_mut, merged},
+    raw::{computed, computed_uncached, computed_uncached_mut, folded, merged},
     AsSource, Source,
 };
 
@@ -171,6 +171,27 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed_uncached_mut(f, runtime))
     }
 
+    /// This is a convenience method. See [`folded`].
+    pub fn folded(init: T, f: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
+    where
+        T: Clone,
+        SR: Default,
+    {
+        Self::new(folded(init, f, SR::default()))
+    }
+
+    /// This is a convenience method. See [`folded`].
+    pub fn folded_with_runtime(
+        init: T,
+        f: impl 'a + Send + FnMut(&mut T) -> Update,
+        runtime: SR,
+    ) -> Self
+    where
+        T: Clone,
+    {
+        Self::new(folded(init, f, runtime))
+    }
+
     /// This is a convenience method. See [`merged`].
     pub fn merged(
         select: impl 'a + Send + FnMut() -> T,
@@ -181,6 +202,18 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         SR: Default,
     {
         Self::new(merged(select, merge, SR::default()))
+    }
+
+    /// This is a convenience method. See [`merged`].
+    pub fn merged_with_runtime(
+        select: impl 'a + Send + FnMut() -> T,
+        merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
+        runtime: SR,
+    ) -> Self
+    where
+        T: Clone,
+    {
+        Self::new(merged(select, merge, runtime))
     }
 }
 

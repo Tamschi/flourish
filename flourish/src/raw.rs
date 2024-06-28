@@ -162,12 +162,12 @@ macro_rules! computed_uncached_mut_with_runtime {
 }
 pub use crate::computed_uncached_mut_with_runtime;
 
-pub fn folded<'a, B: 'a + Send, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
-    init: B,
-    f: impl 'a + Send + FnMut(&mut B, T) -> Update,
-) -> impl 'a + Source<SR, Value = B> {
-    RawFolded::new(source, init, f)
+pub fn folded<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
+    init: T,
+    f: impl 'a + Send + FnMut(&mut T) -> Update,
+    runtime: SR,
+) -> impl 'a + Source<SR, Value = T> {
+    RawFolded::new(init, f, runtime)
 }
 #[macro_export]
 macro_rules! folded {
@@ -250,6 +250,14 @@ macro_rules! signals_helper {
 	};
 	{let $name:ident = computed_uncached_mut_with_runtime!($f:expr, $runtime:expr);} => {
 		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($f, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = folded!($init:expr, $f:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::folded($init, $f, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = folded_with_runtime!($init:expr, $f:expr, $runtime:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::folded($init, $f, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = merged!($select:expr, $merge:expr);} => {

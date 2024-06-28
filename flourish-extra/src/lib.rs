@@ -37,13 +37,19 @@ pub fn delta<
     source: impl 'a + Source<SR, Value = T>,
 ) -> impl 'a + Source<SR, Value = T::Output> {
     let mut previous = None;
-    folded(source, T::Output::zero(), move |delta, next| {
-        if let Some(previous) = previous {
-            *delta = next - previous;
-        }
-        previous = Some(next);
-        Update::Propagate
-    })
+    let runtime = source.clone_runtime_ref();
+    folded(
+        T::Output::zero(),
+        move |delta| {
+            let next = unsafe { Pin::new_unchecked(&source) }.get();
+            if let Some(previous) = previous {
+                *delta = next - previous;
+            }
+            previous = Some(next);
+            Update::Propagate
+        },
+        runtime,
+    )
 }
 
 pub fn sparse_tally<
@@ -54,10 +60,15 @@ pub fn sparse_tally<
 >(
     source: impl 'a + Source<SR, Value = T>,
 ) -> impl 'a + Source<SR, Value = Tally> {
-    folded(source, Tally::zero(), |tally, next| {
-        *tally += next;
-        Update::Propagate
-    })
+    let runtime = source.clone_runtime_ref();
+    folded(
+        Tally::zero(),
+        move |tally| {
+            *tally += unsafe { Pin::new_unchecked(&source) }.get();
+            Update::Propagate
+        },
+        runtime,
+    )
 }
 
 pub fn eager_tally<
@@ -75,14 +86,20 @@ pub fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
     mut f: impl 'a + Send + FnMut(&T) -> bool,
 ) -> impl 'a + Source<SR, Value = Option<T>> {
-    folded(source, None, move |current, next| {
-        if f(&next) {
-            *current = Some(next);
-            Update::Propagate
-        } else {
-            Update::Halt
-        }
-    })
+    let runtime = source.clone_runtime_ref();
+    folded(
+        None,
+        move |current| {
+            let next = unsafe { Pin::new_unchecked(&source) }.get();
+            if f(&next) {
+                *current = Some(next);
+                Update::Propagate
+            } else {
+                Update::Halt
+            }
+        },
+        runtime,
+    )
 }
 
 pub fn mapped<'a, T: 'a + Send + Sync + Copy, U: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(

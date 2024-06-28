@@ -19,12 +19,10 @@ use crate::utils::conjure_zst;
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawFolded<
-    B: Send,
-    T: Send + Clone,
-    S: crate::Source<SR, Value = T>,
-    M: Send + FnMut(&mut B, T) -> Update,
+    T: Send,
+    F: Send + FnMut(&mut T) -> Update,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
->(#[pin] Source<(ForceSyncUnpin<RwLock<B>>, S, ForceSyncUnpin<UnsafeCell<M>>), (), SR>);
+>(#[pin] Source<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>);
 
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(T);
@@ -47,42 +45,25 @@ impl<'a, T: ?Sized> Borrow<T> for RawFoldedGuard<'a, T> {
 }
 
 /// TODO: Safety documentation.
-unsafe impl<
-        B: Send,
-        T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
-        M: Send + FnMut(&mut B, T) -> Update,
-        SR: SignalRuntimeRef + Sync,
-    > Sync for RawFolded<B, T, S, M, SR>
+unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef + Sync> Sync
+    for RawFolded<T, F, SR>
 {
 }
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<
-        B: Send,
-        T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
-        M: Send + FnMut(&mut B, T) -> Update,
-        SR: SignalRuntimeRef,
-    > RawFolded<B, T, S, M, SR>
-{
-    pub fn new(source: S, init: B, f: M) -> Self {
-        let runtime = source.clone_runtime_ref();
+impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded<T, F, SR> {
+    pub fn new(init: T, f: F, runtime: SR) -> Self {
         Self(Source::with_runtime(
-            (
-                ForceSyncUnpin(init.into()),
-                source,
-                ForceSyncUnpin(f.into()),
-            ),
+            (ForceSyncUnpin(init.into()), ForceSyncUnpin(f.into())),
             runtime,
         ))
     }
 
-    pub fn get(self: Pin<&Self>) -> B
+    pub fn get(self: Pin<&Self>) -> T
     where
-        B: Sync + Copy,
+        T: Sync + Copy,
     {
-        if size_of::<B>() == 0 {
+        if size_of::<T>() == 0 {
             // The read is unobservable, so just skip locking.
             self.touch();
             conjure_zst()
@@ -91,23 +72,23 @@ impl<
         }
     }
 
-    pub fn get_clone(self: Pin<&Self>) -> B
+    pub fn get_clone(self: Pin<&Self>) -> T
     where
-        B: Sync + Clone,
+        T: Sync + Clone,
     {
         self.read().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> RawFoldedGuard<'a, B>
+    pub fn read<'a>(self: Pin<&'a Self>) -> RawFoldedGuard<'a, T>
     where
-        B: Sync,
+        T: Sync,
     {
         RawFoldedGuard(self.touch().read().unwrap())
     }
 
-    pub fn get_exclusive(self: Pin<&Self>) -> B
+    pub fn get_exclusive(self: Pin<&Self>) -> T
     where
-        B: Copy,
+        T: Copy,
     {
         if size_of::<T>() == 0 {
             // The read is unobservable, so just skip locking.
@@ -118,14 +99,14 @@ impl<
         }
     }
 
-    pub fn get_clone_exclusive(self: Pin<&Self>) -> B
+    pub fn get_clone_exclusive(self: Pin<&Self>) -> T
     where
-        B: Clone,
+        T: Clone,
     {
         self.touch().write().unwrap().clone()
     }
 
-    pub(crate) fn touch(self: Pin<&Self>) -> &RwLock<B> {
+    pub(crate) fn touch(self: Pin<&Self>) -> &RwLock<T> {
         unsafe {
             &Pin::into_inner_unchecked(
                 self.project_ref()
@@ -140,42 +121,28 @@ impl<
 }
 
 enum E {}
-impl<
-        B: Send,
-        T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
-        M: Send + ?Sized + FnMut(&mut B, T) -> Update,
-        SR: SignalRuntimeRef,
-    > Callbacks<(ForceSyncUnpin<RwLock<B>>, S, ForceSyncUnpin<UnsafeCell<M>>), (), SR> for E
+impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>
+    Callbacks<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR> for E
 {
     const UPDATE: Option<
         unsafe fn(
-            eager: Pin<&(ForceSyncUnpin<RwLock<B>>, S, ForceSyncUnpin<UnsafeCell<M>>)>,
+            eager: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
             lazy: Pin<&()>,
         ) -> Update,
     > = {
-        unsafe fn eval<
-            B: Send,
-            T: Send + Clone,
-            S: crate::Source<SR, Value = T>,
-            M: Send + ?Sized + FnMut(&mut B, T) -> Update,
-            SR: SignalRuntimeRef,
-        >(
-            state: Pin<&(ForceSyncUnpin<RwLock<B>>, S, ForceSyncUnpin<UnsafeCell<M>>)>,
+        unsafe fn eval<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Update>(
+            state: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
             _: Pin<&()>,
         ) -> Update {
-            let source = Pin::new_unchecked(&state.1);
-            let f = &mut *state.2 .0.get();
-            // TODO: Split this up to avoid congestion where possible.
-            let next_value = source.get_clone_exclusive();
-            f(&mut *state.0 .0.write().unwrap(), next_value)
+            let f = &mut *state.1 .0.get();
+            f(&mut *state.0 .0.write().unwrap())
         }
         Some(eval)
     };
 
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(
-            eager: Pin<&(ForceSyncUnpin<RwLock<B>>, S, ForceSyncUnpin<UnsafeCell<M>>)>,
+            eager: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
             lazy: Pin<&()>,
             subscribed: bool,
         ),
@@ -186,36 +153,21 @@ impl<
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<
-        B: Send,
-        T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
-        M: Send + FnMut(&mut B, T) -> Update,
-        SR: SignalRuntimeRef,
-    > RawFolded<B, T, S, M, SR>
-{
+impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded<T, F, SR> {
     unsafe fn init<'a>(
-        state: Pin<&'a (ForceSyncUnpin<RwLock<B>>, S, ForceSyncUnpin<UnsafeCell<M>>)>,
+        state: Pin<&'a (ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
         lazy: Slot<'a, ()>,
     ) -> Token<'a> {
         let mut guard = state.0 .0.try_write().expect("unreachable");
-        let _ = (&mut *state.2 .0.get())(
-            guard.borrow_mut(),
-            Pin::new_unchecked(&state.1).get_clone_exclusive(),
-        );
+        let _ = (&mut *state.1 .0.get())(guard.borrow_mut());
         lazy.write(())
     }
 }
 
-impl<
-        B: Send,
-        T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
-        M: Send + FnMut(&mut B, T) -> Update,
-        SR: SignalRuntimeRef,
-    > crate::Source<SR> for RawFolded<B, T, S, M, SR>
+impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> crate::Source<SR>
+    for RawFolded<T, F, SR>
 {
-    type Value = B;
+    type Value = T;
 
     fn touch(self: Pin<&Self>) {
         self.touch();
