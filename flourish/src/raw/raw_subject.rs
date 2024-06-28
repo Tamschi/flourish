@@ -2,9 +2,8 @@ use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
     mem::{needs_drop, size_of},
-    ops::Deref,
     pin::Pin,
-    sync::{RwLock, RwLockReadGuard},
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use pin_project::pin_project;
@@ -51,17 +50,16 @@ impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
     }
 }
 
-pub(crate) struct RawSubjectGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct RawSubjectGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct RawSubjectGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Deref for RawSubjectGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.borrow()
+impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuard<'a, T> {
+    fn borrow(&self) -> &T {
+        self.0.borrow()
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuardExclusive<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
@@ -104,15 +102,17 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         self.read().borrow().clone()
     }
 
-    pub fn read<'a>(&'a self) -> impl 'a + Borrow<T> + Deref<Target = T>
+    pub fn read<'a>(&'a self) -> impl 'a + Borrow<T>
     where
         T: Sync,
     {
-        self.read_raw()
+        let this = &self;
+        RawSubjectGuard(this.touch().read().unwrap())
     }
 
-    pub(crate) fn read_raw<'a>(&'a self) -> RawSubjectGuard<T> {
-        RawSubjectGuard(self.touch().read().unwrap())
+    pub fn read_exclusive<'a>(&'a self) -> impl 'a + Borrow<T> {
+        let this = &self;
+        RawSubjectGuardExclusive(this.touch().write().unwrap())
     }
 
     pub fn get_mut<'a>(&'a mut self) -> &mut T {
@@ -139,7 +139,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         self.touch().write().unwrap().clone()
     }
 
-    pub fn touch(&self) -> &RwLock<T> {
+    pub(crate) fn touch(&self) -> &RwLock<T> {
         unsafe {
             // SAFETY: Doesn't defer memory access.
             &*(&Pin::new_unchecked(&self.source)
@@ -356,6 +356,10 @@ impl<T: Send, SR: SignalRuntimeRef> crate::Source<SR> for RawSubject<T, SR> {
         Self::Value: 'a + Sync,
     {
         Box::new(self.get_ref().read())
+    }
+
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+        Box::new(self.get_ref().read_exclusive())
     }
 
     fn clone_runtime_ref(&self) -> SR

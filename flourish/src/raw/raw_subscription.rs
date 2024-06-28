@@ -5,7 +5,7 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::Source;
 
-use super::{RawCached, RawComputedGuard};
+use super::RawCached;
 
 #[pin_project]
 #[must_use = "Subscriptions are cancelled when dropped."]
@@ -16,8 +16,7 @@ pub struct RawSubscription<
     SR: SignalRuntimeRef = GlobalSignalRuntime,
 >(#[pin] RawCached<T, S, SR>);
 
-//TODO: Implementations
-pub struct RawSubscriptionGuard<'a, T>(RawComputedGuard<'a, T>);
+//TODO: Add some associated methods, like not-boxing `read`/`read_exclusive`.
 
 pub fn new_raw_unsubscribed_subscription<
     T: Send + Clone,
@@ -83,6 +82,10 @@ impl<T: Send + Clone, S: Source<SR, Value = T>, SR: SignalRuntimeRef> Source<SR>
         Self::Value: 'a + Sync,
     {
         Box::new(self.project_ref().0.read())
+    }
+
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+        Box::new(self.project_ref().0.read_exclusive())
     }
 
     fn clone_runtime_ref(&self) -> SR

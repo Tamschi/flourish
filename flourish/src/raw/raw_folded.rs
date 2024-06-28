@@ -2,9 +2,8 @@ use std::{
     borrow::{Borrow, BorrowMut},
     cell::UnsafeCell,
     mem::size_of,
-    ops::Deref,
     pin::Pin,
-    sync::{RwLock, RwLockReadGuard},
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use pin_project::pin_project;
@@ -28,17 +27,16 @@ pub(crate) struct RawFolded<
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-pub(crate) struct RawFoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct RawFoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct RawFoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Deref for RawFoldedGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.borrow()
+impl<'a, T: ?Sized> Borrow<T> for RawFoldedGuard<'a, T> {
+    fn borrow(&self) -> &T {
+        self.0.borrow()
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawFoldedGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawFoldedGuardExclusive<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
@@ -68,7 +66,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
             self.touch();
             conjure_zst()
         } else {
-            *self.read()
+            *self.read().borrow()
         }
     }
 
@@ -76,14 +74,18 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
     where
         T: Sync + Clone,
     {
-        self.read().clone()
+        self.read().borrow().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> RawFoldedGuard<'a, T>
+    pub fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
     where
         T: Sync,
     {
         RawFoldedGuard(self.touch().read().unwrap())
+    }
+
+    pub fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+        RawFoldedGuardExclusive(self.touch().write().unwrap())
     }
 
     pub fn get_exclusive(self: Pin<&Self>) -> T
@@ -206,6 +208,10 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> crate::So
         Self::Value: 'a + Sync,
     {
         Box::new(self.read())
+    }
+
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+        Box::new(self.read_exclusive())
     }
 
     fn clone_runtime_ref(&self) -> SR

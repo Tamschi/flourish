@@ -1,9 +1,4 @@
-use std::{
-    borrow::Borrow,
-    ops::Deref,
-    pin::Pin,
-    sync::{Mutex, RwLockReadGuard},
-};
+use std::{borrow::Borrow, pin::Pin, sync::Mutex};
 
 use pin_project::pin_project;
 use pollinate::{
@@ -23,22 +18,6 @@ pub(crate) struct RawComputedUncachedMut<
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
-
-pub(crate) struct RawComputedUncachedMutGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-
-impl<'a, T: ?Sized> Deref for RawComputedUncachedMutGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.borrow()
-    }
-}
-
-impl<'a, T: ?Sized> Borrow<T> for RawComputedUncachedMutGuard<'a, T> {
-    fn borrow(&self) -> &T {
-        self.0.borrow()
-    }
-}
 
 /// TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
@@ -139,6 +118,10 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
     where
         Self::Value: 'a + Sync,
     {
+        Box::new(self.get())
+    }
+
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
         Box::new(self.get())
     }
 

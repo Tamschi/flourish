@@ -2,17 +2,13 @@ use std::{
     borrow::Borrow,
     fmt::Debug,
     mem,
-    ops::Deref,
     pin::Pin,
     sync::{Arc, RwLock},
 };
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{
-    raw::{RawSubject, RawSubjectGuard},
-    AsSource, Source,
-};
+use crate::{raw::RawSubject, AsSource, Source};
 
 #[derive(Clone)]
 pub struct Subject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime>(
@@ -26,22 +22,6 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Subject").field(&self.0).finish()
-    }
-}
-
-pub struct SubjectGuard<'a, T>(RawSubjectGuard<'a, T>);
-
-impl<'a, T> Deref for SubjectGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<'a, T> Borrow<T> for SubjectGuard<'a, T> {
-    fn borrow(&self) -> &T {
-        self.0.borrow()
     }
 }
 
@@ -79,11 +59,15 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
         self.0.get_clone()
     }
 
-    pub fn read<'a>(&'a self) -> impl 'a + Borrow<T> + Deref<Target = T>
+    pub fn read<'a>(&'a self) -> impl 'a + Borrow<T>
     where
         T: Sync,
     {
-        SubjectGuard(self.0.read_raw())
+        self.0.read()
+    }
+
+    pub fn read_exclusive<'a>(&'a self) -> impl 'a + Borrow<T> {
+        self.0.read_exclusive()
     }
 
     pub fn get_exclusive(&self) -> T

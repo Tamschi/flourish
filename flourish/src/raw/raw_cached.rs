@@ -3,7 +3,7 @@ use std::{
     mem::{needs_drop, size_of},
     ops::Deref,
     pin::Pin,
-    sync::{RwLock, RwLockReadGuard},
+    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use pin_project::pin_project;
@@ -27,7 +27,8 @@ pub(crate) struct RawCached<
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-pub(crate) struct RawCachedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct RawCachedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct RawCachedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
 impl<'a, T: ?Sized> Deref for RawCachedGuard<'a, T> {
     type Target = T;
@@ -38,6 +39,20 @@ impl<'a, T: ?Sized> Deref for RawCachedGuard<'a, T> {
 }
 
 impl<'a, T: ?Sized> Borrow<T> for RawCachedGuard<'a, T> {
+    fn borrow(&self) -> &T {
+        self.0.borrow()
+    }
+}
+
+impl<'a, T: ?Sized> Deref for RawCachedGuardExclusive<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.borrow()
+    }
+}
+
+impl<'a, T: ?Sized> Borrow<T> for RawCachedGuardExclusive<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
@@ -64,7 +79,7 @@ impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef> Raw
             self.touch();
             conjure_zst()
         } else {
-            *self.read()
+            *self.read().borrow()
         }
     }
 
@@ -72,15 +87,20 @@ impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef> Raw
     where
         T: Sync + Clone,
     {
-        self.read().clone()
+        self.read().borrow().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> RawCachedGuard<'a, T>
+    pub fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
     where
         T: Sync,
     {
         let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
         RawCachedGuard(touch.read().unwrap())
+    }
+
+    pub fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+        let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
+        RawCachedGuardExclusive(touch.write().unwrap())
     }
 
     pub fn get_exclusive(self: Pin<&Self>) -> T
@@ -216,6 +236,10 @@ impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef> cra
         Self::Value: 'a + Sync,
     {
         Box::new(self.read())
+    }
+
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+        Box::new(self.read_exclusive())
     }
 
     fn clone_runtime_ref(&self) -> SR

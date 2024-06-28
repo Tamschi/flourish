@@ -5,7 +5,7 @@ mod raw_cached;
 pub(crate) use raw_cached::RawCached;
 
 mod raw_computed;
-pub(crate) use raw_computed::{RawComputed, RawComputedGuard};
+pub(crate) use raw_computed::RawComputed;
 
 mod raw_computed_uncached;
 pub(crate) use raw_computed_uncached::RawComputedUncached;
@@ -14,7 +14,7 @@ mod raw_computed_uncached_mut;
 pub(crate) use raw_computed_uncached_mut::RawComputedUncachedMut;
 
 mod raw_subject;
-pub(crate) use raw_subject::{RawSubject, RawSubjectGuard};
+pub(crate) use raw_subject::RawSubject;
 
 mod raw_folded;
 pub(crate) use raw_folded::RawFolded;
