@@ -198,7 +198,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         all_by_dependent: &BTreeMap<S, BTreeSet<S>>,
         subscribers_by_dependency: &mut BTreeMap<S, BTreeSet<S>>,
     ) -> impl IntoIterator<Item = SensorNotification<S>> {
-        println!("to {:?} with {:?}", dependency, dependent);
         let subscribers = subscribers_by_dependency
             .get_mut(&dependency)
             .expect("unreachable");
@@ -234,7 +233,6 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         all_by_dependent: &BTreeMap<S, BTreeSet<S>>,
         subscribers_by_dependency: &mut BTreeMap<S, BTreeSet<S>>,
     ) -> impl IntoIterator<Item = SensorNotification<S>> {
-        println!("from {:?} with {:?}", dependency, dependent);
         let subscribers = subscribers_by_dependency
             .get_mut(&dependency)
             .expect("unreachable");
