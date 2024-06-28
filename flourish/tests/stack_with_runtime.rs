@@ -13,14 +13,14 @@ fn use_macros() {
     }
     let (b, set_b) = b.get_set();
     signals_helper! {
-        let c = computed_from_source!((|| {
+        let c = computed_with_runtime!(|| {
             x.push("c");
             a.get() + b()
-        }, GlobalSignalRuntime));
-        let d = computed_from_source!((|| {
+        }, GlobalSignalRuntime);
+        let d = computed_with_runtime!(|| {
             x.push("d");
             a.get() - b()
-        }, GlobalSignalRuntime));
+        }, GlobalSignalRuntime);
         let aa = uncached_from_source!((|| {
             x.push("aa");
             c.get() + d.get()

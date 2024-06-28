@@ -3,7 +3,7 @@ use std::{
     mem::{needs_drop, size_of},
     ops::Deref,
     pin::Pin,
-    sync::{Mutex, RwLock, RwLockReadGuard},
+    sync::{RwLock, RwLockReadGuard},
 };
 
 use pin_project::pin_project;
@@ -17,19 +17,19 @@ use crate::utils::conjure_zst;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct RawComputed<
+pub(crate) struct RawCached<
     T: Send + Clone,
-    F: Send + FnMut() -> T,
+    S: crate::Source<SR, Value = T>,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
->(#[pin] Source<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR>);
+>(#[pin] Source<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>);
 
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-pub(crate) struct RawComputedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct RawCachedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
-impl<'a, T: ?Sized> Deref for RawComputedGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for RawCachedGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -37,21 +37,22 @@ impl<'a, T: ?Sized> Deref for RawComputedGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawComputedGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawCachedGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
 
 /// TODO: Safety documentation.
-unsafe impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
-    for RawComputed<T, F, SR>
+unsafe impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef + Sync> Sync
+    for RawCached<T, S, SR>
 {
 }
 
-impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
-    pub fn new(f: F, runtime: SR) -> Self {
-        Self(Source::with_runtime(ForceSyncUnpin(f.into()), runtime))
+impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
+    pub fn new(source: S) -> Self {
+        let runtime = source.clone_runtime_ref();
+        Self(Source::with_runtime(ForceSyncUnpin(source.into()), runtime))
     }
 
     pub fn get(self: Pin<&Self>) -> T
@@ -74,12 +75,12 @@ impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<
         self.read().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> RawComputedGuard<'a, T>
+    pub fn read<'a>(self: Pin<&'a Self>) -> RawCachedGuard<'a, T>
     where
         T: Sync,
     {
         let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
-        RawComputedGuard(touch.read().unwrap())
+        RawCachedGuard(touch.read().unwrap())
     }
 
     pub fn get_exclusive(self: Pin<&Self>) -> T
@@ -106,7 +107,18 @@ impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<
         unsafe {
             self.project_ref()
                 .0
-                .project_or_init::<E>(|f, cache| Self::init(f, cache))
+                .project_or_init::<E>(|source, cache| Self::init(source, cache))
+                .1
+                .project_ref()
+                .0
+        }
+    }
+
+    pub(crate) fn pull(self: Pin<&Self>) -> Pin<&RwLock<T>> {
+        unsafe {
+            self.project_ref()
+                .0
+                .pull_or_init::<E>(|source, cache| Self::init(source, cache))
                 .1
                 .project_ref()
                 .0
@@ -115,21 +127,18 @@ impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<
 }
 
 enum E {}
-impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
-    Callbacks<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR> for E
+impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef>
+    Callbacks<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
     const UPDATE: Option<
-        unsafe fn(
-            eager: Pin<&ForceSyncUnpin<Mutex<F>>>,
-            lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
-        ) -> Update,
+        unsafe fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Update,
     > = {
-        unsafe fn eval<T: Send + Clone, F: Send + FnMut() -> T>(
-            f: Pin<&ForceSyncUnpin<Mutex<F>>>,
+        unsafe fn eval<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef>(
+            source: Pin<&ForceSyncUnpin<S>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
-            //FIXME: This is externally synchronised already.
-            let new_value = f.project_ref().0.try_lock().expect("unreachable")();
+            //FIXME: This can be split up to avoid congestion where not necessary.
+            let new_value = source.project_ref().0.get_clone_exclusive();
             if needs_drop::<T>() || size_of::<T>() > 0 {
                 *cache.project_ref().0.write().unwrap() = new_value;
             } else {
@@ -142,7 +151,7 @@ impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(
-            eager: Pin<&ForceSyncUnpin<Mutex<F>>>,
+            eager: Pin<&ForceSyncUnpin<S>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
             subscribed: bool,
         ),
@@ -153,20 +162,20 @@ impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
+impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
     unsafe fn init<'a>(
-        f: Pin<&'a ForceSyncUnpin<Mutex<F>>>,
+        source: Pin<&'a ForceSyncUnpin<S>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
     ) -> Token<'a> {
         cache.write(ForceSyncUnpin(
-            //FIXME: This is technically already externally synchronised.
-            f.project_ref().0.try_lock().expect("unreachable")().into(),
+            //FIXME: This can be split up to avoid congestion where not necessary.
+            source.project_ref().0.get_clone_exclusive().into(),
         ))
     }
 }
 
-impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
-    for RawComputed<T, F, SR>
+impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef> crate::Source<SR>
+    for RawCached<T, S, SR>
 {
     type Value = T;
 

@@ -17,21 +17,21 @@ fn use_macros() {
     let b = pin!(subject(2));
     let b = b.into_ref();
     let (b, set_b) = b.get_set();
-    let c = pin!(computed((
+    let c = pin!(computed(
         || {
             x.push("c");
             a.get() + b()
         },
         GlobalSignalRuntime
-    )));
+    ));
     let c = c.into_ref();
-    let d = pin!(computed((
+    let d = pin!(computed(
         || {
             x.push("d");
             a.get() - b()
         },
         GlobalSignalRuntime
-    )));
+    ));
     let d = d.into_ref();
     let aa = pin!(uncached((
         || {

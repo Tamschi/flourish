@@ -1,6 +1,9 @@
 use pollinate::runtime::Update;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
+mod raw_cached;
+pub(crate) use raw_cached::{RawCached, RawCachedGuard};
+
 mod raw_computed;
 pub(crate) use raw_computed::{RawComputed, RawComputedGuard};
 
@@ -47,27 +50,55 @@ macro_rules! subject_with_runtime {
 }
 pub use crate::subject_with_runtime;
 
-pub fn computed<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
 ) -> impl 'a + Source<SR, Value = T> {
-    RawComputed::<T, _, SR>::new(source)
+    RawCached::<T, _, SR>::new(source)
+}
+#[macro_export]
+macro_rules! cached {
+    ($f:expr) => {{
+		super let cached = ::core::pin::pin!($crate::raw::cached(($f, $crate::GlobalSignalRuntime)));
+        ::core::pin::Pin::into_ref(cached)
+	}};
+}
+pub use crate::cached;
+#[macro_export]
+macro_rules! cached_from_source {
+    ($source:expr) => {{
+		super let cached_from_source = ::core::pin::pin!($crate::raw::cached($source));
+        ::core::pin::Pin::into_ref(cached_from_source)
+	}};
+}
+pub use crate::cached_from_source;
+
+pub fn computed<
+    'a,
+    T: 'a + Send + Clone,
+    F: 'a + Send + FnMut() -> T,
+    SR: 'a + SignalRuntimeRef,
+>(
+    f: F,
+    runtime: SR,
+) -> impl 'a + Source<SR, Value = T> {
+    RawComputed::<T, _, SR>::new(f, runtime)
 }
 #[macro_export]
 macro_rules! computed {
     ($f:expr) => {{
-		super let computed = ::core::pin::pin!($crate::raw::computed(($f, $crate::GlobalSignalRuntime)));
+		super let computed = ::core::pin::pin!($crate::raw::computed($f, $crate::GlobalSignalRuntime));
         ::core::pin::Pin::into_ref(computed)
 	}};
 }
 pub use crate::computed;
 #[macro_export]
-macro_rules! computed_from_source {
-    ($source:expr) => {{
-		super let computed_from_source = ::core::pin::pin!($crate::raw::computed($source));
-        ::core::pin::Pin::into_ref(computed_from_source)
+macro_rules! computed_with_runtime {
+    ($source:expr, $runtime:expr) => {{
+		super let computed_with_runtime = ::core::pin::pin!($crate::raw::computed($source, $runtime));
+        ::core::pin::Pin::into_ref(computed_with_runtime)
 	}};
 }
-pub use crate::computed_from_source;
+pub use crate::computed_with_runtime;
 
 pub fn folded<'a, B: 'a + Send, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
@@ -152,12 +183,20 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::subject_with_runtime($initial_value, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = computed!($f:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed(($f, $crate::GlobalSignalRuntime)));
+	{let $name:ident = cached!($f:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::cached(($f, $crate::GlobalSignalRuntime)));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = computed_from_source!($source:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed($source));
+	{let $name:ident = cached_from_source!($source:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::cached($source));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = computed!($f:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed($f, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = computed_with_runtime!($source:expr, $runtime:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed($source, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = merged!($selector:expr, $fold:expr);} => {

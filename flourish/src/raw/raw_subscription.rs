@@ -5,7 +5,7 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::Source;
 
-use super::{RawComputed, RawComputedGuard};
+use super::{RawCached, RawComputedGuard};
 
 #[pin_project]
 #[must_use = "Subscriptions are cancelled when dropped."]
@@ -14,7 +14,7 @@ pub struct RawSubscription<
     T: Send + Clone,
     S: Source<SR, Value = T>,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
->(#[pin] RawComputed<T, S, SR>);
+>(#[pin] RawCached<T, S, SR>);
 
 //TODO: Implementations
 pub struct RawSubscriptionGuard<'a, T>(RawComputedGuard<'a, T>);
@@ -26,7 +26,7 @@ pub fn new_raw_unsubscribed_subscription<
 >(
     source: S,
 ) -> RawSubscription<T, S, SR> {
-    RawSubscription(RawComputed::new(source))
+    RawSubscription(RawCached::new(source))
 }
 
 pub fn pull_subscription<T: Send + Clone, S: Source<SR, Value = T>, SR: SignalRuntimeRef>(

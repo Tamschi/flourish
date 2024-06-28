@@ -4,12 +4,12 @@ use std::{
 };
 
 use flourish::{
-    raw::{computed, folded, merged},
+    raw::{cached, computed, folded, merged},
     SignalRuntimeRef, Source, SubscriptionSR, Update,
 };
 use num_traits::Zero;
 
-//BLOCKED: `merge` and `fold` (as curried operators) wait on <https://github.com/rust-lang/rust/issues/99697>.
+//BLOCKED: `merge`, `filter` and `fold` (as curried operators) wait on <https://github.com/rust-lang/rust/issues/99697>.
 
 pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
@@ -45,7 +45,7 @@ pub fn delta<
         },
     );
     let clone_runtime_ref = folded.clone_runtime_ref();
-    computed((
+    cached((
         move || unsafe { Pin::new_unchecked(&folded) }.read().borrow().1,
         clone_runtime_ref,
     ))
@@ -74,6 +74,31 @@ pub fn eager_tally<
     source: impl 'a + Source<SR, Value = T>,
 ) -> SubscriptionSR<'a, Tally, SR> {
     SubscriptionSR::new(sparse_tally(source))
+}
+
+pub fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
+    mut f: impl 'a + Send + FnMut(&T) -> bool,
+) -> impl 'a + Source<SR, Value = Option<T>> {
+    folded(source, None, move |current, next| {
+        if f(&next) {
+            *current = Some(next);
+            Update::Propagate
+        } else {
+            Update::Halt
+        }
+    })
+}
+
+pub fn mapped<'a, T: 'a + Send + Sync + Copy, U: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
+    mut f: impl 'a + Send + FnMut(T) -> U,
+) -> impl 'a + Source<SR, Value = U> {
+    let runtime = source.clone_runtime_ref();
+    computed(
+        move || f(unsafe { Pin::new_unchecked(&source) }.get()),
+        runtime,
+    )
 }
 
 pub fn pipe<P: IntoPipe>(pipe: P) -> P::Pipe {

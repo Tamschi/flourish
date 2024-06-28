@@ -24,6 +24,7 @@ fn delta_test() {
     drop(sub);
     set(5);
     set(9);
+    v.expect([]);
     let _sub = Subscription::new(move || v.push(delta.get()));
     v.expect([9]);
     set(9);
