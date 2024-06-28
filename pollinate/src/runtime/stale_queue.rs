@@ -261,26 +261,29 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
         }
     }
 
-    pub(crate) fn mark_dependents_as_stale(&mut self, symbol: S) {
+    #[must_use = "If `false`, the symbol isn't registered yet."]
+    pub(crate) fn mark_dependents_as_stale(&mut self, symbol: S) -> bool {
         fn mark_dependents_as_stale<S: Hash + Ord + Copy>(
             symbol: S,
             interdependencies: &Interdependencies<S>,
             stale_queue: &mut BTreeSet<S>,
-        ) {
-            for &dependent in interdependencies
-                .all_by_dependency
-                .get(&symbol)
-                .expect("unreachable")
-            {
-                if stale_queue.insert(dependent)
-                    && interdependencies
-                        .subscribers_by_dependency
-                        .get(&dependent)
-                        .expect("unreachable")
-                        .is_empty()
-                {
-                    mark_dependents_as_stale(dependent, interdependencies, stale_queue)
+        ) -> bool {
+            match interdependencies.all_by_dependency.get(&symbol) {
+                Some(dependents) => {
+                    for &dependent in dependents {
+                        if stale_queue.insert(dependent)
+                            && interdependencies
+                                .subscribers_by_dependency
+                                .get(&dependent)
+                                .expect("unreachable")
+                                .is_empty()
+                        {
+                            mark_dependents_as_stale(dependent, interdependencies, stale_queue);
+                        }
+                    }
+                    true
                 }
+                None => false,
             }
         }
 

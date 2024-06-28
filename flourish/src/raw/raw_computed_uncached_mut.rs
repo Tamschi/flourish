@@ -51,6 +51,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedM
         Self(Source::with_runtime(ForceSyncUnpin(f.into()), runtime))
     }
 
+    //TODO: This doesn't track right.
     fn get(self: Pin<&Self>) -> T {
         self.touch().lock().expect("unreachable")()
     }

@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![doc = include_str!("../README.md")]
 
 pub mod raw;
 
@@ -33,6 +34,3 @@ macro_rules! shadow_clone {
 }
 
 mod utils;
-
-#[doc = include_str!("../README.md")]
-mod readme {}

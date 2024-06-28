@@ -201,33 +201,37 @@ impl SignalRuntimeRef for &ASignalRuntime {
 
     fn propagate_from(&self, id: Self::Symbol) {
         let lock = self.critical_mutex.lock();
-        (*lock)
+        if (*lock)
             .borrow_mut()
             .stale_queue
-            .mark_dependents_as_stale(id);
-        while let Some(current) = (|| (*lock).borrow_mut().stale_queue.next())() {
-            let mut borrow = (*lock).borrow_mut();
-            let &(callback_table, data) = borrow.callbacks.get(&current).expect("unreachable");
-            if let &CallbackTable {
-                update: Some(update),
-                ..
-            } = unsafe { &*callback_table }
-            {
-                borrow.context_stack.push(Some((current, BTreeSet::new())));
-                drop(borrow);
-                let update = catch_unwind(|| unsafe { update(data) });
+            .mark_dependents_as_stale(id)
+        {
+            while let Some(current) = (|| (*lock).borrow_mut().stale_queue.next())() {
                 let mut borrow = (*lock).borrow_mut();
-                let (popped_id, touched_dependencies) =
-                    borrow.context_stack.pop().flatten().expect("unreachable");
-                assert_eq!(popped_id, current);
-                let notifications = borrow
-                    .stale_queue
-                    .update_dependencies(current, touched_dependencies);
-                borrow = ASignalRuntime::notify_all(&lock, notifications, borrow);
-                match update {
-                    Ok(Update::Propagate) => borrow.stale_queue.mark_dependents_as_stale(current),
-                    Ok(Update::Halt) => (),
-                    Err(payload) => resume_unwind(payload),
+                let &(callback_table, data) = borrow.callbacks.get(&current).expect("unreachable");
+                if let &CallbackTable {
+                    update: Some(update),
+                    ..
+                } = unsafe { &*callback_table }
+                {
+                    borrow.context_stack.push(Some((current, BTreeSet::new())));
+                    drop(borrow);
+                    let update = catch_unwind(|| unsafe { update(data) });
+                    let mut borrow = (*lock).borrow_mut();
+                    let (popped_id, touched_dependencies) =
+                        borrow.context_stack.pop().flatten().expect("unreachable");
+                    assert_eq!(popped_id, current);
+                    let notifications = borrow
+                        .stale_queue
+                        .update_dependencies(current, touched_dependencies);
+                    borrow = ASignalRuntime::notify_all(&lock, notifications, borrow);
+                    match update {
+                        Ok(Update::Propagate) => {
+                            let _ = borrow.stale_queue.mark_dependents_as_stale(current);
+                        }
+                        Ok(Update::Halt) => (),
+                        Err(payload) => resume_unwind(payload),
+                    }
                 }
             }
         }

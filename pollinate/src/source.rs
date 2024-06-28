@@ -224,7 +224,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
 
     //TODO: Can the lifetime requirement be reduced here?
     //      In theory, the closure only needs to live longer than `Self`, but I'm unsure if that's expressible.
-    pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&OnceLock<Lazy>>)>(
+    pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&OnceLock<Lazy>>)>( //TODO: Optional `Lazy`!
         self: Pin<&Self>,
         f: F,
     ) where

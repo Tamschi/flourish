@@ -25,6 +25,106 @@ let _ = Signal::merged(|| (), |_value, _next| Update::Propagate);
 let _ = Subscription::computed(|| ());
 ```
 
+You can also put signals on the stack:
+
+```rust
+use flourish::{signals_helper, Update};
+
+signals_helper! {
+  let _subject = subject!(());
+
+  // The closure type is erased!
+  // Not evaluated unless subscribed.
+  let _source = computed!(|| ());
+  let _source = computed_uncached!(|| ());
+  let _source = computed_uncached_mut!(|| ());
+  let _source = folded!((), |_value| Update::Propagate);
+  let _source = merged!(|| (), |_value, _next| Update::Propagate);
+
+  // The closure type is erased!
+  let _source = subscription!(|| ());
+}
+```
+
+## Linking signals
+
+`flourish` detects and updates dependencies automatically:
+
+```rust
+use flourish::{shadow_clone, Signal, Subject, Subscription, Update};
+
+let a = Subject::new("a");
+let b = Subject::new("b");
+let c = Subject::new("c");
+let d = Subject::new("d");
+let e = Subject::new("e");
+let f = Subject::new("f");
+let g = Subject::new("g");
+let index = Subject::new(0);
+
+let subscription = Subscription::computed({
+  shadow_clone!(a, b, c, d, e, f, g, index);
+  move || println!("{}", match index.get() {
+    1 => a.get(),
+    2 => b.get(),
+    3 => c.get(),
+    4 => d.get(),
+    5 => e.get(),
+    6 => f.get(),
+    7 => g.get(),
+    _ => "",
+  })
+}); // ""
+
+a.set("a"); b.set("b"); // nothing
+index.set(1); // "a"
+a.set("aa"); // "aa"
+b.set("bb"); // nothing
+index.set(2); // "bb"
+a.set("a"); // nothing
+b.set("b"); // "b"
+
+drop(subscription);
+index.set(3); // nothing
+```
+
+`Signal`s are fully lazy, so they only update while subscribed or to refresh their value if dirty.  
+("uncached" signals run their closure whenever their value is retrieved, but not on update.)
+
+## Using a different runtime
+
+You can use a different [`pollinate`] runtime with the included types and macros (but ideally, alias these items for your own use):
+
+```rust
+use flourish::{signals_helper, GlobalSignalRuntime, SignalSR, Subject, SubscriptionSR, Update};
+
+let _ = Subject::with_runtime((), GlobalSignalRuntime);
+
+let _ = SignalSR::computed_with_runtime(|| (), GlobalSignalRuntime);
+let _ = SignalSR::computed_uncached_with_runtime(|| (), GlobalSignalRuntime);
+let _ = SignalSR::computed_uncached_mut_with_runtime(|| (), GlobalSignalRuntime);
+let _ = SignalSR::folded_with_runtime((), |_value| Update::Propagate, GlobalSignalRuntime);
+let _ = SignalSR::merged_with_runtime(|| (), |_value, _next| Update::Propagate, GlobalSignalRuntime);
+
+let _ = SubscriptionSR::computed_with_runtime(|| (), GlobalSignalRuntime);
+
+signals_helper! {
+  let _subject = subject_with_runtime!((), GlobalSignalRuntime);
+
+  let _source = computed_with_runtime!(|| (), GlobalSignalRuntime);
+  let _source = computed_uncached_with_runtime!(|| (), GlobalSignalRuntime);
+  let _source = computed_uncached_mut_with_runtime!(|| (), GlobalSignalRuntime);
+  let _source = folded_with_runtime!((), |_value| Update::Propagate, GlobalSignalRuntime);
+  let _source = merged_with_runtime!(|| (), |_value, _next| Update::Propagate, GlobalSignalRuntime);
+
+  let _source = subscription_with_runtime!(|| (), GlobalSignalRuntime);
+}
+```
+
+The runtime has some leeway regarding in which order it invokes the callbacks.
+
+## TODO
+
 ```rust
 use flourish::{shadow_clone, Signal, Subject, Subscription};
 

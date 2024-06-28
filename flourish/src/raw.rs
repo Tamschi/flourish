@@ -281,9 +281,9 @@ macro_rules! signals_helper {
 		$crate::__::pull_subscription($name);
 		let $name = $crate::__::pin_into_pin_impl_source($name);
 	};
-	{$(let $name:ident = $macro:ident!($source:expr$(, $runtime:expr)?);)*} => {$(
+	{$(let $name:ident = $macro:ident!($($arg:expr),*$(,)?);)*} => {$(
 		$crate::raw::signals_helper! {
-			let $name = $macro!($source$(, $runtime)?);
+			let $name = $macro!($($arg),*);
 		}
 	)*};
 }
