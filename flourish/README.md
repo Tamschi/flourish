@@ -13,11 +13,11 @@ use flourish::{shadow_clone, Signal, Subject, Subscription};
 
 let a = Subject::new(1); // : Subject<i32>
 let b = Subject::new(2); // : Subject<i32>
-let sum = Signal::cached({
+let sum = Signal::computed({
   shadow_clone!(a, b);
   move || a.get() + b.get()
 }); // : Signal<i32>
-let subscription = Subscription::new({
+let subscription = Subscription::computed({
   shadow_clone!(a, b, sum);
   move || println!("{} + {} = {}", a.get(), b.get(), sum.get())
 }); // : Subscription<()>, "1 + 2 = 3"
@@ -34,7 +34,7 @@ use flourish::{signals_helper, Source};
 signals_helper! {
   let a = subject!(1); // : Pin<&RawSubject<i32>>
   let b = subject!(2); // : Pin<&RawSubject<i32>>
-  let sum = cached!(|| a.get() + b.get()); // : Pin<&impl Source<_, Value = i32>>
+  let sum = computed!(|| a.get() + b.get()); // : Pin<&impl Source<_, Value = i32>>
   let _subscription = subscription!(|| println!("{} + {} = {}", a.get(), b.get(), sum.get()));
   // : Pin<&impl Source<_, Value = ()>>, "1 + 2 = 3"
 }

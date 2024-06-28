@@ -16,13 +16,20 @@ use crate::{
 
 pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
 
+/// A largely type-erased signal handle that is all of [`Clone`], [`Send`], [`Sync`] and [`Unpin`].
+///
+/// You can [`Borrow`] this handle into a reference without indirection that is [`ToOwned`].
+///
+/// This type is [`Deref`] towards its pinned `dyn `[`Source`]`<SR, Value = T>`, through which you can retrieve its current value.
+///
+/// Signals are not evaluated unless they are subscribed-to.
 #[repr(transparent)]
 pub struct SignalSR<
     'a,
     T: 'a + Send + ?Sized,
     SR: 'a + ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
 > {
-    source: *const (dyn 'a + Send + Source<SR, Value = T>),
+    source: *const (dyn 'a + Source<SR, Value = T>),
     _phantom: PhantomData<Pin<Arc<dyn 'a + Source<SR, Value = T>>>>,
 }
 
@@ -33,13 +40,13 @@ unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Send for Signal
 unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Sync for SignalSR<'a, T, SR> {}
 
 impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Deref for SignalSR<'a, T, SR> {
-    type Target = Pin<&'a (dyn 'a + Send + Source<SR, Value = T>)>;
+    type Target = Pin<&'a (dyn 'a + Source<SR, Value = T>)>;
 
     fn deref(&self) -> &Self::Target {
         unsafe {
             mem::transmute::<
-                &*const (dyn 'a + Send + Source<SR, Value = T>),
-                &Pin<&'a (dyn 'a + Send + Source<SR, Value = T>)>,
+                &*const (dyn 'a + Source<SR, Value = T>),
+                &Pin<&'a (dyn 'a + Source<SR, Value = T>)>,
             >(&self.source)
         }
     }
@@ -72,6 +79,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop for Sig
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {
+    /// Creates a new [`SignalSR`] from the provided raw [`Source`].
     pub fn new(source: impl 'a + Source<SR, Value = T>) -> Self {
         SignalSR {
             source: Arc::into_raw(Arc::new(source)),
@@ -79,14 +87,21 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         }
     }
 
-    pub fn cached(source: impl 'a + Send + Source<SR, Value = T>) -> Self
+    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T`.
+    ///
+    /// This pins the provided closure. The resulting `T` is cached.
+    pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
     where
         T: Send + Sync + Sized + Copy,
+        SR: Default,
     {
-        Self::new(cached(source))
+        Self::new(computed(f, SR::default()))
     }
 
-    pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
+    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T`.
+    ///
+    /// This pins the provided closure. The resulting `T` is cached.
+    pub fn computed_cloned(f: impl 'a + Send + FnMut() -> T) -> Self
     where
         T: Send + Sync + Sized + Clone,
         SR: Default,
@@ -94,21 +109,40 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed(f, SR::default()))
     }
 
+    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T` and [`SignalRuntimeRef`].
+    ///
+    /// This pins the provided closure. The resulting `T` is cached.
     pub fn computed_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
+    where
+        T: Send + Sync + Sized + Copy,
+    {
+        Self::new(computed(f, runtime))
+    }
+
+    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T` and [`SignalRuntimeRef`].
+    ///
+    /// This pins the provided closure. The resulting `T` is cached.
+    pub fn computed_cloned_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
     where
         T: Send + Sync + Sized + Clone,
     {
         Self::new(computed(f, runtime))
     }
 
+    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`Sync`]` + `[`Fn`]`() -> T`.
+    ///
+    /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs each time the value is retrieved. This may lead to congestion.
     pub fn computed_uncached(f: impl 'a + Send + Sync + Fn() -> T) -> Self
     where
-        T: Send + Sync + Sized + Clone,
+        T: Send + Sync + Sized,
         SR: Default,
     {
         Self::new(computed_uncached(f, SR::default()))
     }
 
+    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`Sync`]` + `[`Fn`]`() -> T` and [`SignalRuntimeRef`].
+    ///
+    /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs each time the value is retrieved. This may lead to congestion.
     pub fn computed_uncached_with_runtime(f: impl 'a + Send + Sync + Fn() -> T, runtime: SR) -> Self
     where
         T: Send + Sync + Sized + Clone,
@@ -116,6 +150,9 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed_uncached(f, runtime))
     }
 
+    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T`.
+    ///
+    /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs **exclusively** each time the value is retrieved. This may lead to (more) congestion.
     pub fn computed_uncached_mut(f: impl 'a + Send + FnMut() -> T) -> Self
     where
         T: Send + Sync + Sized + Clone,
@@ -124,6 +161,9 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed_uncached_mut(f, SR::default()))
     }
 
+    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T` and [`SignalRuntimeRef`].
+    ///
+    /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs **exclusively** each time the value is retrieved. This may lead to (more) congestion.
     pub fn computed_uncached_mut_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
     where
         T: Send + Sync + Sized + Clone,
@@ -131,6 +171,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed_uncached_mut(f, runtime))
     }
 
+    /// This is a convenience method. See [`merged`].
     pub fn merged(
         source: impl 'a + Source<SR, Value = T>,
         f: impl 'a + Send + FnMut(&mut T, T) -> Update,
@@ -154,8 +195,8 @@ pub struct SignalRef<
     T: 'a + Send + ?Sized,
     SR: ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
 > {
-    pub(crate) source: *const (dyn 'a + Send + Source<SR, Value = T>),
-    _phantom: PhantomData<(&'r (dyn 'a + Send + Source<SR, Value = T>), SR)>,
+    pub(crate) source: *const (dyn 'a + Source<SR, Value = T>),
+    _phantom: PhantomData<(&'r (dyn 'a + Source<SR, Value = T>), SR)>,
 }
 
 impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> ToOwned

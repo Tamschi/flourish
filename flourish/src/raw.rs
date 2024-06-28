@@ -108,7 +108,7 @@ pub use crate::computed_with_runtime;
 
 pub fn computed_uncached<
     'a,
-    T: 'a + Send + Clone,
+    T: 'a + Send,
     F: 'a + Send + Sync + Fn() -> T,
     SR: 'a + SignalRuntimeRef,
 >(
@@ -136,7 +136,7 @@ pub use crate::computed_uncached_with_runtime;
 
 pub fn computed_uncached_mut<
     'a,
-    T: 'a + Send + Clone,
+    T: 'a + Send,
     F: 'a + Send + FnMut() -> T,
     SR: 'a + SignalRuntimeRef,
 >(
@@ -172,7 +172,7 @@ pub fn folded<'a, B: 'a + Send, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>
 #[macro_export]
 macro_rules! folded {
     ($selector:expr, $init:expr, $fold:expr) => {{
-		super let folded = ::core::pin::pin!($crate::raw::folded(($selector, $crate::GlobalSignalRuntime), $init, $fold));
+		super let folded = ::core::pin::pin!($crate::raw::folded($crate::raw::computed_uncached_mut($selector, $crate::GlobalSignalRuntime), $init, $fold));
         ::core::pin::Pin::into_ref(folded)
 	}};
 }
@@ -195,7 +195,7 @@ pub fn merged<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
 #[macro_export]
 macro_rules! merged {
     ($selector:expr, $fold:expr) => {{
-		super let merged = ::core::pin::pin!($crate::raw::merged(($selector, $crate::GlobalSignalRuntime), $fold));
+		super let merged = ::core::pin::pin!($crate::raw::merged($crate::raw::computed_uncached_mut($selector, $crate::GlobalSignalRuntime), $fold));
         ::core::pin::Pin::into_ref(merged)
 	}};
 }
@@ -220,7 +220,7 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = cached!($f:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::cached(($f, $crate::GlobalSignalRuntime)));
+		let $name = ::core::pin::pin!($crate::raw::cached($crate::raw::computed_uncached_mut($f, $crate::GlobalSignalRuntime)));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = cached_from_source!($source:expr);} => {
@@ -252,7 +252,7 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = merged!($selector:expr, $fold:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::merged(($selector, $crate::GlobalSignalRuntime), $fold));
+		let $name = ::core::pin::pin!($crate::raw::merged($crate::raw::computed_uncached_mut($selector, $crate::GlobalSignalRuntime), $fold));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = merged_from_source!($source:expr, $f:expr);} => {
