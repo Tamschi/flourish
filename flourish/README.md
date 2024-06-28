@@ -88,8 +88,11 @@ drop(subscription);
 index.set(3); // nothing
 ```
 
-`Signal`s are fully lazy, so they only update while subscribed or to refresh their value if dirty.  
-("uncached" signals run their closure whenever their value is retrieved, but not on update.)
+`Signal`s are fully lazy, so they only update while subscribed or to refresh their value if dirty.
+
+The default `GlobalSignalRuntime` notifies signals iteratively from earlier to later when possible. Only one such notification cascade is processed at a time with this runtime.
+
+("uncached" signals run their closure whenever their value is retrieved instead, not on update.)
 
 ## Using a different runtime
 
