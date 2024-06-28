@@ -3,10 +3,7 @@ use std::{marker::PhantomData, pin::Pin, sync::Arc};
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::{
-    raw::{
-        computed, computed_uncached, computed_uncached_mut, new_raw_unsubscribed_subscription,
-        pull_subscription,
-    },
+    raw::{computed, new_raw_unsubscribed_subscription, pull_subscription},
     AsSource, SignalGuard, Source,
 };
 

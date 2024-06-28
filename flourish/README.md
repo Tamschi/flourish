@@ -9,6 +9,23 @@ Flourish is a signals library inspired by [🚦 JavaScript Signals standard prop
 You can put signals on the heap:
 
 ```rust
+use flourish::{Signal, Subject, Subscription, Update};
+
+let _ = Subject::new(());
+
+// The closure type is erased!
+// Not evaluated unless subscribed.
+let _ = Signal::computed(|| ());
+let _ = Signal::computed_uncached(|| ());
+let _ = Signal::computed_uncached_mut(|| ());
+let _ = Signal::folded((), |_value| Update::Propagate);
+let _ = Signal::merged(|| (), |_value, _next| Update::Propagate);
+
+// The closure type is erased!
+let _ = Subscription::computed(|| ());
+```
+
+```rust
 use flourish::{shadow_clone, Signal, Subject, Subscription};
 
 let a = Subject::new(1); // : Subject<i32>

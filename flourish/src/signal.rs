@@ -92,18 +92,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     /// This pins the provided closure. The resulting `T` is cached.
     pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
     where
-        T: Send + Sync + Sized + Copy,
-        SR: Default,
-    {
-        Self::new(computed(f, SR::default()))
-    }
-
-    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T`.
-    ///
-    /// This pins the provided closure. The resulting `T` is cached.
-    pub fn computed_cloned(f: impl 'a + Send + FnMut() -> T) -> Self
-    where
-        T: Send + Sync + Sized + Clone,
+        T: Send + Sync + Sized,
         SR: Default,
     {
         Self::new(computed(f, SR::default()))
@@ -114,17 +103,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     /// This pins the provided closure. The resulting `T` is cached.
     pub fn computed_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
     where
-        T: Send + Sync + Sized + Copy,
-    {
-        Self::new(computed(f, runtime))
-    }
-
-    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T` and [`SignalRuntimeRef`].
-    ///
-    /// This pins the provided closure. The resulting `T` is cached.
-    pub fn computed_cloned_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
-    where
-        T: Send + Sync + Sized + Clone,
+        T: Send + Sync + Sized,
     {
         Self::new(computed(f, runtime))
     }

@@ -18,7 +18,7 @@ use crate::utils::conjure_zst;
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawComputed<
-    T: Send + Clone,
+    T: Send,
     F: Send + FnMut() -> T,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
 >(#[pin] Source<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR>);
@@ -44,12 +44,12 @@ impl<'a, T: ?Sized> Borrow<T> for RawComputedGuard<'a, T> {
 }
 
 /// TODO: Safety documentation.
-unsafe impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
+unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
     for RawComputed<T, F, SR>
 {
 }
 
-impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
     pub fn new(f: F, runtime: SR) -> Self {
         Self(Source::with_runtime(ForceSyncUnpin(f.into()), runtime))
     }
@@ -115,7 +115,7 @@ impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<
 }
 
 enum E {}
-impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
     Callbacks<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
     const UPDATE: Option<
@@ -124,7 +124,7 @@ impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update,
     > = {
-        unsafe fn eval<T: Send + Clone, F: Send + FnMut() -> T>(
+        unsafe fn eval<T: Send, F: Send + FnMut() -> T>(
             f: Pin<&ForceSyncUnpin<Mutex<F>>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
@@ -153,7 +153,7 @@ impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
     unsafe fn init<'a>(
         f: Pin<&'a ForceSyncUnpin<Mutex<F>>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
@@ -165,7 +165,7 @@ impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<
     }
 }
 
-impl<T: Send + Clone, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
     for RawComputed<T, F, SR>
 {
     type Value = T;

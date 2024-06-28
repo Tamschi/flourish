@@ -78,12 +78,7 @@ macro_rules! cached_from_source {
 }
 pub use crate::cached_from_source;
 
-pub fn computed<
-    'a,
-    T: 'a + Send + Clone,
-    F: 'a + Send + FnMut() -> T,
-    SR: 'a + SignalRuntimeRef,
->(
+pub fn computed<'a, T: 'a + Send, F: 'a + Send + FnMut() -> T, SR: 'a + SignalRuntimeRef>(
     f: F,
     runtime: SR,
 ) -> impl 'a + Source<SR, Value = T> {
