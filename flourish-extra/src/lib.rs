@@ -14,14 +14,19 @@ use num_traits::Zero;
 pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
 ) -> impl 'a + Source<SR, Value = T> {
-    merged(source, |current, next| {
-        if current != &next {
-            *current = next;
-            Update::Propagate
-        } else {
-            Update::Halt
-        }
-    })
+    let runtime = source.clone_runtime_ref();
+    merged(
+        move || unsafe { Pin::new_unchecked(&source) }.get(),
+        |current, next| {
+            if current != &next {
+                *current = next;
+                Update::Propagate
+            } else {
+                Update::Halt
+            }
+        },
+        runtime,
+    )
 }
 
 pub fn delta<

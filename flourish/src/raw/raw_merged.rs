@@ -20,10 +20,10 @@ use crate::utils::conjure_zst;
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawMerged<
     T: Send + Clone,
-    S: crate::Source<SR, Value = T>,
+    S: Send + FnMut() -> T,
     M: Send + FnMut(&mut T, T) -> Update,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
->(#[pin] Source<(S, ForceSyncUnpin<UnsafeCell<M>>), ForceSyncUnpin<RwLock<T>>, SR>);
+>(#[pin] Source<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>);
 
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(T);
@@ -48,7 +48,7 @@ impl<'a, T: ?Sized> Borrow<T> for RawMergedGuard<'a, T> {
 /// TODO: Safety documentation.
 unsafe impl<
         T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
+        S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef + Sync,
     > Sync for RawMerged<T, S, M, SR>
@@ -58,15 +58,14 @@ unsafe impl<
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<
         T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
+        S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
     > RawMerged<T, S, M, SR>
 {
-    pub fn new(source: S, f: M) -> Self {
-        let runtime = source.clone_runtime_ref();
+    pub fn new(select: S, merge: M, runtime: SR) -> Self {
         Self(Source::with_runtime(
-            (source, ForceSyncUnpin(f.into())),
+            ForceSyncUnpin((select, merge).into()),
             runtime,
         ))
     }
@@ -133,38 +132,36 @@ impl<
 enum E {}
 impl<
         T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
+        S: Send + FnMut() -> T,
         M: Send + ?Sized + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
-    > Callbacks<(S, ForceSyncUnpin<UnsafeCell<M>>), ForceSyncUnpin<RwLock<T>>, SR> for E
+    > Callbacks<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
     const UPDATE: Option<
         unsafe fn(
-            eager: Pin<&(S, ForceSyncUnpin<UnsafeCell<M>>)>,
+            eager: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update,
     > = {
         unsafe fn eval<
             T: Send + Clone,
-            S: crate::Source<SR, Value = T>,
+            S: Send + FnMut() -> T,
             M: Send + ?Sized + FnMut(&mut T, T) -> Update,
-            SR: SignalRuntimeRef,
         >(
-            state: Pin<&(S, ForceSyncUnpin<UnsafeCell<M>>)>,
+            state: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
-            let source = Pin::new_unchecked(&state.0);
-            let f = &mut *state.1 .0.get();
+            let (select, merge) = &mut *state.0.get();
             // TODO: Split this up to avoid congestion where possible.
-            let next_value = source.get_clone_exclusive();
-            f(&mut *cache.project_ref().0.write().unwrap(), next_value)
+            let next_value = select();
+            merge(&mut *cache.project_ref().0.write().unwrap(), next_value)
         }
         Some(eval)
     };
 
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(
-            eager: Pin<&(S, ForceSyncUnpin<UnsafeCell<M>>)>,
+            eager: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
             subscribed: bool,
         ),
@@ -177,24 +174,22 @@ impl<
 /// Externally synchronised through guarantees on [`pollinate::init`].
 impl<
         T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
+        S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
     > RawMerged<T, S, M, SR>
 {
     unsafe fn init<'a>(
-        state: Pin<&'a (S, ForceSyncUnpin<UnsafeCell<M>>)>,
+        state: Pin<&'a ForceSyncUnpin<UnsafeCell<(S, M)>>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
     ) -> Token<'a> {
-        cache.write(ForceSyncUnpin(
-            (Pin::new_unchecked(&state.0).get_clone_exclusive()).into(),
-        ))
+        cache.write(ForceSyncUnpin((&mut *state.0.get()).0().into()))
     }
 }
 
 impl<
         T: Send + Clone,
-        S: crate::Source<SR, Value = T>,
+        S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
     > crate::Source<SR> for RawMerged<T, S, M, SR>

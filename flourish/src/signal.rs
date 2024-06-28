@@ -10,7 +10,7 @@ use std::{
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-    raw::{cached, computed, computed_uncached, computed_uncached_mut, merged},
+    raw::{computed, computed_uncached, computed_uncached_mut, merged},
     AsSource, Source,
 };
 
@@ -173,13 +173,14 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
 
     /// This is a convenience method. See [`merged`].
     pub fn merged(
-        source: impl 'a + Source<SR, Value = T>,
-        f: impl 'a + Send + FnMut(&mut T, T) -> Update,
+        select: impl 'a + Send + FnMut() -> T,
+        merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
     ) -> Self
     where
         T: Clone,
+        SR: Default,
     {
-        Self::new(merged(source, f))
+        Self::new(merged(select, merge, SR::default()))
     }
 }
 

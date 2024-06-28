@@ -171,8 +171,8 @@ pub fn folded<'a, B: 'a + Send, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>
 }
 #[macro_export]
 macro_rules! folded {
-    ($selector:expr, $init:expr, $fold:expr) => {{
-		super let folded = ::core::pin::pin!($crate::raw::folded($crate::raw::computed_uncached_mut($selector, $crate::GlobalSignalRuntime), $init, $fold));
+    ($select:expr, $init:expr, $fold:expr) => {{
+		super let folded = ::core::pin::pin!($crate::raw::folded($crate::raw::computed_uncached_mut($select, $crate::GlobalSignalRuntime), $init, $fold));
         ::core::pin::Pin::into_ref(folded)
 	}};
 }
@@ -187,27 +187,28 @@ macro_rules! folded_from_source {
 pub use crate::folded_from_source;
 
 pub fn merged<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
-    f: impl 'a + Send + FnMut(&mut T, T) -> Update,
+    select: impl 'a + Send + FnMut() -> T,
+    merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
+    runtime: SR,
 ) -> impl 'a + Source<SR, Value = T> {
-    RawMerged::new(source, f)
+    RawMerged::new(select, merge, runtime)
 }
 #[macro_export]
 macro_rules! merged {
-    ($selector:expr, $fold:expr) => {{
-		super let merged = ::core::pin::pin!($crate::raw::merged($crate::raw::computed_uncached_mut($selector, $crate::GlobalSignalRuntime), $fold));
+    ($select:expr, $fold:expr) => {{
+		super let merged = ::core::pin::pin!($crate::raw::merged($crate::raw::computed_uncached_mut($select, $crate::GlobalSignalRuntime), $fold));
         ::core::pin::Pin::into_ref(merged)
 	}};
 }
 pub use crate::merged;
 #[macro_export]
-macro_rules! merged_from_source {
-    ($source:expr, $f:expr) => {{
-		super let merged = ::core::pin::pin!($crate::raw::merged($source, $f));
+macro_rules! merged_with_runtime {
+    ($select:expr, $merge:expr, $runtime:expr) => {{
+		super let merged = ::core::pin::pin!($crate::raw::merged($select, $merge, $runtime));
         ::core::pin::Pin::into_ref(fold)
 	}};
 }
-pub use crate::merged_from_source;
+pub use crate::merged_with_runtime;
 
 #[macro_export]
 macro_rules! signals_helper {
@@ -251,12 +252,12 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($f, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = merged!($selector:expr, $fold:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::merged($crate::raw::computed_uncached_mut($selector, $crate::GlobalSignalRuntime), $fold));
+	{let $name:ident = merged!($select:expr, $merge:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::merged($select, $merge, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = merged_from_source!($source:expr, $f:expr);} => {
-		let $name = ::core::pin::pin!($crate::raw::merged($source, $f));
+	{let $name:ident = merged_with_runtime!($select:expr, $merge:expr, $runtime:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::merged($select, $merge, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = subscription!($f:expr);} => {

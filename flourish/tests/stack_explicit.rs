@@ -2,7 +2,7 @@ use std::pin::pin;
 
 use flourish::{
     raw::{computed, computed_uncached, subject},
-    signals_helper, GlobalSignalRuntime, Source,
+    GlobalSignalRuntime, Source,
 };
 mod _validator;
 use _validator::Validator;
@@ -47,16 +47,16 @@ fn use_macros() {
     {
         let sub_aa = ::core::pin::pin!(flourish::__::new_raw_unsubscribed_subscription(
             flourish::raw::computed(
-                (|| {
+                || {
                     x.push("sub_aa");
                     v.push(aa.get())
-                }),
+                },
                 flourish::GlobalSignalRuntime
             )
         ));
         let sub_aa = ::core::pin::Pin::into_ref(sub_aa);
         flourish::__::pull_subscription(sub_aa);
-        let sub_aa = flourish::__::pin_into_pin_impl_source(sub_aa);
+        let _sub_aa = flourish::__::pin_into_pin_impl_source(sub_aa);
         v.expect([2]);
         x.expect(["sub_aa", "aa", "c", "d"]);
 
@@ -78,10 +78,10 @@ fn use_macros() {
 
     let _sub_c = ::core::pin::pin!(flourish::__::new_raw_unsubscribed_subscription(
         flourish::raw::computed(
-            (|| {
+            || {
                 x.push("sub_c");
                 v.push(c.get())
-            }),
+            },
             flourish::GlobalSignalRuntime
         )
     ));
@@ -90,10 +90,10 @@ fn use_macros() {
     let _sub_c = flourish::__::pin_into_pin_impl_source(_sub_c);
     let _sub_d = ::core::pin::pin!(flourish::__::new_raw_unsubscribed_subscription(
         flourish::raw::computed(
-            (|| {
+            || {
                 x.push("sub_d");
                 v.push(d.get())
-            }),
+            },
             flourish::GlobalSignalRuntime
         )
     ));
