@@ -93,7 +93,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
             self.touch();
             conjure_zst()
         } else {
-            *self.read()
+            *self.read().borrow()
         }
     }
 
@@ -101,13 +101,17 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
     where
         T: Sync + Clone,
     {
-        self.read().clone()
+        self.read().borrow().clone()
     }
 
-    pub fn read<'a>(&'a self) -> RawSubjectGuard<'a, T>
+    pub fn read<'a>(&'a self) -> impl 'a + Borrow<T> + Deref<Target = T>
     where
         T: Sync,
     {
+        self.read_raw()
+    }
+
+    pub(crate) fn read_raw<'a>(&'a self) -> RawSubjectGuard<T> {
         RawSubjectGuard(self.touch().read().unwrap())
     }
 

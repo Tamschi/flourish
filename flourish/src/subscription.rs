@@ -3,7 +3,7 @@ use std::{marker::PhantomData, pin::Pin, sync::Arc};
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::{
-    raw::{new_raw_unsubscribed_subscription_with_runtime, pull_subscription},
+    raw::{new_raw_unsubscribed_subscription, pull_subscription},
     SignalGuard, Source,
 };
 
@@ -37,10 +37,7 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a,
         T: Sized,
     {
         {
-            let runtime = source.clone_runtime_ref();
-            let arc = Arc::pin(new_raw_unsubscribed_subscription_with_runtime(
-                source, runtime,
-            ));
+            let arc = Arc::pin(new_raw_unsubscribed_subscription(source));
             pull_subscription(arc.as_ref());
             Self {
                 source: unsafe { Arc::into_raw(Pin::into_inner_unchecked(arc)) },

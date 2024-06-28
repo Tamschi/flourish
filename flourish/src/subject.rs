@@ -35,7 +35,7 @@ impl<'a, T> Deref for SubjectGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        self.borrow()
+        &self.0
     }
 }
 
@@ -79,11 +79,11 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
         self.0.get_clone()
     }
 
-    pub fn read<'a>(&'a self) -> SubjectGuard<'a, T>
+    pub fn read<'a>(&'a self) -> impl 'a + Borrow<T> + Deref<Target = T>
     where
         T: Sync,
     {
-        SubjectGuard(self.0.read())
+        SubjectGuard(self.0.read_raw())
     }
 
     pub fn get_exclusive(&self) -> T

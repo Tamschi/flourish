@@ -52,14 +52,6 @@ unsafe impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeR
 impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef> RawComputed<T, S, SR> {
     pub fn new(source: S) -> Self {
         let runtime = source.clone_runtime_ref();
-        Self::with_runtime(source, runtime)
-    }
-
-    pub fn with_runtime(source: S, runtime: SR) -> Self
-    where
-        S: Sized,
-        SR: SignalRuntimeRef,
-    {
         Self(Source::with_runtime(ForceSyncUnpin(source.into()), runtime))
     }
 

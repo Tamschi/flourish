@@ -8,20 +8,20 @@ fn use_macros() {
     let x = &Validator::new();
 
     signals_helper! {
-        let a = subject_sr!(1, GlobalSignalRuntime);
-        let b = subject_sr!(2, GlobalSignalRuntime);
+        let a = subject_with_runtime!(1, GlobalSignalRuntime);
+        let b = subject_with_runtime!(2, GlobalSignalRuntime);
     }
     let (b, set_b) = b.get_set();
     signals_helper! {
-        let c = computed!((|| {
+        let c = computed_from_source!((|| {
             x.push("c");
             a.get() + b()
         }, GlobalSignalRuntime));
-        let d = computed!((|| {
+        let d = computed_from_source!((|| {
             x.push("d");
             a.get() - b()
         }, GlobalSignalRuntime));
-        let aa = uncached!((|| {
+        let aa = uncached_from_source!((|| {
             x.push("aa");
             c.get() + d.get()
         }, GlobalSignalRuntime));
@@ -31,7 +31,7 @@ fn use_macros() {
 
     {
         signals_helper! {
-            let _sub_aa = subscription_sr!(|| { x.push("sub_aa"); v.push(aa.get()) }, GlobalSignalRuntime);
+            let _sub_aa = subscription_from_source!((|| { x.push("sub_aa"); v.push(aa.get()) }, GlobalSignalRuntime));
         }
         v.expect([2]);
         x.expect(["sub_aa", "aa", "c", "d"]);
@@ -53,8 +53,8 @@ fn use_macros() {
     x.expect([]);
 
     signals_helper! {
-        let _sub_c = subscription_sr!(|| { x.push("sub_c"); v.push(c.get()) }, GlobalSignalRuntime);
-        let _sub_d = subscription_sr!(|| { x.push("sub_d"); v.push(d.get()) }, GlobalSignalRuntime);
+        let _sub_c = subscription_from_source!((|| { x.push("sub_c"); v.push(c.get()) }, GlobalSignalRuntime));
+        let _sub_d = subscription_from_source!((|| { x.push("sub_d"); v.push(d.get()) }, GlobalSignalRuntime));
     }
     v.expect([8, 2]);
     x.expect(["sub_c", "c", "sub_d", "d"]);

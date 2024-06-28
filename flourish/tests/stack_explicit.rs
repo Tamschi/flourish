@@ -45,15 +45,13 @@ fn use_macros() {
     x.expect([]);
 
     {
-        let sub_aa = pin!(
-            flourish::__::new_raw_unsubscribed_subscription_with_runtime(
-                || {
-                    x.push("sub_aa");
-                    v.push(aa.get())
-                },
-                flourish::GlobalSignalRuntime
-            )
-        );
+        let sub_aa = pin!(flourish::__::new_raw_unsubscribed_subscription((
+            || {
+                x.push("sub_aa");
+                v.push(aa.get())
+            },
+            flourish::GlobalSignalRuntime
+        )));
         let sub_aa = sub_aa.into_ref();
         flourish::__::pull_subscription(sub_aa);
         v.expect([2]);
@@ -75,26 +73,22 @@ fn use_macros() {
     v.expect([]);
     x.expect([]);
 
-    let sub_c = pin!(
-        flourish::__::new_raw_unsubscribed_subscription_with_runtime(
-            || {
-                x.push("sub_c");
-                v.push(c.get())
-            },
-            flourish::GlobalSignalRuntime
-        )
-    );
+    let sub_c = pin!(flourish::__::new_raw_unsubscribed_subscription((
+        || {
+            x.push("sub_c");
+            v.push(c.get())
+        },
+        flourish::GlobalSignalRuntime
+    )));
     let sub_c = sub_c.into_ref();
     flourish::__::pull_subscription(sub_c);
-    let sub_d = pin!(
-        flourish::__::new_raw_unsubscribed_subscription_with_runtime(
-            || {
-                x.push("sub_d");
-                v.push(d.get())
-            },
-            flourish::GlobalSignalRuntime
-        )
-    );
+    let sub_d = pin!(flourish::__::new_raw_unsubscribed_subscription((
+        || {
+            x.push("sub_d");
+            v.push(d.get())
+        },
+        flourish::GlobalSignalRuntime
+    )));
     let sub_d = sub_d.into_ref();
     flourish::__::pull_subscription(sub_d);
     v.expect([8, 2]);

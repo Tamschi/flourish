@@ -19,15 +19,14 @@ pub struct RawSubscription<
 //TODO: Implementations
 pub struct RawSubscriptionGuard<'a, T>(RawComputedGuard<'a, T>);
 
-pub fn new_raw_unsubscribed_subscription_with_runtime<
+pub fn new_raw_unsubscribed_subscription<
     T: Send + Clone,
     S: Source<SR, Value = T>,
     SR: SignalRuntimeRef,
 >(
     source: S,
-    runtime: SR,
 ) -> RawSubscription<T, S, SR> {
-    RawSubscription(RawComputed::with_runtime(source, runtime))
+    RawSubscription(RawComputed::new(source))
 }
 
 pub fn pull_subscription<T: Send + Clone, S: Source<SR, Value = T>, SR: SignalRuntimeRef>(
