@@ -4,3 +4,4 @@ edition = "2021"
 
 [dependencies]
 flourish = { path = "../flourish" }
+num-traits = { version = "0.2.19", default-features = false }

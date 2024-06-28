@@ -4,7 +4,7 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::{
     raw::{new_raw_unsubscribed_subscription, pull_subscription},
-    SignalGuard, Source,
+    AsSource, SignalGuard, Source,
 };
 
 pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
@@ -44,5 +44,15 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a,
                 _phantom: PhantomData,
             }
         }
+    }
+}
+
+impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> AsSource<'a, SR>
+    for SubscriptionSR<'a, T, SR>
+{
+    type Source = dyn 'a + Source<SR, Value = T>;
+
+    fn as_source(&self) -> Pin<&Self::Source> {
+        unsafe { Pin::new_unchecked(&*self.source) }
     }
 }

@@ -7,6 +7,9 @@ pub(crate) use raw_computed::{RawComputed, RawComputedGuard};
 mod raw_subject;
 pub(crate) use raw_subject::{RawSubject, RawSubjectGuard};
 
+mod raw_folded;
+pub(crate) use raw_folded::RawFolded;
+
 mod raw_merged;
 pub(crate) use raw_merged::RawMerged;
 
@@ -65,6 +68,30 @@ macro_rules! computed_from_source {
 	}};
 }
 pub use crate::computed_from_source;
+
+pub fn folded<'a, B: 'a + Send, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
+    init: B,
+    f: impl 'a + Send + FnMut(&mut B, T) -> Update,
+) -> impl 'a + Source<SR, Value = B> {
+    RawFolded::new(source, init, f)
+}
+#[macro_export]
+macro_rules! folded {
+    ($selector:expr, $init:expr, $fold:expr) => {{
+		super let folded = ::core::pin::pin!($crate::raw::folded(($selector, $crate::GlobalSignalRuntime), $init, $fold));
+        ::core::pin::Pin::into_ref(folded)
+	}};
+}
+pub use crate::folded;
+#[macro_export]
+macro_rules! folded_from_source {
+    ($source:expr, $init:expr, $f:expr) => {{
+		super let folded = ::core::pin::pin!($crate::raw::folded($source, $init, $f));
+        ::core::pin::Pin::into_ref(fold)
+	}};
+}
+pub use crate::folded_from_source;
 
 pub fn merged<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,

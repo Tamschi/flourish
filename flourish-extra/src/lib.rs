@@ -1,11 +1,20 @@
-use flourish::{raw::folded, SignalRuntimeRef, Source, Update};
+use std::{
+    ops::{AddAssign, Sub},
+    pin::Pin,
+};
+
+use flourish::{
+    raw::{computed, folded, merged},
+    SignalRuntimeRef, Source, SubscriptionSR, Update,
+};
+use num_traits::Zero;
 
 //BLOCKED: `merge` and `fold` (as curried operators) wait on <https://github.com/rust-lang/rust/issues/99697>.
 
 pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
 ) -> impl 'a + Source<SR, Value = T> {
-    folded(source, |current, next| {
+    merged(source, |current, next| {
         if current != &next {
             *current = next;
             Update::Propagate
@@ -13,6 +22,58 @@ pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRunti
             Update::Halt
         }
     })
+}
+
+pub fn delta<
+    'a,
+    T: 'a + Send + Sync + Copy + Sub<Output: Zero + Send + Sync + Copy>,
+    SR: 'a + SignalRuntimeRef,
+>(
+    source: impl 'a + Source<SR, Value = T>,
+) -> impl 'a + Source<SR, Value = T::Output> {
+    let folded = folded(
+        source,
+        (None, T::Output::zero()),
+        |(previous, delta), next| {
+            if let Some(previous) = previous {
+                *delta = next - *previous;
+                *previous = next;
+            } else {
+                *previous = Some(next);
+            }
+            Update::Propagate
+        },
+    );
+    let clone_runtime_ref = folded.clone_runtime_ref();
+    computed((
+        move || unsafe { Pin::new_unchecked(&folded) }.read().borrow().1,
+        clone_runtime_ref,
+    ))
+}
+
+pub fn sparse_tally<
+    'a,
+    Tally: 'a + Zero + Send + Sync + Copy + AddAssign<T>,
+    T: 'a + Send + Sync + Copy,
+    SR: 'a + SignalRuntimeRef,
+>(
+    source: impl 'a + Source<SR, Value = T>,
+) -> impl 'a + Source<SR, Value = Tally> {
+    folded(source, Tally::zero(), |tally, next| {
+        *tally += next;
+        Update::Propagate
+    })
+}
+
+pub fn eager_tally<
+    'a,
+    Tally: Zero + Send + Sync + Copy + AddAssign<T>,
+    T: 'a + Send + Sync + Copy,
+    SR: 'a + SignalRuntimeRef,
+>(
+    source: impl 'a + Source<SR, Value = T>,
+) -> SubscriptionSR<'a, Tally, SR> {
+    SubscriptionSR::new(sparse_tally(source))
 }
 
 pub fn pipe<P: IntoPipe>(pipe: P) -> P::Pipe {
