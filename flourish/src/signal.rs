@@ -10,7 +10,7 @@ use std::{
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-    raw::{computed, folded},
+    raw::{computed, merged},
     AsSource, Source,
 };
 
@@ -86,14 +86,14 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::uncached(computed(source))
     }
 
-    pub fn folded(
+    pub fn merged(
         source: impl 'a + Source<SR, Value = T>,
         f: impl 'a + Send + FnMut(&mut T, T) -> Update,
     ) -> Self
     where
         T: Clone,
     {
-        Self::uncached(folded(source, f))
+        Self::uncached(merged(source, f))
     }
 }
 

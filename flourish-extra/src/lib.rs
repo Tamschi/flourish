@@ -1,6 +1,6 @@
 use flourish::{raw::folded, SignalRuntimeRef, Source, Update};
 
-//BLOCKED: `fold` (as curried operator) waits on <https://github.com/rust-lang/rust/issues/99697>.
+//BLOCKED: `merge` and `fold` (as curried operators) wait on <https://github.com/rust-lang/rust/issues/99697>.
 
 pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,

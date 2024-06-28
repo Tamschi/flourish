@@ -18,7 +18,7 @@ use crate::utils::conjure_zst;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct RawFolded<
+pub(crate) struct RawMerged<
     T: Send + Clone,
     S: crate::Source<SR, Value = T>,
     M: Send + FnMut(&mut T, T) -> Update,
@@ -29,9 +29,9 @@ pub(crate) struct RawFolded<
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-pub(crate) struct RawFoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct RawMergedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
-impl<'a, T: ?Sized> Deref for RawFoldedGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for RawMergedGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -39,7 +39,7 @@ impl<'a, T: ?Sized> Deref for RawFoldedGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawFoldedGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawMergedGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
@@ -51,7 +51,7 @@ unsafe impl<
         S: crate::Source<SR, Value = T>,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef + Sync,
-    > Sync for RawFolded<T, S, M, SR>
+    > Sync for RawMerged<T, S, M, SR>
 {
 }
 
@@ -61,7 +61,7 @@ impl<
         S: crate::Source<SR, Value = T>,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
-    > RawFolded<T, S, M, SR>
+    > RawMerged<T, S, M, SR>
 {
     pub fn new(source: S, f: M) -> Self {
         let runtime = source.clone_runtime_ref();
@@ -91,11 +91,11 @@ impl<
         self.read().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> RawFoldedGuard<'a, T>
+    pub fn read<'a>(self: Pin<&'a Self>) -> RawMergedGuard<'a, T>
     where
         T: Sync,
     {
-        RawFoldedGuard(self.touch().read().unwrap())
+        RawMergedGuard(self.touch().read().unwrap())
     }
 
     pub fn get_exclusive(self: Pin<&Self>) -> T
@@ -180,7 +180,7 @@ impl<
         S: crate::Source<SR, Value = T>,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
-    > RawFolded<T, S, M, SR>
+    > RawMerged<T, S, M, SR>
 {
     unsafe fn init<'a>(
         state: Pin<&'a (S, ForceSyncUnpin<UnsafeCell<M>>)>,
@@ -197,7 +197,7 @@ impl<
         S: crate::Source<SR, Value = T>,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
-    > crate::Source<SR> for RawFolded<T, S, M, SR>
+    > crate::Source<SR> for RawMerged<T, S, M, SR>
 {
     type Value = T;
 
