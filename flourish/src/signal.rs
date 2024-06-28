@@ -7,9 +7,12 @@ use std::{
     sync::Arc,
 };
 
-use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
+use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
-use crate::{raw::computed, AsSource, Source};
+use crate::{
+    raw::{computed, folded},
+    AsSource, Source,
+};
 
 pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
 
@@ -81,6 +84,16 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         T: Send + Sync + Sized + Clone,
     {
         Self::uncached(computed(source))
+    }
+
+    pub fn folded(
+        source: impl 'a + Source<SR, Value = T>,
+        f: impl 'a + Send + FnMut(&mut T, T) -> Update,
+    ) -> Self
+    where
+        T: Clone,
+    {
+        Self::uncached(folded(source, f))
     }
 }
 

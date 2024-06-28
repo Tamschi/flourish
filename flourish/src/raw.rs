@@ -7,8 +7,8 @@ pub(crate) use raw_computed::{RawComputed, RawComputedGuard};
 mod raw_subject;
 pub(crate) use raw_subject::{RawSubject, RawSubjectGuard};
 
-mod raw_fold;
-pub(crate) use raw_fold::RawFold;
+mod raw_folded;
+pub(crate) use raw_folded::RawFolded;
 
 pub(crate) mod raw_subscription;
 pub(crate) use raw_subscription::{new_raw_unsubscribed_subscription, pull_subscription};
@@ -66,28 +66,28 @@ macro_rules! computed_from_source {
 }
 pub use crate::computed_from_source;
 
-pub fn fold<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+pub fn folded<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
     f: impl 'a + Send + FnMut(&mut T, T) -> Update,
 ) -> impl 'a + Source<SR, Value = T> {
-    RawFold::new(source, f)
+    RawFolded::new(source, f)
 }
 #[macro_export]
-macro_rules! fold {
-    ($selector:expr, $f:expr) => {{
-		super let fold = ::core::pin::pin!($crate::raw::fold(($selector, $crate::GlobalSignalRuntime)));
-        ::core::pin::Pin::into_ref(fold)
+macro_rules! folded {
+    ($selector:expr, $fold:expr) => {{
+		super let folded = ::core::pin::pin!($crate::raw::folded(($selector, $crate::GlobalSignalRuntime), $fold));
+        ::core::pin::Pin::into_ref(folded)
 	}};
 }
-pub use crate::fold;
+pub use crate::folded;
 #[macro_export]
-macro_rules! fold_source {
+macro_rules! folded_from_source {
     ($source:expr, $f:expr) => {{
-		super let fold = ::core::pin::pin!($crate::raw::fold($source, $f));
+		super let folded = ::core::pin::pin!($crate::raw::folded($source, $f));
         ::core::pin::Pin::into_ref(fold)
 	}};
 }
-pub use crate::fold_source;
+pub use crate::folded_from_source;
 
 pub fn uncached<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
@@ -131,6 +131,14 @@ macro_rules! signals_helper {
 	};
 	{let $name:ident = computed_from_source!($source:expr);} => {
 		let $name = ::core::pin::pin!($crate::raw::computed($source));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = folded!($selector:expr, $fold:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::folded(($selector, $crate::GlobalSignalRuntime), $fold));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = folded_from_source!($source:expr, $f:expr);} => {
+		let $name = ::core::pin::pin!($crate::raw::folded($source, $f));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = uncached!($f:expr);} => {
