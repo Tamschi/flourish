@@ -51,7 +51,7 @@ impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
     }
 }
 
-pub struct RawSubjectGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct RawSubjectGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
 impl<'a, T: ?Sized> Deref for RawSubjectGuard<'a, T> {
     type Target = T;

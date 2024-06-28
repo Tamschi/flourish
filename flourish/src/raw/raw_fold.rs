@@ -18,7 +18,7 @@ use crate::utils::conjure_zst;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub struct RawFold<
+pub(crate) struct RawFold<
     T: Send,
     S: Send + FnMut() -> T,
     M: Send + FnMut(&mut T, T) -> Update,
@@ -29,7 +29,7 @@ pub struct RawFold<
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-pub struct RawFoldGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct RawFoldGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
 impl<'a, T: ?Sized> Deref for RawFoldGuard<'a, T> {
     type Target = T;

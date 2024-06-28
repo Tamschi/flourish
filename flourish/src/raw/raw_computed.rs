@@ -17,7 +17,7 @@ use crate::utils::conjure_zst;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub struct RawComputed<
+pub(crate) struct RawComputed<
     T: Send + Clone,
     S: crate::Source<SR, Value = T>,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
@@ -27,7 +27,7 @@ pub struct RawComputed<
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-pub struct RawComputedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct RawComputedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 
 impl<'a, T: ?Sized> Deref for RawComputedGuard<'a, T> {
     type Target = T;

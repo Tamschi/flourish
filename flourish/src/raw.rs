@@ -1,7 +1,8 @@
-mod raw_computed;
 use pollinate::runtime::Update;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
-pub use raw_computed::{RawComputed, RawComputedGuard};
+
+mod raw_computed;
+pub(crate) use raw_computed::{RawComputed, RawComputedGuard};
 
 mod raw_subject;
 pub(crate) use raw_subject::{RawSubject, RawSubjectGuard};
