@@ -9,7 +9,7 @@ Flourish is a signals library inspired by [🚦 JavaScript Signals standard prop
 You can put signals on the heap:
 
 ```rust
-use flourish::{Signal, Subject, Subscription, Update};
+use flourish::{Subject, Signal, Update, Subscription, Effect};
 
 let _ = Subject::new(());
 
@@ -23,6 +23,12 @@ let _ = Signal::merged(|| (), |_value, _next| Update::Propagate);
 
 // The closure type is erased!
 let _ = Subscription::computed(|| ());
+let _ = Subscription::folded((), |_value| Update::Propagate);
+let _ = Subscription::merged(|| (), |_value, _next| Update::Propagate);
+
+// The closure and value type are erased!
+// Runs `drop` *before* computing the new value.
+let _ = Effect::new(|| (), drop);
 ```
 
 You can also put signals on the stack:
@@ -43,6 +49,9 @@ signals_helper! {
 
   // The closure type is erased!
   let _source = subscription!(|| ());
+
+  // Runs `drop` *before* computing the new value.
+  let _effect = effect!(|| (), drop);
 }
 ```
 
@@ -51,7 +60,7 @@ signals_helper! {
 `flourish` detects and updates dependencies automatically:
 
 ```rust
-use flourish::{shadow_clone, Subject, Subscription};
+use flourish::{shadow_clone, Subject, Signal, Subscription};
 
 let a = Subject::new("a");
 let b = Subject::new("b");
@@ -62,7 +71,7 @@ let f = Subject::new("f");
 let g = Subject::new("g");
 let index = Subject::new(0);
 
-let subscription = Subscription::computed({
+let signal = Signal::computed({
   shadow_clone!(a, b, c, d, e, f, g, index);
   move || println!("{}", match index.get() {
     1 => a.get(),
@@ -74,7 +83,9 @@ let subscription = Subscription::computed({
     7 => g.get(),
     _ => "",
   })
-}); // ""
+}); // nothing
+
+let subscription = Subscription::computed(|| signal.touch()); // ""
 
 a.set("a"); b.set("b"); // nothing
 index.set(1); // "a"
@@ -121,6 +132,8 @@ signals_helper! {
   let _source = merged_with_runtime!(|| (), |_value, _next| Update::Propagate, GlobalSignalRuntime);
 
   let _source = subscription_with_runtime!(|| (), GlobalSignalRuntime);
+
+  let _effect = effect_with_runtime!(|| (), drop, GlobalSignalRuntime);
 }
 ```
 

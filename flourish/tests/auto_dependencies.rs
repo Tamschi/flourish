@@ -1,4 +1,4 @@
-use flourish::{shadow_clone, Subject, Subscription};
+use flourish::{shadow_clone, Signal, Subject, Subscription};
 
 mod _validator;
 use _validator::Validator;
@@ -16,7 +16,7 @@ fn auto_dependencies() {
     let g = Subject::new("g");
     let index = Subject::new(0);
 
-    let subscription = Subscription::computed({
+    let signal = Signal::computed({
         shadow_clone!(a, b, c, d, e, f, g, index);
         move || {
             v.push(match index.get() {
@@ -31,6 +31,9 @@ fn auto_dependencies() {
             })
         }
     });
+    v.expect([]);
+
+    let subscription = Subscription::computed(|| signal.touch());
     v.expect([""]);
 
     a.set("a");
