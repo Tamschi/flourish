@@ -12,9 +12,9 @@ fn use_macros() {
     let v = &Validator::new();
     let x = &Validator::new();
 
-    let a = pin!(subject(1));
+    let a = pin!(subject(1, GlobalSignalRuntime));
     let a = a.into_ref();
-    let b = pin!(subject(2));
+    let b = pin!(subject(2, GlobalSignalRuntime));
     let b = b.into_ref();
     let (b, set_b) = b.get_set();
     let c = pin!(computed(

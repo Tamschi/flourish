@@ -55,6 +55,8 @@ signals_helper! {
 }
 ```
 
+Additionally, inside `flourish::raw`, you can find constructor functions for unpinned raw signals that enable composition with data-inlining.
+
 ## Linking signals
 
 `flourish` detects and updates dependencies automatically:

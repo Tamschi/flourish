@@ -147,7 +147,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed_uncached_mut(f, runtime))
     }
 
-    /// This is a convenience method. See [`folded`].
+    /// This is a convenience method. See [`folded`](`folded()`).
     pub fn folded(init: T, f: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
     where
         T: Sized,
@@ -156,7 +156,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(folded(init, f, SR::default()))
     }
 
-    /// This is a convenience method. See [`folded`].
+    /// This is a convenience method. See [`folded`](`folded()`).
     pub fn folded_with_runtime(
         init: T,
         f: impl 'a + Send + FnMut(&mut T) -> Update,
@@ -168,7 +168,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(folded(init, f, runtime))
     }
 
-    /// This is a convenience method. See [`merged`].
+    /// This is a convenience method. See [`merged`](`merged()`).
     pub fn merged(
         select: impl 'a + Send + FnMut() -> T,
         merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
@@ -180,7 +180,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(merged(select, merge, SR::default()))
     }
 
-    /// This is a convenience method. See [`merged`].
+    /// This is a convenience method. See [`merged`](`merged()`).
     pub fn merged_with_runtime(
         select: impl 'a + Send + FnMut() -> T,
         merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
