@@ -3,7 +3,7 @@ mod _validator;
 use _validator::Validator;
 
 #[test]
-fn effect() {
+fn heap() {
     let v = &Validator::new();
 
     let (a, set_a) = Subject::new(()).into_get_set();

@@ -252,7 +252,6 @@ macro_rules! effect {
         ));
         let effect = ::core::pin::Pin::into_ref(effect);
         $crate::__::pull_effect(effect);
-        $crate::__::pin_into_pin_impl_source(effect);
     }};
 }
 pub use crate::effect;
@@ -262,7 +261,6 @@ macro_rules! effect_with_runtime {
         super let effect_with_runtime = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $runtime));
         let effect_with_runtime = ::core::pin::Pin::into_ref(effect_with_runtime);
         $crate::__::pull_effect(effect_with_runtime);
-        $crate::__::pin_into_pin_impl_source(effect_with_runtime);
     }};
 }
 pub use crate::effect_with_runtime;
@@ -347,13 +345,11 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$crate::__::pull_effect($name);
-		let $name = $crate::__::pin_into_pin_impl_source($name);
 	};
 	{let $name:ident = effect_with_runtime!($f:expr, $drop:expr, $runtime:expr);} => {
 		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$crate::__::pull_effect($name);
-		let $name = $crate::__::pin_into_pin_impl_source($name);
 	};
 	{$(let $name:ident = $macro:ident!($($arg:expr),*$(,)?);)*} => {$(
 		$crate::raw::signals_helper! {
