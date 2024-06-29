@@ -11,7 +11,7 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
     raw::{computed, computed_uncached, computed_uncached_mut, folded, merged},
-    AsSource, Source,
+    Source,
 };
 
 pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
@@ -32,9 +32,6 @@ pub struct SignalSR<
     source: *const (dyn 'a + Source<SR, Value = T>),
     _phantom: PhantomData<Pin<Arc<dyn 'a + Source<SR, Value = T>>>>,
 }
-
-/// TODO
-pub struct SignalGuard<'a, T>(PhantomData<&'a T>);
 
 unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Send for SignalSR<'a, T, SR> {}
 unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Sync for SignalSR<'a, T, SR> {}
@@ -236,22 +233,17 @@ impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef>
     }
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> AsSource<'a, SR>
-    for SignalSR<'a, T, SR>
-{
-    type Source = dyn 'a + Source<SR, Value = T>;
-
-    fn as_source(&self) -> Pin<&Self::Source> {
-        unsafe { Pin::new_unchecked(&*self.source) }
-    }
-}
-
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> AsSource<'a, SR>
+impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Deref
     for SignalRef<'r, 'a, T, SR>
 {
-    type Source = dyn 'a + Source<SR, Value = T>;
+    type Target = Pin<&'a (dyn 'a + Source<SR, Value = T>)>;
 
-    fn as_source(&self) -> Pin<&Self::Source> {
-        unsafe { Pin::new_unchecked(&*self.source) }
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            mem::transmute::<
+                &*const (dyn 'a + Source<SR, Value = T>),
+                &Pin<&'a (dyn 'a + Source<SR, Value = T>)>,
+            >(&self.source)
+        }
     }
 }

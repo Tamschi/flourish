@@ -8,7 +8,7 @@ use std::{
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{raw::RawSubject, AsSource, Source};
+use crate::{raw::RawSubject, Source};
 
 #[derive(Clone)]
 pub struct Subject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime>(
@@ -229,14 +229,6 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
     }
 
     pub fn as_source(&self) -> Pin<&dyn Source<SR, Value = T>> {
-        self.0.as_ref()
-    }
-}
-
-impl<'a, T: 'a + Send, SR: 'a + Sync + SignalRuntimeRef> AsSource<'a, SR> for Subject<T, SR> {
-    type Source = dyn 'a + Source<SR, Value = T> + Sync;
-
-    fn as_source(&self) -> Pin<&Self::Source> {
         self.0.as_ref()
     }
 }

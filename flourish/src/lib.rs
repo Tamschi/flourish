@@ -9,13 +9,13 @@ mod subject;
 pub use subject::Subject;
 
 mod subscription;
-pub use subscription::{Subscription, SubscriptionGuard, SubscriptionSR};
+pub use subscription::{Subscription, SubscriptionSR};
 
 mod source;
-pub use source::{AsSource, Source};
+pub use source::Source;
 
 mod signal;
-pub use signal::{Signal, SignalGuard, SignalSR};
+pub use signal::{Signal, SignalRef, SignalSR};
 
 pub use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 

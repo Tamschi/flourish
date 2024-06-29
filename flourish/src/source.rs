@@ -39,19 +39,3 @@ pub trait Source<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
     where
         SR: Sized;
 }
-
-pub trait AsSource<'a, SR: SignalRuntimeRef> {
-    type Source: 'a + ?Sized;
-    fn as_source(&self) -> Pin<&Self::Source>;
-}
-
-impl<'a, T: 'a + ?Sized, SR: SignalRuntimeRef> AsSource<'a, SR> for Pin<&T>
-where
-    T: Source<SR>,
-{
-    type Source = T;
-
-    fn as_source(&self) -> Pin<&Self::Source> {
-        self.as_ref()
-    }
-}

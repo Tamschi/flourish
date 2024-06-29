@@ -1,10 +1,10 @@
-use std::{marker::PhantomData, pin::Pin, sync::Arc};
+use std::{marker::PhantomData, mem, ops::Deref, pin::Pin, sync::Arc};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::{
     raw::{computed, new_raw_unsubscribed_subscription, pull_subscription},
-    AsSource, SignalGuard, Source,
+    Source,
 };
 
 pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
@@ -19,6 +19,21 @@ pub struct SubscriptionSR<
     _phantom: PhantomData<Pin<Arc<dyn 'a + Source<SR, Value = T>>>>,
 }
 
+impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Deref
+    for SubscriptionSR<'a, T, SR>
+{
+    type Target = Pin<&'a (dyn 'a + Source<SR, Value = T>)>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            mem::transmute::<
+                &*const (dyn 'a + Source<SR, Value = T>),
+                &Pin<&'a (dyn 'a + Source<SR, Value = T>)>,
+            >(&self.source)
+        }
+    }
+}
+
 impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Drop
     for SubscriptionSR<'a, T, SR>
 {
@@ -26,9 +41,6 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Drop
         unsafe { Arc::decrement_strong_count(self.source) }
     }
 }
-
-//TODO: Implementations
-pub struct SubscriptionGuard<'a, T>(SignalGuard<'a, T>);
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
@@ -59,15 +71,5 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a,
         T: Send + Sync + Sized + Clone,
     {
         Self::new(computed(f, runtime))
-    }
-}
-
-impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> AsSource<'a, SR>
-    for SubscriptionSR<'a, T, SR>
-{
-    type Source = dyn 'a + Source<SR, Value = T>;
-
-    fn as_source(&self) -> Pin<&Self::Source> {
-        unsafe { Pin::new_unchecked(&*self.source) }
     }
 }
