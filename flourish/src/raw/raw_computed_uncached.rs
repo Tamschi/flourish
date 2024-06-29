@@ -2,9 +2,9 @@ use std::{borrow::Borrow, pin::Pin};
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update},
+    runtime::{GlobalSignalRuntime, SignalRuntimeRef},
     slot::{Slot, Token},
-    source::{Callbacks, Source},
+    source::{NoCallbacks, Source},
 };
 
 #[pin_project]
@@ -30,39 +30,20 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> RawComputedUncac
         Self(Source::with_runtime(ForceSyncUnpin(f.into()), runtime))
     }
 
-    //TODO: This doesn't track right.
     fn get(self: Pin<&Self>) -> T {
-        self.touch()()
+        let f = self.touch();
+        self.project_ref().0.update_dependency_set(move |_, _| f())
     }
 
     pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&F> {
         unsafe {
             self.project_ref()
                 .0
-                .project_or_init::<E>(|f, cache| Self::init(f, cache))
+                .project_or_init::<NoCallbacks>(|f, cache| Self::init(f, cache))
                 .0
                 .map_unchecked(|r| &r.0)
         }
     }
-}
-
-enum E {}
-impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> Callbacks<ForceSyncUnpin<F>, (), SR>
-    for E
-{
-    const UPDATE: Option<unsafe fn(eager: Pin<&ForceSyncUnpin<F>>, lazy: Pin<&()>) -> Update> = {
-        unsafe fn eval<T: Send, F: Send + Sync + Fn() -> T>(
-            _: Pin<&ForceSyncUnpin<F>>,
-            _: Pin<&()>,
-        ) -> Update {
-            Update::Propagate
-        }
-        Some(eval)
-    };
-
-    const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(eager: Pin<&ForceSyncUnpin<F>>, lazy: Pin<&()>, subscribed: bool),
-    > = None;
 }
 
 /// # Safety

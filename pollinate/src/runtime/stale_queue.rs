@@ -122,7 +122,7 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
     }
 
     #[must_use]
-    pub(crate) fn update_dependencies(
+    pub(crate) fn update_dependency_set(
         &mut self,
         symbol: S,
         new_dependencies: BTreeSet<S>,

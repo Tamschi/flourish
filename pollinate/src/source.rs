@@ -21,13 +21,6 @@ pub(crate) struct SourceId<SR: SignalRuntimeRef = GlobalSignalRuntime> {
 }
 
 impl<SR: SignalRuntimeRef> SourceId<SR> {
-    fn new() -> Self
-    where
-        SR: Default,
-    {
-        Self::with_runtime(SR::default())
-    }
-
     fn with_runtime(runtime: SR) -> Self {
         Self {
             id: runtime.next_id(),
@@ -40,6 +33,10 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
             self.runtime.touch(self.id);
             f()
         })
+    }
+
+    fn update_dependency_set<T>(&self, f: impl FnOnce() -> T) -> T {
+        self.runtime.update_dependency_set(self.id, f)
     }
 
     unsafe fn start<T, D: ?Sized>(
@@ -224,7 +221,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
 
     //TODO: Can the lifetime requirement be reduced here?
     //      In theory, the closure only needs to live longer than `Self`, but I'm unsure if that's expressible.
-    pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&OnceLock<Lazy>>)>( //TODO: Optional `Lazy`!
+    pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&OnceLock<Lazy>>)>(
+        //TODO: Optional `Lazy`!
         self: Pin<&Self>,
         f: F,
     ) where
@@ -254,6 +252,21 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         self.handle.propagate()
     }
 
+    pub fn update_dependency_set<T, F: FnOnce(Pin<&Eager>, Pin<&Lazy>) -> T>(
+        self: Pin<&Self>,
+        f: F,
+    ) -> T {
+        self.handle.update_dependency_set(move || unsafe {
+            f(
+                Pin::new_unchecked(&self.eager),
+                Pin::new_unchecked(match self.lazy.get() {
+                    Some(lazy) => lazy,
+                    None => panic!("`Source::track` may only be used after initialisation."),
+                }),
+            )
+        })
+    }
+
     pub fn clone_runtime_ref(&self) -> SR
     where
         SR: Sized,
@@ -274,6 +287,8 @@ pub trait Callbacks<Eager: ?Sized, Lazy, SR: SignalRuntimeRef> {
     /// # Safety
     ///
     /// Only called once at a time for each initialised [`Source`].
+    ///
+    /// **Note:** At least with the default runtime, the stale flag *always* propagates while this is [`None`] or there are no active subscribers.
     const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update>;
 
     /// # Safety

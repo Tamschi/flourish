@@ -2,9 +2,9 @@ use std::{borrow::Borrow, pin::Pin, sync::Mutex};
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update},
+    runtime::{GlobalSignalRuntime, SignalRuntimeRef},
     slot::{Slot, Token},
-    source::{Callbacks, Source},
+    source::{NoCallbacks, Source},
 };
 
 #[pin_project]
@@ -30,41 +30,21 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedM
         Self(Source::with_runtime(ForceSyncUnpin(f.into()), runtime))
     }
 
-    //TODO: This doesn't track right.
     fn get(self: Pin<&Self>) -> T {
-        self.touch().lock().expect("unreachable")()
+        let mutex = self.touch();
+        let mut f = mutex.lock().expect("unreachable");
+        self.project_ref().0.update_dependency_set(move |_, _| f())
     }
 
     pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&Mutex<F>> {
         unsafe {
             self.project_ref()
                 .0
-                .project_or_init::<E>(|f, cache| Self::init(f, cache))
+                .project_or_init::<NoCallbacks>(|f, cache| Self::init(f, cache))
                 .0
                 .map_unchecked(|r| &r.0)
         }
     }
-}
-
-enum E {}
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
-    Callbacks<ForceSyncUnpin<Mutex<F>>, (), SR> for E
-{
-    const UPDATE: Option<
-        unsafe fn(eager: Pin<&ForceSyncUnpin<Mutex<F>>>, lazy: Pin<&()>) -> Update,
-    > = {
-        unsafe fn eval<T: Send, F: Send + FnMut() -> T>(
-            _: Pin<&ForceSyncUnpin<Mutex<F>>>,
-            _: Pin<&()>,
-        ) -> Update {
-            Update::Propagate
-        }
-        Some(eval)
-    };
-
-    const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(eager: Pin<&ForceSyncUnpin<Mutex<F>>>, lazy: Pin<&()>, subscribed: bool),
-    > = None;
 }
 
 /// # Safety

@@ -29,6 +29,7 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
         callback_table: *const CallbackTable<D>,
         callback_data: *const D,
     ) -> T;
+    fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
     /// # Returns
     ///
     /// Whether there was a change.
@@ -168,7 +169,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
             assert_eq!(popped_id, id);
             let notifications = borrow
                 .stale_queue
-                .update_dependencies(id, touched_dependencies);
+                .update_dependency_set(id, touched_dependencies);
             match borrow.callbacks.entry(id) {
                 Entry::Vacant(v) => v.insert((
                     CallbackTable::into_erased_ptr(callback_table),
@@ -176,6 +177,26 @@ impl SignalRuntimeRef for &ASignalRuntime {
                 )),
                 Entry::Occupied(_) => panic!("Can't call `start` again before calling `stop`."),
             };
+            let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
+        }
+        r.unwrap_or_else(|p| resume_unwind(p))
+    }
+
+    fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
+        let lock = self.critical_mutex.lock();
+        {
+            let mut borrow = (*lock).borrow_mut();
+            borrow.context_stack.push(Some((id, BTreeSet::new())));
+        }
+        let r = catch_unwind(AssertUnwindSafe(f));
+        {
+            let mut borrow = (*lock).borrow_mut();
+            let (popped_id, touched_dependencies) =
+                borrow.context_stack.pop().flatten().expect("unreachable");
+            assert_eq!(popped_id, id);
+            let notifications = borrow
+                .stale_queue
+                .update_dependency_set(id, touched_dependencies);
             let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
         }
         r.unwrap_or_else(|p| resume_unwind(p))
@@ -223,7 +244,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
                     assert_eq!(popped_id, current);
                     let notifications = borrow
                         .stale_queue
-                        .update_dependencies(current, touched_dependencies);
+                        .update_dependency_set(current, touched_dependencies);
                     borrow = ASignalRuntime::notify_all(&lock, notifications, borrow);
                     match update {
                         Ok(Update::Propagate) => {
@@ -232,6 +253,9 @@ impl SignalRuntimeRef for &ASignalRuntime {
                         Ok(Update::Halt) => (),
                         Err(payload) => resume_unwind(payload),
                     }
+                } else {
+                    // As documented on `Callbacks`.
+                    let _ = borrow.stale_queue.mark_dependents_as_stale(current);
                 }
             }
         }
@@ -274,7 +298,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
 
                 let notifications = borrow
                     .stale_queue
-                    .update_dependencies(id, touched_dependencies);
+                    .update_dependency_set(id, touched_dependencies);
                 let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
             }
         }
@@ -345,6 +369,10 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
         (&GLOBAL_SIGNAL_RUNTIME).start(id.0, f, callback_table, callback_data)
     }
 
+    fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
+        (&GLOBAL_SIGNAL_RUNTIME).update_dependency_set(id.0, f)
+    }
+
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool {
         (&GLOBAL_SIGNAL_RUNTIME).set_subscription(id.0, enabled)
     }
@@ -372,7 +400,7 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
 
 #[repr(C)]
 #[non_exhaustive]
-#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CallbackTable<T: ?Sized> {
     pub update: Option<unsafe extern "C" fn(*const T) -> Update>,
     pub on_subscribed_change: Option<unsafe extern "C" fn(*const T, subscribed: bool)>,
@@ -388,6 +416,7 @@ impl<T: ?Sized> CallbackTable<T> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Update {
     Propagate,
     Halt,
