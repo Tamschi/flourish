@@ -4,6 +4,7 @@ use core::{
     pin::Pin,
 };
 use std::{
+    cell::UnsafeCell,
     collections::{btree_map::Entry, BTreeMap},
     mem::{self, MaybeUninit},
     sync::{Mutex, OnceLock},
@@ -72,7 +73,7 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
 pub struct Source<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef = GlobalSignalRuntime> {
     handle: SourceId<SR>,
     _pinned: PhantomPinned,
-    lazy: OnceLock<Lazy>,
+    lazy: UnsafeCell<OnceLock<Lazy>>,
     eager: Eager,
 }
 
@@ -114,7 +115,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         Self {
             handle: SourceId::with_runtime(runtime),
             _pinned: PhantomPinned,
-            lazy: OnceLock::new(),
+            lazy: OnceLock::new().into(),
             eager: eager.into(),
         }
     }
@@ -136,7 +137,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
         let eager = Pin::new_unchecked(&self.eager);
         let lazy = self.handle.mark(|| {
-            self.lazy.get_or_init(|| {
+            (&*self.lazy.get()).get_or_init(|| {
                 let mut lazy = MaybeUninit::uninit();
                 let init = || drop(init(eager, Slot::new(&mut lazy)));
                 let callback_table = match CALLBACK_TABLES.lock().expect("unreachable").entry(
@@ -175,7 +176,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     let this = &*this;
                     C::UPDATE.expect("unreachable")(
                         Pin::new_unchecked(&this.eager),
-                        Pin::new_unchecked(this.lazy.get().expect("unreachable")),
+                        Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
                     )
                 }
 
@@ -191,7 +192,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     let this = &*this;
                     C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
                         Pin::new_unchecked(&this.eager),
-                        Pin::new_unchecked(this.lazy.get().expect("unreachable")),
+                        Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
                         subscribed,
                     )
                 }
@@ -203,7 +204,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         unsafe { mem::transmute((eager, Pin::new_unchecked(lazy))) }
     }
 
-    /// TODO: Naming?
+    /// TODO: Naming! `project_or_init_and_subscribe`?
     ///
     /// Acts as [`Self::project_or_init`], but also marks this [`Source`] permanently as subscribed (until dropped).
     ///
@@ -234,7 +235,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         let update: Box<dyn Send + FnOnce()> = Box::new(move || unsafe {
             f(
                 this.map_unchecked(|this| &this.eager),
-                this.map_unchecked(|this| &this.lazy),
+                this.map_unchecked(|this| &*this.lazy.get()),
             )
         });
         let update: Box<dyn Send + FnOnce()> = unsafe { mem::transmute(update) };
@@ -246,7 +247,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         unsafe {
             f(
                 Pin::new_unchecked(&self.eager),
-                Pin::new_unchecked(&self.lazy),
+                Pin::new_unchecked(&*self.lazy.get()),
             );
         }
         self.handle.propagate()
@@ -259,7 +260,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         self.handle.update_dependency_set(move || unsafe {
             f(
                 Pin::new_unchecked(&self.eager),
-                Pin::new_unchecked(match self.lazy.get() {
+                Pin::new_unchecked(match (&*self.lazy.get()).get() {
                     Some(lazy) => lazy,
                     None => panic!("`Source::track` may only be used after initialisation."),
                 }),
@@ -273,11 +274,27 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     {
         self.handle.runtime.clone()
     }
+
+    pub fn stop_and<T>(
+        self: Pin<&mut Self>,
+        f: impl FnOnce(Pin<&Eager>, Pin<&mut Lazy>) -> T,
+    ) -> Option<T> {
+        if unsafe { &*self.lazy.get() }.get().is_some() {
+            self.handle.stop();
+            let t = f(unsafe { Pin::new_unchecked(&self.eager) }, unsafe {
+                Pin::new_unchecked((&mut *self.lazy.get()).get_mut().expect("unreachable"))
+            });
+            unsafe { *self.lazy.get() = OnceLock::new() };
+            Some(t)
+        } else {
+            None
+        }
+    }
 }
 
 impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eager, Lazy, SR> {
     fn drop(&mut self) {
-        if self.lazy.get().is_some() {
+        if unsafe { &*self.lazy.get() }.get().is_some() {
             self.handle.stop()
         }
     }

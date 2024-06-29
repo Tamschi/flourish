@@ -45,14 +45,14 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Drop
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
     pub fn new<S: 'a + Source<SR, Value = T>>(source: S) -> Self {
-        {
+        source.clone_runtime_ref().run_detached(|| {
             let arc = Arc::pin(new_raw_unsubscribed_subscription(source));
             pull_subscription(arc.as_ref());
             Self {
                 source: unsafe { Arc::into_raw(Pin::into_inner_unchecked(arc)) },
                 _phantom: PhantomData,
             }
-        }
+        })
     }
 
     pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
@@ -101,26 +101,5 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a,
         runtime: SR,
     ) -> Self {
         Self::new(merged(select, merge, runtime))
-    }
-}
-
-impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a, Option<T>, SR> {
-    pub fn effect(f: impl 'a + Send + FnMut() -> T) -> Self
-    where
-        SR: Default,
-    {
-        Self::effect_with_runtime(f, SR::default())
-    }
-
-    pub fn effect_with_runtime(mut f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self {
-        Self::new(folded(
-            None,
-            move |previous| {
-                drop(previous.take());
-                *previous = Some(f());
-                Update::Propagate
-            },
-            runtime,
-        ))
     }
 }

@@ -25,6 +25,9 @@ pub(crate) use raw_merged::RawMerged;
 pub(crate) mod raw_subscription;
 pub(crate) use raw_subscription::{new_raw_unsubscribed_subscription, pull_subscription};
 
+pub(crate) mod raw_effect;
+pub(crate) use raw_effect::{new_raw_unsubscribed_effect, pull_effect};
+
 use crate::Source;
 
 pub fn subject<T: Send>(initial_value: T) -> RawSubject<T, GlobalSignalRuntime> {
@@ -206,6 +209,65 @@ macro_rules! merged_with_runtime {
 pub use crate::merged_with_runtime;
 
 #[macro_export]
+macro_rules! subscription {
+    ($f:expr) => {{
+        super let subscription = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription(
+            $crate::raw::computed($f, $crate::GlobalSignalRuntime)
+        ));
+        let subscription = ::core::pin::Pin::into_ref(subscription);
+        $crate::__::pull_subscription(subscription);
+        $crate::__::pin_into_pin_impl_source(subscription);
+    }};
+}
+pub use crate::subscription;
+#[macro_export]
+macro_rules! subscription_with_runtime {
+    ($f:expr, $runtime:expr) => {{
+        super let subscription_with_runtime = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription(
+            $crate::raw::computed($f, $runtime)
+        ));
+        let subscription_with_runtime = ::core::pin::Pin::into_ref(subscription_with_runtime);
+        $crate::__::pull_subscription(subscription_with_runtime);
+        $crate::__::pin_into_pin_impl_source(subscription_with_runtime);
+    }};
+}
+pub use crate::subscription_with_runtime;
+#[macro_export]
+macro_rules! subscription_from_source {
+    ($source:expr) => {{
+        super let subscription_from_source = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($source));
+        let subscription_from_source = ::core::pin::Pin::into_ref(subscription_from_source);
+        $crate::__::pull_subscription(subscription_from_source);
+        $crate::__::pin_into_pin_impl_source(subscription_from_source);
+    }};
+}
+pub use crate::subscription_from_source;
+#[macro_export]
+macro_rules! effect {
+    ($f:expr, $drop:expr) => {{
+        super let effect = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect(
+            $f,
+            $drop,
+            $crate::GlobalSignalRuntime
+        ));
+        let effect = ::core::pin::Pin::into_ref(effect);
+        $crate::__::pull_effect(effect);
+        $crate::__::pin_into_pin_impl_source(effect);
+    }};
+}
+pub use crate::effect;
+#[macro_export]
+macro_rules! effect_with_runtime {
+    ($f:expr, $drop:expr, $runtime:expr) => {{
+        super let effect_with_runtime = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $runtime));
+        let effect_with_runtime = ::core::pin::Pin::into_ref(effect_with_runtime);
+        $crate::__::pull_effect(effect_with_runtime);
+        $crate::__::pin_into_pin_impl_source(effect_with_runtime);
+    }};
+}
+pub use crate::effect_with_runtime;
+
+#[macro_export]
 macro_rules! signals_helper {
 	{let $name:ident = subject!($initial_value:expr);} => {
 		let $name = ::core::pin::pin!($crate::raw::subject($initial_value));
@@ -279,6 +341,18 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($source));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$crate::__::pull_subscription($name);
+		let $name = $crate::__::pin_into_pin_impl_source($name);
+	};
+	{let $name:ident = effect!($f:expr, $drop:expr);} => {
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name);
+		$crate::__::pull_effect($name);
+		let $name = $crate::__::pin_into_pin_impl_source($name);
+	};
+	{let $name:ident = effect_with_runtime!($f:expr, $drop:expr, $runtime:expr);} => {
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name);
+		$crate::__::pull_effect($name);
 		let $name = $crate::__::pin_into_pin_impl_source($name);
 	};
 	{$(let $name:ident = $macro:ident!($($arg:expr),*$(,)?);)*} => {$(

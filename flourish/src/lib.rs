@@ -11,6 +11,9 @@ pub use subject::Subject;
 mod subscription;
 pub use subscription::{Subscription, SubscriptionSR};
 
+mod effect;
+pub use effect::{Effect, EffectSR};
+
 mod source;
 pub use source::Source;
 
@@ -21,6 +24,7 @@ pub use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 #[doc(hidden = "macro-only")]
 pub mod __ {
+    pub use super::raw::raw_effect::{new_raw_unsubscribed_effect, pull_effect};
     pub use super::raw::raw_subscription::{
         new_raw_unsubscribed_subscription, pin_into_pin_impl_source, pull_subscription,
     };
