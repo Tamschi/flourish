@@ -17,6 +17,7 @@ pub struct RawSubscription<
 >(#[pin] RawCached<T, S, SR>);
 
 //TODO: Add some associated methods, like not-boxing `read`/`read_exclusive`.
+//TODO: Turn some of these functions into methods.
 
 pub fn new_raw_unsubscribed_subscription<
     T: Send + Clone,

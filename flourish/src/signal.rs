@@ -89,7 +89,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     /// This pins the provided closure. The resulting `T` is cached.
     pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
     where
-        T: Send + Sync + Sized,
+        T: Sized,
         SR: Default,
     {
         Self::new(computed(f, SR::default()))
@@ -100,7 +100,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     /// This pins the provided closure. The resulting `T` is cached.
     pub fn computed_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
     where
-        T: Send + Sync + Sized,
+        T: Sized,
     {
         Self::new(computed(f, runtime))
     }
@@ -110,7 +110,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs each time the value is retrieved. This may lead to congestion.
     pub fn computed_uncached(f: impl 'a + Send + Sync + Fn() -> T) -> Self
     where
-        T: Send + Sync + Sized,
+        T: Sized,
         SR: Default,
     {
         Self::new(computed_uncached(f, SR::default()))
@@ -121,7 +121,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs each time the value is retrieved. This may lead to congestion.
     pub fn computed_uncached_with_runtime(f: impl 'a + Send + Sync + Fn() -> T, runtime: SR) -> Self
     where
-        T: Send + Sync + Sized + Clone,
+        T: Sized,
     {
         Self::new(computed_uncached(f, runtime))
     }
@@ -131,7 +131,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs **exclusively** each time the value is retrieved. This may lead to (more) congestion.
     pub fn computed_uncached_mut(f: impl 'a + Send + FnMut() -> T) -> Self
     where
-        T: Send + Sync + Sized + Clone,
+        T: Sized,
         SR: Default,
     {
         Self::new(computed_uncached_mut(f, SR::default()))
@@ -142,7 +142,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs **exclusively** each time the value is retrieved. This may lead to (more) congestion.
     pub fn computed_uncached_mut_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
     where
-        T: Send + Sync + Sized + Clone,
+        T: Sized,
     {
         Self::new(computed_uncached_mut(f, runtime))
     }
@@ -150,7 +150,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     /// This is a convenience method. See [`folded`].
     pub fn folded(init: T, f: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
     where
-        T: Clone,
+        T: Sized,
         SR: Default,
     {
         Self::new(folded(init, f, SR::default()))
@@ -163,7 +163,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         runtime: SR,
     ) -> Self
     where
-        T: Clone,
+        T: Sized,
     {
         Self::new(folded(init, f, runtime))
     }
@@ -174,7 +174,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
     ) -> Self
     where
-        T: Clone,
+        T: Sized,
         SR: Default,
     {
         Self::new(merged(select, merge, SR::default()))
@@ -187,7 +187,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         runtime: SR,
     ) -> Self
     where
-        T: Clone,
+        T: Sized,
     {
         Self::new(merged(select, merge, runtime))
     }

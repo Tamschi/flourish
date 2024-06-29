@@ -181,7 +181,7 @@ macro_rules! folded_from_source {
 }
 pub use crate::folded_from_source;
 
-pub fn merged<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+pub fn merged<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
     select: impl 'a + Send + FnMut() -> T,
     merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
     runtime: SR,

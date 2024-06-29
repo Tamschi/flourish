@@ -1,9 +1,9 @@
 use std::{marker::PhantomData, mem, ops::Deref, pin::Pin, sync::Arc};
 
-use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
+use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-    raw::{computed, new_raw_unsubscribed_subscription, pull_subscription},
+    raw::{computed, folded, merged, new_raw_unsubscribed_subscription, pull_subscription},
     Source,
 };
 
@@ -44,10 +44,7 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Drop
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
-    pub fn new<S: 'a + Source<SR, Value = T>>(source: S) -> Self
-    where
-        T: Sized,
-    {
+    pub fn new<S: 'a + Source<SR, Value = T>>(source: S) -> Self {
         {
             let arc = Arc::pin(new_raw_unsubscribed_subscription(source));
             pull_subscription(arc.as_ref());
@@ -60,16 +57,70 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a,
 
     pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
     where
-        T: Send + Sync + Sized + Clone,
         SR: Default,
     {
         Self::new(computed(f, SR::default()))
     }
 
-    pub fn computed_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
-    where
-        T: Send + Sync + Sized + Clone,
-    {
+    pub fn computed_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self {
         Self::new(computed(f, runtime))
+    }
+
+    /// This is a convenience method. See [`folded`].
+    pub fn folded(init: T, f: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
+    where
+        SR: Default,
+    {
+        Self::new(folded(init, f, SR::default()))
+    }
+
+    /// This is a convenience method. See [`folded`].
+    pub fn folded_with_runtime(
+        init: T,
+        f: impl 'a + Send + FnMut(&mut T) -> Update,
+        runtime: SR,
+    ) -> Self {
+        Self::new(folded(init, f, runtime))
+    }
+
+    /// This is a convenience method. See [`merged`].
+    pub fn merged(
+        select: impl 'a + Send + FnMut() -> T,
+        merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
+    ) -> Self
+    where
+        SR: Default,
+    {
+        Self::new(merged(select, merge, SR::default()))
+    }
+
+    /// This is a convenience method. See [`merged`].
+    pub fn merged_with_runtime(
+        select: impl 'a + Send + FnMut() -> T,
+        merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
+        runtime: SR,
+    ) -> Self {
+        Self::new(merged(select, merge, runtime))
+    }
+}
+
+impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a, Option<T>, SR> {
+    pub fn effect(f: impl 'a + Send + FnMut() -> T) -> Self
+    where
+        SR: Default,
+    {
+        Self::effect_with_runtime(f, SR::default())
+    }
+
+    pub fn effect_with_runtime(mut f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self {
+        Self::new(folded(
+            None,
+            move |previous| {
+                drop(previous.take());
+                *previous = Some(f());
+                Update::Propagate
+            },
+            runtime,
+        ))
     }
 }

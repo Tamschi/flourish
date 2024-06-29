@@ -18,7 +18,7 @@ use crate::utils::conjure_zst;
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawMerged<
-    T: Send + Clone,
+    T: Send,
     S: Send + FnMut() -> T,
     M: Send + FnMut(&mut T, T) -> Update,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
@@ -45,7 +45,7 @@ impl<'a, T: ?Sized> Borrow<T> for RawMergedGuardExclusive<'a, T> {
 
 /// TODO: Safety documentation.
 unsafe impl<
-        T: Send + Clone,
+        T: Send,
         S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef + Sync,
@@ -55,7 +55,7 @@ unsafe impl<
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<
-        T: Send + Clone,
+        T: Send,
         S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
@@ -68,7 +68,7 @@ impl<
         ))
     }
 
-    pub fn get(self: Pin<&Self>) -> T
+    fn get(self: Pin<&Self>) -> T
     where
         T: Sync + Copy,
     {
@@ -81,7 +81,7 @@ impl<
         }
     }
 
-    pub fn get_clone(self: Pin<&Self>) -> T
+    fn get_clone(self: Pin<&Self>) -> T
     where
         T: Sync + Clone,
     {
@@ -99,7 +99,7 @@ impl<
         RawMergedGuardExclusive(self.touch().write().unwrap())
     }
 
-    pub fn get_exclusive(self: Pin<&Self>) -> T
+    fn get_exclusive(self: Pin<&Self>) -> T
     where
         T: Copy,
     {
@@ -112,7 +112,7 @@ impl<
         }
     }
 
-    pub fn get_clone_exclusive(self: Pin<&Self>) -> T
+    fn get_clone_exclusive(self: Pin<&Self>) -> T
     where
         T: Clone,
     {
@@ -133,7 +133,7 @@ impl<
 
 enum E {}
 impl<
-        T: Send + Clone,
+        T: Send,
         S: Send + FnMut() -> T,
         M: Send + ?Sized + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
@@ -146,7 +146,7 @@ impl<
         ) -> Update,
     > = {
         unsafe fn eval<
-            T: Send + Clone,
+            T: Send,
             S: Send + FnMut() -> T,
             M: Send + ?Sized + FnMut(&mut T, T) -> Update,
         >(
@@ -175,7 +175,7 @@ impl<
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
 impl<
-        T: Send + Clone,
+        T: Send,
         S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
@@ -190,7 +190,7 @@ impl<
 }
 
 impl<
-        T: Send + Clone,
+        T: Send,
         S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
