@@ -9,6 +9,8 @@ use flourish::{
 };
 use num_traits::Zero;
 
+pub mod future;
+
 //BLOCKED: `merge`, `filter` and `fold` (as curried operators) wait on <https://github.com/rust-lang/rust/issues/99697>.
 
 pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(

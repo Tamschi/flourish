@@ -6,9 +6,8 @@ use core::{
 use std::{
     cell::UnsafeCell,
     collections::{btree_map::Entry, BTreeMap},
-    marker::PhantomData,
     mem::{self, MaybeUninit},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Mutex, OnceLock},
 };
 
 use crate::{
@@ -67,10 +66,6 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
 
     fn update_or_enqueue_blocking(&self, f: impl FnOnce()) {
         self.runtime.update_or_enqueue_blocking(self.id, f);
-    }
-
-    fn propagate(&self) {
-        self.runtime.propagate_from(self.id)
     }
 
     fn refresh(&self) {

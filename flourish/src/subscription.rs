@@ -19,6 +19,15 @@ pub struct SubscriptionSR<
     _phantom: PhantomData<Pin<Arc<dyn 'a + Source<SR, Value = T>>>>,
 }
 
+unsafe impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Send
+    for SubscriptionSR<'a, T, SR>
+{
+}
+unsafe impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Sync
+    for SubscriptionSR<'a, T, SR>
+{
+}
+
 impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Deref
     for SubscriptionSR<'a, T, SR>
 {
