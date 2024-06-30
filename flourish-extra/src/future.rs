@@ -88,3 +88,35 @@ pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>
         mem::transmute::<SubscriptionSR<'a, MaybeUninit<T>, SR>, SubscriptionSR<'a, T, SR>>(sub)
     }
 }
+
+pub async fn latest<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = Option<T>>,
+) -> SubscriptionSR<'a, T, SR> {
+    let runtime = source.clone_runtime_ref();
+    let once = Arc::new(OnceCell::<()>::new());
+    let sub = SubscriptionSR::folded_with_runtime(
+        MaybeUninit::uninit(),
+        {
+            shadow_clone!(once);
+            move |value| {
+                if let Some(next) = unsafe { Pin::new_unchecked(&source) }.get() {
+                    if once.is_initialized() {
+                        *unsafe { value.assume_init_mut() } = next;
+                    } else {
+                        value.write(next);
+                        once.set_blocking(()).expect("unreachable");
+                    }
+                    Update::Propagate
+                } else {
+                    Update::Halt
+                }
+            }
+        },
+        runtime,
+    );
+    once.wait().await;
+
+    unsafe {
+        mem::transmute::<SubscriptionSR<'a, MaybeUninit<T>, SR>, SubscriptionSR<'a, T, SR>>(sub)
+    }
+}
