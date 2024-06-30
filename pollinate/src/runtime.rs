@@ -502,8 +502,8 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CallbackTable<T: ?Sized> {
-    pub update: Option<unsafe extern "C" fn(*const T) -> Update>,
-    pub on_subscribed_change: Option<unsafe extern "C" fn(*const T, subscribed: bool)>,
+    pub update: Option<unsafe fn(*const T) -> Update>,
+    pub on_subscribed_change: Option<unsafe fn(*const T, subscribed: bool)>,
 }
 
 impl<T: ?Sized> CallbackTable<T> {

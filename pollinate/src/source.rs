@@ -172,7 +172,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
                 > = Mutex::new(BTreeMap::new());
 
-                unsafe extern "C" fn update<
+                unsafe fn update<
                     Eager: Sync + ?Sized,
                     Lazy: Sync,
                     SR: SignalRuntimeRef,
@@ -187,7 +187,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     )
                 }
 
-                unsafe extern "C" fn on_subscribed_change<
+                unsafe fn on_subscribed_change<
                     Eager: Sync + ?Sized,
                     Lazy: Sync,
                     SR: SignalRuntimeRef,
