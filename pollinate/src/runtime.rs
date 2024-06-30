@@ -269,35 +269,35 @@ impl SignalRuntimeRef for &ASignalRuntime {
             f: Box<dyn '_ + FnOnce()>,
         ) {
             //FIXME: This could avoid the heap allocation.
-            let barrier2 = Arc::new(Barrier::new(2));
+            let barrier = Arc::new(Barrier::new(2));
 
             //FIXME: This can *maybe* may deadlock if called on the same thread while processing updates.
             //FIXME: This should NOT have to spawn new threads.
             thread::scope(|s| {
                 s.spawn({
-                    let barrier2 = Arc::clone(&barrier2);
+                    let barrier = Arc::clone(&barrier);
                     move || {
                         this.update_or_enqueue(id, move || {
-                            barrier2.wait();
-                            barrier2.wait();
+                            barrier.wait();
+                            barrier.wait();
                         })
                     }
                 });
-                barrier2.wait();
+                barrier.wait();
                 f();
-                barrier2.wait();
+                barrier.wait();
             });
             // Ensure propagation is complete:
             thread::scope(|s| {
                 s.spawn({
-                    let barrier2 = Arc::clone(&barrier2);
+                    let barrier = Arc::clone(&barrier);
                     move || {
                         this.update_or_enqueue(id, move || {
-                            barrier2.wait();
+                            barrier.wait();
                         })
                     }
                 });
-                barrier2.wait();
+                barrier.wait();
             })
         }
         update_or_enqueue_blocking(self, id, Box::new(f))
