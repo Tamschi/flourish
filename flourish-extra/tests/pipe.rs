@@ -1,4 +1,4 @@
-use flourish::{raw::computed, GlobalSignalRuntime, Signal, Subject, Subscription};
+use flourish::{raw::computed, GlobalSignalRuntime, Signal, SourcePin as _, Subject, Subscription};
 use flourish_extra::{debounce, pipe};
 
 mod _validator;

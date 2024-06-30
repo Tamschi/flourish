@@ -1,5 +1,6 @@
 use flourish::{
-    raw::computed_uncached, shadow_clone, GlobalSignalRuntime, Signal, Subject, Subscription,
+    raw::computed_uncached, shadow_clone, GlobalSignalRuntime, Signal, SourcePin as _, Subject,
+    Subscription,
 };
 use flourish_extra::delta;
 

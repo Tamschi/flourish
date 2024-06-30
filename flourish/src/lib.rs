@@ -15,7 +15,7 @@ mod effect;
 pub use effect::{Effect, EffectSR};
 
 mod source;
-pub use source::Source;
+pub use source::{Source, SourcePin};
 
 mod signal;
 pub use signal::{Signal, SignalRef, SignalSR};

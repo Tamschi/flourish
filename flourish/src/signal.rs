@@ -1,17 +1,10 @@
-use std::{
-    borrow::Borrow,
-    marker::PhantomData,
-    mem::{self, forget},
-    ops::Deref,
-    pin::Pin,
-    sync::Arc,
-};
+use std::{borrow::Borrow, marker::PhantomData, mem, ops::Deref, pin::Pin, sync::Arc};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
     raw::{computed, computed_uncached, computed_uncached_mut, folded, merged},
-    Source,
+    Source, SourcePin,
 };
 
 pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
@@ -23,64 +16,23 @@ pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
 /// This type is [`Deref`] towards its pinned `dyn `[`Source`]`<SR, Value = T>`, through which you can retrieve its current value.
 ///
 /// Signals are not evaluated unless they are subscribed-to.
-#[repr(transparent)]
+#[derive(Clone)]
 pub struct SignalSR<
     'a,
     T: 'a + Send + ?Sized,
     SR: 'a + ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
 > {
-    source: *const (dyn 'a + Source<SR, Value = T>),
-    _phantom: PhantomData<Pin<Arc<dyn 'a + Source<SR, Value = T>>>>,
+    source: Pin<Arc<dyn 'a + Source<SR, Value = T>>>,
 }
 
 unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Send for SignalSR<'a, T, SR> {}
 unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Sync for SignalSR<'a, T, SR> {}
 
-impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Deref for SignalSR<'a, T, SR> {
-    type Target = Pin<&'a (dyn 'a + Source<SR, Value = T>)>;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe {
-            mem::transmute::<
-                &*const (dyn 'a + Source<SR, Value = T>),
-                &Pin<&'a (dyn 'a + Source<SR, Value = T>)>,
-            >(&self.source)
-        }
-    }
-}
-
-impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Clone for SignalSR<'a, T, SR> {
-    fn clone(&self) -> Self {
-        unsafe { Arc::increment_strong_count(self.source) };
-        Self {
-            source: self.source,
-            _phantom: PhantomData,
-        }
-    }
-
-    fn clone_from(&mut self, source: &Self) {
-        unsafe {
-            let source = Arc::from_raw(source.source);
-            let mut this = Arc::from_raw(self.source);
-            this.clone_from(&source);
-            self.source = Arc::into_raw(this);
-            forget(source);
-        }
-    }
-}
-
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop for SignalSR<'a, T, SR> {
-    fn drop(&mut self) {
-        unsafe { Arc::decrement_strong_count(self.source) }
-    }
-}
-
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {
     /// Creates a new [`SignalSR`] from the provided raw [`Source`].
     pub fn new(source: impl 'a + Source<SR, Value = T>) -> Self {
         SignalSR {
-            source: Arc::into_raw(Arc::new(source)),
-            _phantom: PhantomData,
+            source: Arc::pin(source),
         }
     }
 
@@ -193,9 +145,47 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     }
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {}
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>
+    for SignalSR<'a, T, SR>
+{
+    type Value = T;
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {}
+    fn touch(&self) {
+        self.source.as_ref().touch()
+    }
+
+    fn get_clone(&self) -> Self::Value
+    where
+        Self::Value: Sync + Clone,
+    {
+        self.source.as_ref().get_clone()
+    }
+
+    fn get_clone_exclusive(&self) -> Self::Value
+    where
+        Self::Value: Clone,
+    {
+        self.source.as_ref().get_clone_exclusive()
+    }
+
+    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>>
+    where
+        Self::Value: 'r + Sync,
+    {
+        self.source.as_ref().read()
+    }
+
+    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>> {
+        self.source.as_ref().read_exclusive()
+    }
+
+    fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized,
+    {
+        self.source.as_ref().clone_runtime_ref()
+    }
+}
 
 #[repr(transparent)]
 #[derive(Debug)]
@@ -215,12 +205,11 @@ impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> ToOwned
     type Owned = SignalSR<'a, T, SR>;
 
     fn to_owned(&self) -> Self::Owned {
-        unsafe {
-            Arc::increment_strong_count(self.source);
-        }
         Self::Owned {
-            source: self.source,
-            _phantom: PhantomData,
+            source: unsafe {
+                Arc::increment_strong_count(self.source);
+                Pin::new_unchecked(Arc::from_raw(self.source))
+            },
         }
     }
 }
@@ -236,13 +225,13 @@ impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef>
 impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Deref
     for SignalRef<'r, 'a, T, SR>
 {
-    type Target = Pin<&'a (dyn 'a + Source<SR, Value = T>)>;
+    type Target = Pin<&'r (dyn 'a + Source<SR, Value = T>)>;
 
     fn deref(&self) -> &Self::Target {
         unsafe {
             mem::transmute::<
                 &*const (dyn 'a + Source<SR, Value = T>),
-                &Pin<&'a (dyn 'a + Source<SR, Value = T>)>,
+                &Pin<&'r (dyn 'a + Source<SR, Value = T>)>,
             >(&self.source)
         }
     }

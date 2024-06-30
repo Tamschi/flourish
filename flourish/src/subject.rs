@@ -1,26 +1,20 @@
-use std::{
-    borrow::Borrow,
-    fmt::Debug,
-    mem,
-    pin::Pin,
-    sync::{Arc, RwLock},
-};
+use std::{borrow::Borrow, fmt::Debug, pin::Pin, sync::Arc};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{raw::RawSubject, Source};
+use crate::{raw::RawSubject, Source, SourcePin};
 
 #[derive(Clone)]
-pub struct Subject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime>(
-    Pin<Arc<RawSubject<T, SR>>>,
-);
+pub struct Subject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime> {
+    subject: Pin<Arc<RawSubject<T, SR>>>,
+}
 
 impl<T: ?Sized + Debug + Send, SR: SignalRuntimeRef + Debug> Debug for Subject<T, SR>
 where
     SR::Symbol: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Subject").field(&self.0).finish()
+        f.debug_tuple("Subject").field(&self.subject).finish()
     }
 }
 
@@ -37,54 +31,20 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
     where
         SR: Default,
     {
-        Self(unsafe {
-            mem::transmute::<Arc<RawSubject<T, SR>>, Pin<Arc<RawSubject<T, SR>>>>(Arc::new(
-                RawSubject::with_runtime(initial_value, runtime),
-            ))
-        })
+        Self {
+            subject: Arc::pin(RawSubject::with_runtime(initial_value, runtime)),
+        }
     }
 
-    pub fn get(&self) -> T
-    where
-        T: Sync + Copy,
-    {
-        self.0.get()
-    }
-
-    pub fn get_clone(&self) -> T
-    where
-        T: Sync + Clone,
-    {
-        self.0.get_clone()
-    }
-
-    pub fn read<'a>(&'a self) -> impl 'a + Borrow<T>
+    pub fn read<'r>(&'r self) -> impl 'r + Borrow<T>
     where
         T: Sync,
     {
-        self.0.read()
+        self.subject.read()
     }
 
-    pub fn read_exclusive<'a>(&'a self) -> impl 'a + Borrow<T> {
-        self.0.read_exclusive()
-    }
-
-    pub fn get_exclusive(&self) -> T
-    where
-        T: Copy,
-    {
-        self.0.get_exclusive()
-    }
-
-    pub fn get_clone_exclusive(&self) -> T
-    where
-        T: Clone,
-    {
-        self.0.get_clone_exclusive()
-    }
-
-    pub fn touch(&self) -> &RwLock<T> {
-        self.0.touch()
+    pub fn read_exclusive<'r>(&'r self) -> impl 'r + Borrow<T> {
+        self.subject.read_exclusive()
     }
 
     pub fn set(&self, new_value: T)
@@ -93,7 +53,7 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
         SR: Sync,
         SR::Symbol: Sync,
     {
-        self.0.as_ref().set(new_value)
+        self.subject.as_ref().set(new_value)
     }
 
     pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T))
@@ -101,15 +61,15 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
         SR: Sync,
         SR::Symbol: Sync,
     {
-        self.0.as_ref().update(update)
+        self.subject.as_ref().update(update)
     }
 
     pub fn set_blocking(&self, new_value: T) {
-        self.0.set_blocking(new_value)
+        self.subject.set_blocking(new_value)
     }
 
     pub fn update_blocking(&self, update: impl FnOnce(&mut T)) {
-        self.0.update_blocking(update)
+        self.subject.update_blocking(update)
     }
 
     pub fn into_get_set_blocking<'a>(self) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
@@ -225,8 +185,44 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
             move |new_value| this.set(new_value),
         )
     }
+}
 
-    pub fn as_source(&self) -> Pin<&dyn Source<SR, Value = T>> {
-        self.0.as_ref()
+impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR> for Subject<T, SR> {
+    type Value = T;
+
+    fn touch(&self) {
+        self.subject.as_ref().touch()
+    }
+
+    fn get_clone(&self) -> Self::Value
+    where
+        Self::Value: Sync + Clone,
+    {
+        self.subject.as_ref().get_clone()
+    }
+
+    fn get_clone_exclusive(&self) -> Self::Value
+    where
+        Self::Value: Clone,
+    {
+        self.subject.as_ref().get_clone_exclusive()
+    }
+
+    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>>
+    where
+        Self::Value: 'r + Sync,
+    {
+        self.subject.as_ref().read()
+    }
+
+    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>> {
+        self.subject.as_ref().read_exclusive()
+    }
+
+    fn clone_runtime_ref(&self) -> SR
+    where
+        SR: Sized,
+    {
+        self.subject.as_ref().clone_runtime_ref()
     }
 }

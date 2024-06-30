@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use flourish::{Signal, Subject, Subscription};
+use flourish::{Signal, SourcePin as _, Subject, Subscription};
 mod _validator;
 use _validator::Validator;
 

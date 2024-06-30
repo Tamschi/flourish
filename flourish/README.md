@@ -62,7 +62,7 @@ Additionally, inside `flourish::raw`, you can find constructor functions for unp
 `flourish` detects and updates dependencies automatically:
 
 ```rust
-use flourish::{shadow_clone, Subject, Signal, Subscription};
+use flourish::{shadow_clone, Subject, Signal, Subscription, SourcePin as _};
 
 let a = Subject::new("a");
 let b = Subject::new("b");

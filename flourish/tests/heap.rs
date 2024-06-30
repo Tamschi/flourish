@@ -1,4 +1,4 @@
-use flourish::{shadow_clone, Signal, Subject, Subscription};
+use flourish::{shadow_clone, Signal, SourcePin as _, Subject, Subscription};
 mod _validator;
 use _validator::Validator;
 

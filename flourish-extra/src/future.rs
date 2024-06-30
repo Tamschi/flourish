@@ -7,7 +7,9 @@ use std::{
 };
 
 use async_lock::OnceCell;
-use flourish::{shadow_clone, signals_helper, SignalRuntimeRef, Source, SubscriptionSR, Update};
+use flourish::{
+    shadow_clone, signals_helper, SignalRuntimeRef, Source, SourcePin as _, SubscriptionSR, Update,
+};
 
 pub async fn skipped_while<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
