@@ -38,3 +38,5 @@ macro_rules! shadow_clone {
 }
 
 mod utils;
+
+//TODO: IntoFuture for Signal<Option<T>>.

@@ -15,8 +15,7 @@ pub struct Subject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime>
     Pin<Arc<RawSubject<T, SR>>>,
 );
 
-impl<T: ?Sized + std::fmt::Debug + Send, SR: SignalRuntimeRef + std::fmt::Debug> std::fmt::Debug
-    for Subject<T, SR>
+impl<T: ?Sized + Debug + Send, SR: SignalRuntimeRef + Debug> Debug for Subject<T, SR>
 where
     SR::Symbol: Debug,
 {
@@ -99,7 +98,6 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
 
     pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T))
     where
-        T: Send,
         SR: Sync,
         SR::Symbol: Sync,
     {
@@ -175,7 +173,7 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
     ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
     where
         Self: 'a,
-        T: Send + Copy,
+        T: Copy,
     {
         self.into_get_clone_exclusive_set_blocking()
     }
@@ -200,7 +198,7 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
     ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
     where
         Self: 'a,
-        T: Send + Clone,
+        T: Clone,
     {
         let this = self.clone();
         (
