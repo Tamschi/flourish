@@ -60,6 +60,9 @@ pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>
     mut test: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {
     let runtime = source.clone_runtime_ref();
+    // It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
+    // since the closure is guaranteed to run when the subscription is created.
+    // However, that would be considerably trickier code.
     let once = Arc::new(OnceCell::<()>::new());
     let sub = SubscriptionSR::folded_with_runtime(
         MaybeUninit::uninit(),
@@ -93,6 +96,9 @@ pub async fn latest<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = Option<T>>,
 ) -> SubscriptionSR<'a, T, SR> {
     let runtime = source.clone_runtime_ref();
+    // It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
+    // since the closure is guaranteed to run when the subscription is created.
+    // However, that would be considerably trickier code.
     let once = Arc::new(OnceCell::<()>::new());
     let sub = SubscriptionSR::folded_with_runtime(
         MaybeUninit::uninit(),
