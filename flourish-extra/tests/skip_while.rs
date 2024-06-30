@@ -1,5 +1,5 @@
 use flourish::{raw::computed_uncached, Signal, SourcePin as _};
-use flourish_extra::future::{skip_while_from_source, skip_while_cloned};
+use flourish_extra::future::{skip_while_cloned, skip_while_from_source};
 
 mod _validator;
 use _validator::Validator;
