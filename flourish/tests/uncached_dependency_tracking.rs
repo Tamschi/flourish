@@ -5,95 +5,94 @@ mod _validator;
 use _validator::Validator;
 
 #[test]
-fn both() {
-    //FIXME: Split this once the runtime can handle threading.
-    {
-        let v = &Validator::new();
+fn heap() {
+    let v = &Validator::new();
 
-        let (a, set_a) = Subject::new(()).into_get_set();
-        let (b, set_b) = Subject::new(()).into_get_set();
-        let (c, set_c) = Subject::new(()).into_get_set();
+    let (a, set_a) = Subject::new(()).into_get_set_blocking();
+    let (b, set_b) = Subject::new(()).into_get_set_blocking();
+    let (c, set_c) = Subject::new(()).into_get_set_blocking();
 
-        let roundabout = Signal::computed_uncached_mut({
-            let mut angle = 0;
-            move || {
-                match angle {
-                    0 => a(),
-                    1 => b(),
-                    2 => c(),
-                    _ => unreachable!(),
-                }
-                angle = (angle + 1) % 3;
+    let roundabout = Signal::computed_uncached_mut({
+        let mut angle = 0;
+        move || {
+            match angle {
+                0 => a(),
+                1 => b(),
+                2 => c(),
+                _ => unreachable!(),
             }
-        });
-        v.expect([]);
+            angle = (angle + 1) % 3;
+        }
+    });
+    v.expect([]);
 
-        let _a = Subscription::computed(|| {
-            v.push('a');
-            roundabout.get()
-        });
-        v.expect(['a']);
-        let _b = Subscription::computed(|| {
-            v.push('b');
-            roundabout.get()
-        });
-        v.expect(['b']);
+    let _a = Subscription::computed(|| {
+        v.push('a');
+        roundabout.get()
+    });
+    v.expect(['a']);
+    let _b = Subscription::computed(|| {
+        v.push('b');
+        roundabout.get()
+    });
+    v.expect(['b']);
 
-        // There are two subscriptions, so each "hit" advances twice.
+    // There are two subscriptions, so each "hit" advances twice.
 
-        set_b(());
-        v.expect(['a', 'b']);
+    set_b(());
+    v.expect(['a', 'b']);
 
-        set_b(());
-        set_c(());
-        v.expect([]);
+    set_b(());
+    set_c(());
+    v.expect([]);
 
-        set_a(());
-        v.expect(['a', 'b']);
-    }
-    {
-        let v = &Validator::new();
+    set_a(());
+    v.expect(['a', 'b']);
+}
 
-        let (a, set_a) = Subject::new(()).into_get_set();
-        let (b, set_b) = Subject::new(()).into_get_set();
-        let (c, set_c) = Subject::new(()).into_get_set();
+#[test]
+fn stack() {
+    let v = &Validator::new();
 
-        let roundabout = Signal::computed_uncached({
-            let angle = Mutex::new(0);
-            move || {
-                let mut angle = angle.lock().unwrap();
-                match *angle {
-                    0 => a(),
-                    1 => b(),
-                    2 => c(),
-                    _ => unreachable!(),
-                }
-                *angle = (*angle + 1) % 3;
+    let (a, set_a) = Subject::new(()).into_get_set_blocking();
+    let (b, set_b) = Subject::new(()).into_get_set_blocking();
+    let (c, set_c) = Subject::new(()).into_get_set_blocking();
+
+    let roundabout = Signal::computed_uncached({
+        let angle = Mutex::new(0);
+        move || {
+            let mut angle = angle.lock().unwrap();
+            match *angle {
+                0 => a(),
+                1 => b(),
+                2 => c(),
+                _ => unreachable!(),
             }
-        });
-        v.expect([]);
+            *angle = (*angle + 1) % 3;
+        }
+    });
+    v.expect([]);
 
-        let _a = Subscription::computed(|| {
-            v.push('a');
-            roundabout.get()
-        });
-        v.expect(['a']);
-        let _b = Subscription::computed(|| {
-            v.push('b');
-            roundabout.get()
-        });
-        v.expect(['b']);
+    let _a = Subscription::computed(|| {
+        v.push('a');
+        roundabout.get()
+    });
+    v.expect(['a']);
+    let _b = Subscription::computed(|| {
+        v.push('b');
+        roundabout.get()
+    });
+    v.expect(['b']);
 
-        // There are two subscriptions, so each "hit" advances twice.
+    // There are two subscriptions, so each "hit" advances twice.
 
-        set_b(());
-        v.expect(['a', 'b']);
+    set_b(());
+    v.expect(['a', 'b']);
 
-        set_b(());
-        set_c(());
-        v.expect([]);
+    set_b(());
+    set_c(());
+    v.expect([]);
 
-        set_a(());
-        v.expect(['a', 'b']);
-    }
+    set_a(());
+    v.expect(['a', 'b']);
 }

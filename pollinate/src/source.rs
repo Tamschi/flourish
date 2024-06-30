@@ -8,7 +8,7 @@ use std::{
     collections::{btree_map::Entry, BTreeMap},
     marker::PhantomData,
     mem::{self, MaybeUninit},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use crate::{
@@ -63,6 +63,10 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
     /// **May** panic iff called *not* between `self.project_or_init(…)` and `self.stop_and(…)`.
     fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce()) {
         self.runtime.update_or_enqueue(self.id, f);
+    }
+
+    fn update_or_enqueue_blocking(&self, f: impl FnOnce()) {
+        self.runtime.update_or_enqueue_blocking(self.id, f);
     }
 
     fn propagate(&self) {
@@ -250,15 +254,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         self.handle.update_or_enqueue(update);
     }
 
-    pub fn update_blocking<F: FnOnce(Pin<&Eager>, Pin<&OnceLock<Lazy>>)>(&self, f: F) {
-        todo!("This should be in a critical section too.");
-        unsafe {
-            f(
-                Pin::new_unchecked(&self.eager),
-                Pin::new_unchecked(&*self.lazy.get()),
-            );
-        }
-        self.handle.propagate()
+    pub fn update_blocking<F: FnOnce(&Eager, &OnceLock<Lazy>)>(&self, f: F) {
+        self.handle
+            .update_or_enqueue_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }));
     }
 
     pub fn update_dependency_set<T, F: FnOnce(Pin<&Eager>, Pin<&Lazy>) -> T>(

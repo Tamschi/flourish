@@ -8,7 +8,8 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
     mem,
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
-    sync::{Mutex, MutexGuard},
+    sync::{Arc, Barrier, Mutex, MutexGuard},
+    thread,
 };
 
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
@@ -16,7 +17,6 @@ use stale_queue::{SensorNotification, StaleQueue};
 
 mod deferred_queue;
 mod stale_queue;
-mod work_queue;
 
 pub trait SignalRuntimeRef: Send + Sync + Clone {
     type Symbol: Clone + Copy + Send;
@@ -36,6 +36,7 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
     /// Whether there was a change.
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
+    fn update_or_enqueue_blocking(&self, id: Self::Symbol, f: impl FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
     fn refresh(&self, id: Self::Symbol);
@@ -259,6 +260,49 @@ impl SignalRuntimeRef for &ASignalRuntime {
         drop(self.process_updates_if_ready(update_queue));
     }
 
+    fn update_or_enqueue_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
+        // This is indirected because the nested function's text size may be relatively large.
+        //BLOCKED: Avoid the heap allocation once the `Allocator` API is stabilised.
+        fn update_or_enqueue_blocking(
+            this: &ASignalRuntime,
+            id: ASymbol,
+            f: Box<dyn '_ + FnOnce()>,
+        ) {
+            //FIXME: This could avoid the heap allocation.
+            let barrier2 = Arc::new(Barrier::new(2));
+
+            //FIXME: This can *maybe* may deadlock if called on the same thread while processing updates.
+            //FIXME: This should NOT have to spawn new threads.
+            thread::scope(|s| {
+                s.spawn({
+                    let barrier2 = Arc::clone(&barrier2);
+                    move || {
+                        this.update_or_enqueue(id, move || {
+                            barrier2.wait();
+                            barrier2.wait();
+                        })
+                    }
+                });
+                barrier2.wait();
+                f();
+                barrier2.wait();
+            });
+            // Ensure propagation is complete:
+            thread::scope(|s| {
+                s.spawn({
+                    let barrier2 = Arc::clone(&barrier2);
+                    move || {
+                        this.update_or_enqueue(id, move || {
+                            barrier2.wait();
+                        })
+                    }
+                });
+                barrier2.wait();
+            })
+        }
+        update_or_enqueue_blocking(self, id, Box::new(f))
+    }
+
     fn propagate_from(&self, id: Self::Symbol) {
         let lock = self.critical_mutex.lock();
         if (*lock)
@@ -426,6 +470,10 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
 
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
         (&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue(id.0, f)
+    }
+
+    fn update_or_enqueue_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
+        (&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue_blocking(id.0, f)
     }
 
     fn propagate_from(&self, id: Self::Symbol) {
