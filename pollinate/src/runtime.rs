@@ -5,9 +5,10 @@ use core::{
 };
 use std::{
     cell::{RefCell, RefMut},
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
     mem,
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+    sync::{Mutex, MutexGuard},
 };
 
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
@@ -44,7 +45,10 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
 #[derive(Default)]
 struct ASignalRuntime {
     source_counter: AtomicU64,
+    /// Overlapping locks are always in the order `critical_mutex`->`update_queue`.
     critical_mutex: ReentrantMutex<RefCell<ASignalRuntime_>>,
+    /// Overlapping locks are always in the order `critical_mutex`->`update_queue`.
+    update_queue: Mutex<VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce()>)>>,
 }
 
 unsafe impl Sync for ASignalRuntime {}
@@ -54,7 +58,6 @@ struct ASignalRuntime_ {
     stale_queue: StaleQueue<ASymbol>,
     context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
     callbacks: BTreeMap<ASymbol, (*const CallbackTable<()>, *const ())>,
-    sensor_stack: Vec<ASymbol>,
 }
 
 impl ASignalRuntime_ {
@@ -63,7 +66,6 @@ impl ASignalRuntime_ {
             stale_queue: StaleQueue::new(),
             context_stack: Vec::new(),
             callbacks: BTreeMap::new(),
-            sensor_stack: Vec::new(),
         }
     }
 }
@@ -76,6 +78,7 @@ impl ASignalRuntime {
         Self {
             source_counter: AtomicU64::new(0),
             critical_mutex: ReentrantMutex::new(RefCell::new(ASignalRuntime_::new())),
+            update_queue: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -97,13 +100,11 @@ impl ASignalRuntime {
             } = unsafe { &*callback_table }
             {
                 //TODO: Dirty queue isolation!
-                borrow.context_stack.push(None);
-                borrow.sensor_stack.push(symbol);
+                borrow.context_stack.push(None); // Important! Dependency isolation.
                 drop(borrow);
                 let r = catch_unwind(|| unsafe { on_subscribed_change(data, value) });
                 let mut borrow = (*lock).borrow_mut();
                 assert_eq!(borrow.context_stack.pop(), Some(None));
-                assert_eq!(borrow.sensor_stack.pop().expect("unreachable"), symbol);
                 if let Err(payload) = r {
                     resume_unwind(payload)
                 }
@@ -117,6 +118,35 @@ impl ASignalRuntime {
             borrow = notify(&lock, notification, borrow)
         }
         borrow
+    }
+
+    #[must_use = "The guard drop order is important! Drop the reentrant guard first if you have one."]
+    fn process_updates_if_ready<'a>(
+        &'a self,
+        mut update_queue: MutexGuard<'a, VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce()>)>>,
+    ) -> MutexGuard<VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce()>)>> {
+        let Some(critical) = self.critical_mutex.try_lock() else {
+            return update_queue;
+        };
+        {
+            let borrow = critical.borrow();
+            if !borrow.context_stack.is_empty() || borrow.stale_queue.peek().is_some() {
+                // Still processing something else (which will)
+                return update_queue;
+            }
+        }
+
+        while let Some((id, next)) = update_queue.pop_front() {
+            // Still holding onto `critical`, so this code remains synchronised!
+            drop(update_queue);
+            let borrow = critical.borrow();
+            debug_assert!(borrow.callbacks.contains_key(&id));
+            drop(borrow);
+            next();
+            update_queue = self.update_queue.lock().expect("unreachable");
+        }
+        drop(critical);
+        update_queue
     }
 }
 
@@ -212,12 +242,21 @@ impl SignalRuntimeRef for &ASignalRuntime {
 
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
         match self.critical_mutex.try_lock() {
-            Some(lock) if (*lock).borrow().context_stack.is_empty() => {
+            Some(lock) if !(*lock).borrow().callbacks.contains_key(&id) => panic!("Tried to update without starting the `pollinate::source::Source` first! (This panic may be sporadic when threading.)"),
+            Some(lock)
+                if (*lock).borrow().context_stack.is_empty()
+                    && (*lock).borrow().stale_queue.peek().is_none() =>
+            {
                 f();
                 self.propagate_from(id);
+                return;
             }
-            _ => todo!("update_or_enqueue: enqueue"),
+            _ => (),
         }
+
+        let mut update_queue = self.update_queue.lock().expect("unreachable");
+        update_queue.push_back((id, Box::new(f)));
+        drop(self.process_updates_if_ready(update_queue));
     }
 
     fn propagate_from(&self, id: Self::Symbol) {
@@ -334,6 +373,14 @@ impl SignalRuntimeRef for &ASignalRuntime {
         let notifications = borrow.stale_queue.purge_id(id);
         let mut borrow = ASignalRuntime::notify_all(&lock, notifications, borrow);
         borrow.callbacks.remove(&id);
+        drop(borrow);
+
+        let mut update_queue = self.update_queue.lock().expect("infallible");
+        update_queue.retain(|(item_id, _)| *item_id != id);
+
+        // The order is important!
+        drop(lock);
+        drop(self.process_updates_if_ready(update_queue));
     }
 }
 

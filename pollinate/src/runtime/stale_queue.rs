@@ -38,6 +38,21 @@ impl<S> StaleQueue<S> {
             interdependencies: Interdependencies::new(),
         }
     }
+
+    pub(crate) fn peek(&self) -> Option<S>
+    where
+        S: Copy + Ord,
+    {
+        //FIXME: This is very inefficient!
+        self.stale_queue.iter().copied().find(|next| {
+            !self
+                .interdependencies
+                .subscribers_by_dependency
+                .get(&next)
+                .expect("unreachable")
+                .is_empty()
+        })
+    }
 }
 
 #[derive(Debug)]

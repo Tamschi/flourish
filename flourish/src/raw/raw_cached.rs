@@ -123,7 +123,7 @@ impl<T: Send + Clone, S: crate::Source<SR, Value = T>, SR: SignalRuntimeRef> Raw
         self.touch().write().unwrap().clone()
     }
 
-    pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&RwLock<T>> {
+    pub(crate) fn touch(self: Pin<&Self>) -> Pin<&RwLock<T>> {
         unsafe {
             self.project_ref()
                 .0

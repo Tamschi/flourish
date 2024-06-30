@@ -6,6 +6,7 @@ use core::{
 use std::{
     cell::UnsafeCell,
     collections::{btree_map::Entry, BTreeMap},
+    marker::PhantomData,
     mem::{self, MaybeUninit},
     sync::{Mutex, OnceLock},
 };
@@ -53,6 +54,13 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         self.runtime.set_subscription(self.id, enabled);
     }
 
+    /// # Safety Notes
+    ///
+    /// `self.stop(…)` also drops associated enqueued updates.
+    ///
+    /// # Panics
+    ///
+    /// **May** panic iff called *not* between `self.project_or_init(…)` and `self.stop_and(…)`.
     fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce()) {
         self.runtime.update_or_enqueue(self.id, f);
     }
@@ -131,7 +139,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     /// After `init` returns, `E::eval` may be called any number of times with the state initialised by `init`, but at most once at a time.
     ///
     /// [`Source`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
-    pub unsafe fn project_or_init<'a, C: Callbacks<Eager, Lazy, SR>>(
+    pub unsafe fn project_or_init<C: Callbacks<Eager, Lazy, SR>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
@@ -220,25 +228,25 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         projected
     }
 
-    //TODO: Can the lifetime requirement be reduced here?
-    //      In theory, the closure only needs to live longer than `Self`, but I'm unsure if that's expressible.
-    pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&OnceLock<Lazy>>)>(
-        //TODO: Optional `Lazy`!
-        self: Pin<&Self>,
-        f: F,
-    ) where
-        SR: 'static + Sync,
+    /// # Safety Notes
+    ///
+    /// `self.stop(…)` also drops associated enqueued updates.
+    ///
+    /// # Panics
+    ///
+    /// **May** panic iff called *not* between `self.start(…)` and `self.stop(…)`.
+    pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&Lazy>)>(self: Pin<&Self>, f: F)
+    where
         SR::Symbol: Sync,
-        Lazy: 'static + Send,
     {
         let this = Pin::clone(&self);
         let update: Box<dyn Send + FnOnce()> = Box::new(move || unsafe {
             f(
                 this.map_unchecked(|this| &this.eager),
-                this.map_unchecked(|this| &*this.lazy.get()),
+                this.map_unchecked(|this| (&*this.lazy.get()).get().expect("unreachable")),
             )
         });
-        let update: Box<dyn Send + FnOnce()> = unsafe { mem::transmute(update) };
+        let update: Box<dyn 'static + Send + FnOnce()> = unsafe { mem::transmute(update) };
         self.handle.update_or_enqueue(update);
     }
 
