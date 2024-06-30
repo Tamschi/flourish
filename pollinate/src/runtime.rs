@@ -342,6 +342,11 @@ impl SignalRuntimeRef for &ASignalRuntime {
                 }
             }
         }
+
+        let update_queue =
+            self.process_updates_if_ready(self.update_queue.lock().expect("unreachable"));
+        drop(lock);
+        drop(update_queue);
     }
 
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
