@@ -15,12 +15,12 @@ pub mod future;
 
 //TODO: These have extraneous bounds. Change to accept closures to remove some `T: Sync + Copy` bounds.
 
-pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
+pub fn debounce<'a, T: 'a + Send + PartialEq, SR: 'a + SignalRuntimeRef>(
+    fn_pin: impl 'a + Send + FnMut() -> T,
+    runtime: SR,
 ) -> impl 'a + Source<SR, Value = T> {
-    let runtime = source.clone_runtime_ref();
     merged(
-        move || unsafe { Pin::new_unchecked(&source) }.get(),
+        fn_pin,
         |current, next| {
             if current != &next {
                 *current = next;
@@ -33,21 +33,34 @@ pub fn debounce<'a, T: 'a + Send + Sync + Copy + PartialEq, SR: 'a + SignalRunti
     )
 }
 
-pub fn delta<
+pub fn debounce_from_source<
     'a,
-    T: 'a + Send + Sync + Copy + Sub<Output: Zero + Send + Sync + Copy>,
+    T: 'a + Send + Sync + Copy + PartialEq,
     SR: 'a + SignalRuntimeRef,
 >(
     source: impl 'a + Source<SR, Value = T>,
-) -> impl 'a + Source<SR, Value = T::Output> {
-    let mut previous = None;
+) -> impl 'a + Source<SR, Value = T> {
     let runtime = source.clone_runtime_ref();
+    debounce(
+        move || unsafe { Pin::new_unchecked(&source) }.get(),
+        runtime,
+    )
+}
+
+pub fn delta<'a, V: 'a + Send, T: 'a + Send + Zero, SR: 'a + SignalRuntimeRef>(
+    mut fn_pin: impl 'a + Send + FnMut() -> V,
+    runtime: SR,
+) -> impl 'a + Source<SR, Value = T>
+where
+    for<'b> &'b V: Sub<Output = T>,
+{
+    let mut previous = None;
     folded(
-        T::Output::zero(),
+        <&'a V as Sub>::Output::zero(),
         move |delta| {
-            let next = unsafe { Pin::new_unchecked(&source) }.get();
-            if let Some(previous) = previous {
-                *delta = next - previous;
+            let next: V = fn_pin();
+            if let Some(previous) = previous.as_mut() {
+                *delta = &next - &*previous;
             }
             previous = Some(next);
             Update::Propagate
@@ -56,63 +69,97 @@ pub fn delta<
     )
 }
 
-pub fn sparse_tally<
+pub fn delta_from_source<
     'a,
-    Tally: 'a + Zero + Send + Sync + Copy + AddAssign<T>,
-    T: 'a + Send + Sync + Copy,
+    V: 'a + Send + Sync + Copy,
+    T: 'a + Send + Zero,
     SR: 'a + SignalRuntimeRef,
 >(
-    source: impl 'a + Source<SR, Value = T>,
-) -> impl 'a + Source<SR, Value = Tally> {
+    source: impl 'a + Source<SR, Value = V>,
+) -> impl 'a + Source<SR, Value = T>
+where
+    for<'b> &'b V: Sub<Output = T>,
+{
     let runtime = source.clone_runtime_ref();
+    delta(
+        move || unsafe { Pin::new_unchecked(&source) }.get(),
+        runtime,
+    )
+}
+
+pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalRuntimeRef>(
+    mut fn_pin: impl 'a + Send + FnMut() -> V,
+    runtime: SR,
+) -> impl 'a + Source<SR, Value = T> {
     folded(
-        Tally::zero(),
+        T::zero(),
         move |tally| {
-            *tally += unsafe { Pin::new_unchecked(&source) }.get();
+            *tally += fn_pin();
             Update::Propagate
         },
         runtime,
     )
 }
 
-pub fn eager_tally<
+pub fn sparse_tally_from_source<
     'a,
-    Tally: Zero + Send + Sync + Copy + AddAssign<T>,
-    T: 'a + Send + Sync + Copy,
+    V: 'a + Sync + Copy,
+    T: 'a + Zero + Send + Sync + Copy + AddAssign<V>,
     SR: 'a + SignalRuntimeRef,
 >(
-    source: impl 'a + Source<SR, Value = T>,
-) -> SubscriptionSR<'a, Tally, SR> {
-    SubscriptionSR::new(sparse_tally(source))
-}
-
-pub fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
-    mut f: impl 'a + Send + FnMut(&T) -> bool,
-) -> impl 'a + Source<SR, Value = Option<T>> {
+    source: impl 'a + Source<SR, Value = V>,
+) -> impl 'a + Source<SR, Value = T> {
     let runtime = source.clone_runtime_ref();
-    folded(
-        None,
-        move |current| {
-            let next = unsafe { Pin::new_unchecked(&source) }.get();
-            if f(&next) {
-                *current = Some(next);
-                Update::Propagate
-            } else {
-                Update::Halt
-            }
-        },
+    sparse_tally(
+        move || unsafe { Pin::new_unchecked(&source) }.get(),
         runtime,
     )
 }
 
-pub fn mapped<'a, T: 'a + Send + Sync + Copy, U: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+pub fn eager_tally<
+    'a,
+    V: 'a,
+    T: 'a + Zero + Send + Clone + AddAssign<V>,
+    SR: 'a + SignalRuntimeRef,
+>(
+    fn_pin: impl 'a + Send + FnMut() -> V,
+    runtime: SR,
+) -> SubscriptionSR<'a, T, SR> {
+    SubscriptionSR::new(sparse_tally(fn_pin, runtime))
+}
+
+pub fn eager_tally_from_source<
+    'a,
+    V: 'a + Send + Sync + Copy,
+    T: Zero + Send + Sync + Copy + AddAssign<V>,
+    SR: 'a + SignalRuntimeRef,
+>(
+    source: impl 'a + Source<SR, Value = V>,
+) -> SubscriptionSR<'a, T, SR> {
+    SubscriptionSR::new(sparse_tally_from_source(source))
+}
+
+pub fn map<'a, T: 'a + Send + Sync + Copy, U: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+    mut fn_pin: impl 'a + Send + FnMut() -> T,
+    mut map_fn_pin: impl 'a + Send + FnMut(T) -> U,
+    runtime: SR,
+) -> impl 'a + Source<SR, Value = U> {
+    computed(move || map_fn_pin(fn_pin()), runtime)
+}
+
+pub fn map_from_source<
+    'a,
+    T: 'a + Send + Sync + Copy,
+    U: 'a + Send + Clone,
+    SR: 'a + SignalRuntimeRef,
+>(
     source: impl 'a + Source<SR, Value = T>,
-    mut f: impl 'a + Send + FnMut(T) -> U,
+    map_fn_pin: impl 'a + Send + FnMut(T) -> U,
 ) -> impl 'a + Source<SR, Value = U> {
     let runtime = source.clone_runtime_ref();
-    computed(
-        move || f(unsafe { Pin::new_unchecked(&source) }.get()),
+    map(
+        move || unsafe { Pin::new_unchecked(&source) }.get(),
+        map_fn_pin,
         runtime,
     )
 }

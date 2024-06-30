@@ -1,5 +1,5 @@
 use flourish::{raw::computed, GlobalSignalRuntime, Signal, SourcePin as _, Subject, Subscription};
-use flourish_extra::{debounce, pipe};
+use flourish_extra::{debounce_from_source, pipe};
 
 mod _validator;
 use _validator::Validator;
@@ -11,8 +11,8 @@ fn concise() {
     let (get, set) = Subject::new(0).into_get_set();
     let debounced = Signal::new(pipe((
         computed(get, GlobalSignalRuntime),
-        debounce,
-        debounce,
+        debounce_from_source,
+        debounce_from_source,
     )));
     let _sub = Subscription::computed(move || v.push(debounced.get()));
     v.expect([0]);

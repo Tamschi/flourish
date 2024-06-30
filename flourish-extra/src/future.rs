@@ -11,7 +11,7 @@ use flourish::{
     shadow_clone, signals_helper, SignalRuntimeRef, Source, SourcePin as _, SubscriptionSR, Update,
 };
 
-pub async fn skipped_while<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+pub async fn skip_while<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
     mut test: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {
@@ -34,7 +34,7 @@ pub async fn skipped_while<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntim
     sub
 }
 
-pub async fn skipped_while_cloned<'a, T: 'a + Send + Sync + Clone, SR: 'a + SignalRuntimeRef>(
+pub async fn skip_while_cloned<'a, T: 'a + Send + Sync + Clone, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
     mut test: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {
@@ -57,7 +57,7 @@ pub async fn skipped_while_cloned<'a, T: 'a + Send + Sync + Clone, SR: 'a + Sign
     sub
 }
 
-pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+pub async fn filter<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Value = T>,
     mut test: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {

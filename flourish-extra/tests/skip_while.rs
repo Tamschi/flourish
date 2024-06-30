@@ -1,5 +1,5 @@
 use flourish::{raw::computed_uncached, Signal, SourcePin as _};
-use flourish_extra::future::{skipped_while, skipped_while_cloned};
+use flourish_extra::future::{skip_while, skip_while_cloned};
 
 mod _validator;
 use _validator::Validator;
@@ -14,7 +14,7 @@ fn ready() {
     let signal = Signal::computed(|| v.push("signal"));
     v.expect([]);
 
-    let found = skipped_while(
+    let found = skip_while(
         computed_uncached(
             || {
                 v.push("source");
@@ -40,7 +40,7 @@ fn ready_cloned() {
     let signal = Signal::computed(|| v.push("signal"));
     v.expect([]);
 
-    let found = skipped_while_cloned(
+    let found = skip_while_cloned(
         computed_uncached(
             || {
                 v.push("source");
@@ -66,7 +66,7 @@ fn pending() {
     let signal = Signal::computed(|| v.push("signal"));
     v.expect([]);
 
-    let found = skipped_while(
+    let found = skip_while(
         computed_uncached(
             || {
                 v.push("source");
@@ -92,7 +92,7 @@ fn pending_cloned() {
     let signal = Signal::computed(|| v.push("signal"));
     v.expect([]);
 
-    let found = skipped_while_cloned(
+    let found = skip_while_cloned(
         computed_uncached(
             || {
                 v.push("source");
