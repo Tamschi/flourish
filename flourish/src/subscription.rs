@@ -112,3 +112,5 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a,
         Self::new(merged(select, merge, runtime))
     }
 }
+
+// TODO: `unsubscribe(self)` to convert into `SignalSR`, `to_signal(&self)`.
