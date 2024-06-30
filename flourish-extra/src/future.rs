@@ -11,19 +11,19 @@ use flourish::{
     shadow_clone, signals_helper, SignalRuntimeRef, Source, SourcePin as _, SubscriptionSR, Update,
 };
 
-pub async fn skip_while<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
-    mut test: impl 'a + Send + FnMut(&T) -> bool,
+pub async fn skip_while<'a, T: 'a + Send + Sync + Clone, SR: 'a + SignalRuntimeRef>(
+    fn_pin: impl 'a + Send + FnMut() -> T,
+    mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
+    runtime: SR,
 ) -> SubscriptionSR<'a, T, SR> {
-    let runtime = source.clone_runtime_ref();
-    let sub = SubscriptionSR::new(source);
+    let sub = SubscriptionSR::computed_with_runtime(fn_pin, runtime.clone());
     {
         let once = OnceCell::<()>::new();
         signals_helper! {
             let effect = effect_with_runtime!({
                 let (sub, once) = (&sub, &once);
                 move || {
-                    if !test(&*sub.read().borrow()) {
+                    if !predicate_fn_pin(&*sub.read().borrow()) {
                         once.set_blocking(()).ok();
                     }
                 }
@@ -32,6 +32,19 @@ pub async fn skip_while<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRe
         once.wait().await;
     }
     sub
+}
+
+pub async fn skip_while_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
+    predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
+) -> SubscriptionSR<'a, T, SR> {
+    let runtime = source.clone_runtime_ref();
+    skip_while(
+        move || unsafe { Pin::new_unchecked(&source) }.get(),
+        predicate_fn_pin,
+        runtime,
+    )
+    .await
 }
 
 pub async fn skip_while_cloned<'a, T: 'a + Send + Sync + Clone, SR: 'a + SignalRuntimeRef>(
