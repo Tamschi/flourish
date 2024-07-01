@@ -1,5 +1,5 @@
 use flourish::{raw::computed_uncached, Signal, SourcePin as _};
-use flourish_extra::future::latest;
+use flourish_extra::future::flatten_some_from_source;
 
 mod _validator;
 use _validator::Validator;
@@ -14,7 +14,7 @@ fn ready() {
     let signal = Signal::computed(|| Some(v.push("signal")));
     v.expect([]);
 
-    let found = latest(computed_uncached(
+    let found = flatten_some_from_source(computed_uncached(
         || {
             v.push("source");
             signal.get()
@@ -37,7 +37,7 @@ fn pending() {
     });
     v.expect([]);
 
-    let found = latest(computed_uncached(
+    let found = flatten_some_from_source(computed_uncached(
         || {
             v.push("source");
             signal.get()

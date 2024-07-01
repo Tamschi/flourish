@@ -71,10 +71,10 @@ pub async fn skip_while_cloned<'a, T: 'a + Send + Sync + Clone, SR: 'a + SignalR
 }
 
 pub async fn filter<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
-    mut test: impl 'a + Send + FnMut(&T) -> bool,
+    mut fn_pin: impl 'a + Send + FnMut() -> T,
+    mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
+    runtime: SR,
 ) -> SubscriptionSR<'a, T, SR> {
-    let runtime = source.clone_runtime_ref();
     // It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
     // since the closure is guaranteed to run when the subscription is created.
     // However, that would be considerably trickier code.
@@ -84,8 +84,8 @@ pub async fn filter<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
         {
             shadow_clone!(once);
             move |value| {
-                let next = unsafe { Pin::new_unchecked(&source) }.get();
-                if test(&next) {
+                let next = fn_pin();
+                if predicate_fn_pin(&next) {
                     if once.is_initialized() {
                         *unsafe { value.assume_init_mut() } = next;
                     } else {
@@ -107,10 +107,23 @@ pub async fn filter<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
     }
 }
 
-pub async fn latest<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = Option<T>>,
+pub async fn filter_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = T>,
+    predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {
     let runtime = source.clone_runtime_ref();
+    filter(
+        move || unsafe { Pin::new_unchecked(&source) }.get(),
+        predicate_fn_pin,
+        runtime,
+    )
+    .await
+}
+
+pub async fn flatten_some<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+    mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
+    runtime: SR,
+) -> SubscriptionSR<'a, T, SR> {
     // It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
     // since the closure is guaranteed to run when the subscription is created.
     // However, that would be considerably trickier code.
@@ -120,7 +133,7 @@ pub async fn latest<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
         {
             shadow_clone!(once);
             move |value| {
-                if let Some(next) = unsafe { Pin::new_unchecked(&source) }.get() {
+                if let Some(next) = fn_pin() {
                     if once.is_initialized() {
                         *unsafe { value.assume_init_mut() } = next;
                     } else {
@@ -140,4 +153,15 @@ pub async fn latest<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
     unsafe {
         mem::transmute::<SubscriptionSR<'a, MaybeUninit<T>, SR>, SubscriptionSR<'a, T, SR>>(sub)
     }
+}
+
+pub async fn flatten_some_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+    source: impl 'a + Source<SR, Value = Option<T>>,
+) -> SubscriptionSR<'a, T, SR> {
+    let runtime = source.clone_runtime_ref();
+    flatten_some(
+        move || unsafe { Pin::new_unchecked(&source) }.get(),
+        runtime,
+    )
+    .await
 }

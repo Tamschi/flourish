@@ -1,5 +1,5 @@
 use flourish::{raw::computed_uncached, Signal, SourcePin as _};
-use flourish_extra::future::filter;
+use flourish_extra::future::filter_from_source;
 
 mod _validator;
 use _validator::Validator;
@@ -14,7 +14,7 @@ fn ready() {
     let signal = Signal::computed(|| v.push("signal"));
     v.expect([]);
 
-    let found = filter(
+    let found = filter_from_source(
         computed_uncached(
             || {
                 v.push("source");
@@ -40,7 +40,7 @@ fn pending() {
     let signal = Signal::computed(|| v.push("signal"));
     v.expect([]);
 
-    let found = filter(
+    let found = filter_from_source(
         computed_uncached(
             || {
                 v.push("source");
