@@ -12,7 +12,9 @@ use super::RawCached;
 #[repr(transparent)]
 pub struct RawSubscription<
     //FIXME: Remove the `T: Clone` bound here, likely be using a different inner source,
-	// without always caching. This would unlock **various** bounds relaxations!
+	// without always caching. This would unlock **various** bounds relaxations! It may be
+	// necessary to add a generic way to subscribe to sources, but it's possible that this
+	// should be crate-private.
     T: Send + Clone,
     S: Source<SR, Value = T>,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
