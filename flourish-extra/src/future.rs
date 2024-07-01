@@ -47,7 +47,11 @@ pub async fn skip_while_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + Sig
     .await
 }
 
-pub async fn skip_while_cloned<'a, T: 'a + Send + Sync + Clone, SR: 'a + SignalRuntimeRef>(
+pub async fn skip_while_from_source_cloned<
+    'a,
+    T: 'a + Send + Sync + Clone,
+    SR: 'a + SignalRuntimeRef,
+>(
     source: impl 'a + Source<SR, Value = T>,
     mut test: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {
