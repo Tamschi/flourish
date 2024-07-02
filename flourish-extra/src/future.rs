@@ -14,6 +14,7 @@ use flourish::{
 //TODO: Investigate: It may be possible to also implement some of this with a potential
 //      `AttachedEffect` (`Effect` that doesn't use `run_detached`), which may not require
 //      `T: Copy` to avoid leaks.
+//      Or not. Rather, it may be much cleaner if `Signal`s could be converted into `Subscriptions` iff exclusive.
 
 pub async fn skip_while<'a, T: 'a + Send + Sync + Clone, SR: 'a + SignalRuntimeRef>(
     fn_pin: impl 'a + Send + FnMut() -> T,
@@ -111,8 +112,8 @@ pub async fn filter<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
     once.wait().await;
 
     unsafe {
-		//SAFETY: This is fine because `dyn Source` is ABI-compatible across ABI-compatible `Value`s by definition.
-		//CORRECTNESS: This neglects to call `T::drop()`, but that's fine because `T: Copy`.
+        //SAFETY: This is fine because `dyn Source` is ABI-compatible across ABI-compatible `Value`s by definition.
+        //CORRECTNESS: This neglects to call `T::drop()`, but that's fine because `T: Copy`.
         mem::transmute::<SubscriptionSR<'a, MaybeUninit<T>, SR>, SubscriptionSR<'a, T, SR>>(sub)
     }
 }
@@ -161,8 +162,8 @@ pub async fn flatten_some<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntime
     once.wait().await;
 
     unsafe {
-		//SAFETY: This is fine because `dyn Source` is ABI-compatible across ABI-compatible `Value`s by definition.
-		//CORRECTNESS: This neglects to call `T::drop()`, but that's fine because `T: Copy`.
+        //SAFETY: This is fine because `dyn Source` is ABI-compatible across ABI-compatible `Value`s by definition.
+        //CORRECTNESS: This neglects to call `T::drop()`, but that's fine because `T: Copy`.
         mem::transmute::<SubscriptionSR<'a, MaybeUninit<T>, SR>, SubscriptionSR<'a, T, SR>>(sub)
     }
 }
