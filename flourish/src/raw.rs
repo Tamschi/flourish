@@ -25,6 +25,9 @@ pub(crate) use raw_merged::RawMerged;
 pub(crate) mod raw_subscription;
 pub(crate) use raw_subscription::{new_raw_unsubscribed_subscription, pull_subscription};
 
+pub(crate) mod raw_attached_effect;
+pub(crate) use raw_attached_effect::new_raw_unsubscribed_attached_effect;
+
 pub(crate) mod raw_effect;
 pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 
@@ -275,6 +278,36 @@ macro_rules! subscription_from_source {
 }
 #[doc(hidden)]
 pub use crate::subscription_from_source;
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! attached_effect {
+    ($f:expr, $drop:expr) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+        super let attached_effect = ::core::pin::pin!($crate::__::new_raw_unsubscribed_attached_effect(
+            $f,
+            $drop,
+            $crate::GlobalSignalRuntime
+        ));
+        let attached_effect = ::core::pin::Pin::into_ref(attached_effect);
+        $crate::__::pull_attached_effect(attached_effect);
+    }};
+}
+#[doc(hidden)]
+pub use crate::attached_effect;
+#[macro_export]
+#[doc(hidden)]
+macro_rules! attached_effect_with_runtime {
+    ($f:expr, $drop:expr, $runtime:expr) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+        super let attached_effect_with_runtime = ::core::pin::pin!($crate::__::new_raw_unsubscribed_attached_effect($f, $drop, $runtime));
+        let attached_effect_with_runtime = ::core::pin::Pin::into_ref(attached_effect_with_runtime);
+        $crate::__::pull_attached_effect(attached_effect_with_runtime);
+    }};
+}
+#[doc(hidden)]
+pub use crate::attached_effect_with_runtime;
+
 #[macro_export]
 #[doc(hidden)]
 macro_rules! effect {
