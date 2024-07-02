@@ -26,7 +26,7 @@ pub(crate) mod raw_subscription;
 pub(crate) use raw_subscription::{new_raw_unsubscribed_subscription, pull_subscription};
 
 pub(crate) mod raw_effect;
-pub(crate) use raw_effect::{new_raw_unsubscribed_effect, pull_effect};
+pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 
 use crate::Source;
 
@@ -380,12 +380,12 @@ macro_rules! signals_helper {
 	{let $name:ident = effect!($f:expr, $drop:expr$(,)?);} => {
 		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
-		$crate::__::pull_effect($name);
+		$name.pull();
 	};
 	{let $name:ident = effect_with_runtime!($f:expr, $drop:expr, $runtime:expr$(,)?);} => {
 		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
-		$crate::__::pull_effect($name);
+		$name.pull();
 	};
 	// Error variant.
 	{let $name:ident = $macro:ident!($($arg:expr),*$(,)?);} => {

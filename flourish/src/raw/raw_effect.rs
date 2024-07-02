@@ -55,15 +55,6 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef> 
     }
 }
 
-pub fn pull_effect<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>(
-    effect: Pin<&RawEffect<T, S, D, SR>>,
-) {
-    effect.0.clone_runtime_ref().run_detached(|| unsafe {
-        Pin::new_unchecked(&effect.0)
-            .pull_or_init::<E>(|source, cache| RawEffect::<T, S, D, SR>::init(source, cache));
-    })
-}
-
 enum E {}
 impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
     Callbacks<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR> for E
@@ -110,5 +101,12 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
         cache.write(ForceSyncUnpin(
             Some(source.project_ref().0.lock().expect("unreachable").0()).into(),
         ))
+    }
+
+    pub fn pull(self: Pin<&RawEffect<T, S, D, SR>>) {
+        self.0.clone_runtime_ref().run_detached(|| unsafe {
+            Pin::new_unchecked(&self.0)
+                .pull_or_init::<E>(|source, cache| RawEffect::<T, S, D, SR>::init(source, cache));
+        })
     }
 }

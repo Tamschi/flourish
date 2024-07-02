@@ -11,7 +11,7 @@ use super::RawCached;
 #[must_use = "Subscriptions are cancelled when dropped."]
 #[repr(transparent)]
 pub struct RawSubscription<
-    //FIXME: Remove the `T: Clone` bound here, likely be using a different inner source,
+    //FIXME: Remove the `T: Clone` bound here, likely by using a different inner source,
     // without always caching. This would unlock **various** bounds relaxations! It may be
     // necessary to add a generic way to subscribe to sources, but it's possible that this
     // should be crate-private.

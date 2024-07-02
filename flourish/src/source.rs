@@ -2,6 +2,11 @@ use std::{borrow::Borrow, pin::Pin};
 
 use pollinate::runtime::SignalRuntimeRef;
 
+/// # Safety Notes
+///
+/// It's sound to transmute [`dyn Source<_>`](`Source`) between different associated `Value`s as long as that's sound and they're ABI-compatible.
+///
+/// Note that dropping the [`dyn Source<_>`](`Source`) dynamically **transmutes back**.
 pub trait Source<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
     type Value: ?Sized + Send;
 
