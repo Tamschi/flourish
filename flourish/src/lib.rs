@@ -14,8 +14,8 @@ pub use subscription::{Subscription, SubscriptionSR};
 mod effect;
 pub use effect::{Effect, EffectSR};
 
-mod source;
-pub use source::{Source, SourcePin};
+mod traits;
+pub use traits::{Source, SourcePin, Subscribable, SubscribableSource};
 
 mod signal;
 pub use signal::{Signal, SignalRef, SignalSR};

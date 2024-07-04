@@ -8,7 +8,8 @@ use std::{
 
 use async_lock::OnceCell;
 use flourish::{
-    shadow_clone, signals_helper, SignalRuntimeRef, Source, SourcePin as _, SubscriptionSR, Update,
+    shadow_clone, signals_helper, SignalRuntimeRef, Source, SourcePin as _, SubscribableSource,
+    SubscriptionSR, Update,
 };
 
 //TODO: Investigate: It may be possible to also implement some of this with a potential
@@ -57,7 +58,7 @@ pub async fn skip_while_from_source_cloned<
     T: 'a + Send + Sync + Clone,
     SR: 'a + SignalRuntimeRef,
 >(
-    source: impl 'a + Source<SR, Value = T>,
+    source: impl 'a + SubscribableSource<SR, Value = T>,
     mut test: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {
     let runtime = source.clone_runtime_ref();

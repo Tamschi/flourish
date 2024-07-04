@@ -1,6 +1,6 @@
 use std::{
     borrow::Borrow,
-    mem::{needs_drop, size_of},
+    mem::{self, needs_drop, size_of},
     pin::Pin,
     sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -12,7 +12,7 @@ use pollinate::{
     source::{Callbacks, Source},
 };
 
-use crate::utils::conjure_zst;
+use crate::{traits::Subscribable, utils::conjure_zst};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -105,7 +105,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR
         self.touch().write().unwrap().clone()
     }
 
-    pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&RwLock<T>> {
+    pub(crate) fn touch(self: Pin<&Self>) -> Pin<&RwLock<T>> {
         unsafe {
             self.project_ref()
                 .0
@@ -113,6 +113,22 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR
                 .1
                 .project_ref()
                 .0
+        }
+    }
+
+    pub fn pull<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+        unsafe {
+            //TODO: SAFETY COMMENT.
+            mem::transmute::<RawComputedGuard<T>, RawComputedGuard<T>>(RawComputedGuard(
+                self.project_ref()
+                    .0
+                    .pull_or_init::<E>(|f, cache| Self::init(f, cache))
+                    .1
+                    .project_ref()
+                    .0
+                    .read()
+                    .unwrap(),
+            ))
         }
     }
 }
@@ -207,7 +223,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
 
     fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
-        Self::Value: 'a + Sync,
+        Self::Value: Sync,
     {
         Box::new(self.read())
     }
@@ -221,5 +237,19 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
         SR: Sized,
     {
         self.0.clone_runtime_ref()
+    }
+}
+
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Subscribable<SR>
+    for RawComputed<T, F, SR>
+{
+    type Value = T;
+
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
+        Box::new(self.pull())
+    }
+
+    fn unsubscribe(self: Pin<&Self>) -> bool {
+        self.project_ref().0.unsubscribe()
     }
 }

@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     cell::UnsafeCell,
-    mem::size_of,
+    mem::{self, size_of},
     pin::Pin,
     sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -13,7 +13,7 @@ use pollinate::{
     source::{Callbacks, Source},
 };
 
-use crate::utils::conjure_zst;
+use crate::{traits::Subscribable, utils::conjure_zst};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -129,6 +129,21 @@ impl<
                 .0
         }
     }
+
+    pub fn pull<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+        unsafe {
+            //TODO: SAFETY COMMENT.
+            mem::transmute::<RawMergedGuard<T>, RawMergedGuard<T>>(RawMergedGuard(
+                self.project_ref()
+                    .0
+                    .pull_or_init::<E>(|f, cache| Self::init(f, cache))
+                    .1
+                     .0
+                    .read()
+                    .unwrap(),
+            ))
+        }
+    }
 }
 
 enum E {}
@@ -232,7 +247,7 @@ impl<
 
     fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
-        Self::Value: 'a + Sync,
+        Self::Value: Sync,
     {
         Box::new(self.read())
     }
@@ -246,5 +261,23 @@ impl<
         SR: Sized,
     {
         self.0.clone_runtime_ref()
+    }
+}
+
+impl<
+        T: Send,
+        S: Send + FnMut() -> T,
+        M: Send + FnMut(&mut T, T) -> Update,
+        SR: SignalRuntimeRef,
+    > Subscribable<SR> for RawMerged<T, S, M, SR>
+{
+    type Value = T;
+
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
+        Box::new(self.pull())
+    }
+
+    fn unsubscribe(self: Pin<&Self>) -> bool {
+        self.project_ref().0.unsubscribe()
     }
 }

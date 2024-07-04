@@ -359,7 +359,7 @@ impl<T: Send, SR: SignalRuntimeRef> crate::Source<SR> for RawSubject<T, SR> {
 
     fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
-        Self::Value: 'a + Sync,
+        Self::Value: Sync,
     {
         Box::new(self.get_ref().read())
     }

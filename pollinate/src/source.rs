@@ -49,8 +49,8 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         self.runtime.start(self.id, f, callback, callback_data)
     }
 
-    fn set_subscription(&self, enabled: bool) {
-        self.runtime.set_subscription(self.id, enabled);
+    fn set_subscription(&self, enabled: bool) -> bool {
+        self.runtime.set_subscription(self.id, enabled)
     }
 
     /// # Safety Notes
@@ -225,6 +225,17 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         let projected = self.project_or_init::<E>(init);
         self.handle.set_subscription(true);
         projected
+    }
+
+    /// Unsubscribes this [`Source`] (only regarding innate subscription!).
+    ///
+    /// # Returns
+    ///
+    /// Whether this instance was previously innately subscribed.
+    ///
+    /// An innate subscription is a subscription not caused by a dependent subscriber.
+    pub fn unsubscribe(self: Pin<&Self>) -> bool {
+        self.handle.set_subscription(false)
     }
 
     /// # Safety Notes

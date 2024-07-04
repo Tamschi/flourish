@@ -7,6 +7,8 @@ use pollinate::{
     source::{NoCallbacks, Source},
 };
 
+use crate::traits::Subscribable;
+
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawComputedUncachedMut<
@@ -44,6 +46,19 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedM
                 .0
                 .map_unchecked(|r| &r.0)
         }
+    }
+
+    pub fn pull<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+        let f = unsafe {
+            self.project_ref()
+                .0
+                .pull_or_init::<NoCallbacks>(|f, cache| Self::init(f, cache))
+                .0
+                .map_unchecked(|r| &r.0)
+        };
+        self.project_ref()
+            .0
+            .update_dependency_set(move |_, _| f.lock().unwrap()())
     }
 }
 
@@ -96,7 +111,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
 
     fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
-        Self::Value: 'a + Sync,
+        Self::Value: Sync,
     {
         Box::new(self.get())
     }
@@ -110,5 +125,19 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
         SR: Sized,
     {
         self.0.clone_runtime_ref()
+    }
+}
+
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Subscribable<SR>
+    for RawComputedUncachedMut<T, F, SR>
+{
+    type Value = T;
+
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
+        Box::new(self.pull())
+    }
+
+    fn unsubscribe(self: Pin<&Self>) -> bool {
+        self.project_ref().0.unsubscribe()
     }
 }

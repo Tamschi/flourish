@@ -3,7 +3,7 @@ use std::{borrow::Borrow, pin::Pin};
 use pin_project::pin_project;
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::Source;
+use crate::{traits::SubscribableSource, Source};
 
 use super::RawCached;
 
@@ -16,7 +16,7 @@ pub struct RawSubscription<
     // necessary to add a generic way to subscribe to sources, but it's possible that this
     // should be crate-private.
     T: Send + Clone,
-    S: Source<SR, Value = T>,
+    S: SubscribableSource<SR, Value = T>,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
 >(#[pin] RawCached<T, S, SR>);
 
@@ -25,7 +25,7 @@ pub struct RawSubscription<
 
 pub fn new_raw_unsubscribed_subscription<
     T: Send + Clone,
-    S: Source<SR, Value = T>,
+    S: SubscribableSource<SR, Value = T>,
     SR: SignalRuntimeRef,
 >(
     source: S,
@@ -33,7 +33,11 @@ pub fn new_raw_unsubscribed_subscription<
     RawSubscription(RawCached::new(source))
 }
 
-pub fn pull_subscription<T: Send + Clone, S: Source<SR, Value = T>, SR: SignalRuntimeRef>(
+pub fn pull_subscription<
+    T: Send + Clone,
+    S: SubscribableSource<SR, Value = T>,
+    SR: SignalRuntimeRef,
+>(
     subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
     subscription.project_ref().0.pull();
@@ -45,7 +49,7 @@ pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalRuntimeRef>(
     pin
 }
 
-impl<T: Send + Clone, S: Source<SR, Value = T>, SR: SignalRuntimeRef> Source<SR>
+impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef> Source<SR>
     for RawSubscription<T, S, SR>
 {
     type Value = T;
@@ -84,7 +88,7 @@ impl<T: Send + Clone, S: Source<SR, Value = T>, SR: SignalRuntimeRef> Source<SR>
 
     fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
     where
-        Self::Value: 'a + Sync,
+        Self::Value: Sync,
     {
         Box::new(self.project_ref().0.read())
     }
@@ -97,6 +101,6 @@ impl<T: Send + Clone, S: Source<SR, Value = T>, SR: SignalRuntimeRef> Source<SR>
     where
         SR: Sized,
     {
-        self.0.clone_runtime_ref()
+        Source::clone_runtime_ref(&self.0)
     }
 }

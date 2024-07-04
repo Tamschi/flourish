@@ -3,8 +3,9 @@ use std::{borrow::Borrow, pin::Pin, sync::Arc};
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-    raw::{computed, folded, merged, new_raw_unsubscribed_subscription, pull_subscription},
-    Source, SourcePin,
+    raw::{computed, folded, merged},
+    traits::SubscribableSource,
+    SourcePin,
 };
 
 pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
@@ -15,7 +16,7 @@ pub struct SubscriptionSR<
     T: 'a + Send + ?Sized + Clone,
     SR: 'a + ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
 > {
-    source: Pin<Arc<dyn 'a + Source<SR, Value = T>>>,
+    source: Pin<Arc<dyn 'a + SubscribableSource<SR, Value = T>>>,
 }
 
 unsafe impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Send
@@ -31,16 +32,16 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Drop
     for SubscriptionSR<'a, T, SR>
 {
     fn drop(&mut self) {
-        //TODO: Manually unsubscribe once this can be cloned into `Signal`s!
+        self.source.as_ref().ref_as_subscribable().unsubscribe();
     }
 }
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
-    pub fn new<S: 'a + Source<SR, Value = T>>(source: S) -> Self {
+    pub fn new<S: 'a + SubscribableSource<SR, Value = T>>(source: S) -> Self {
         source.clone_runtime_ref().run_detached(|| {
-            let arc = Arc::pin(new_raw_unsubscribed_subscription(source));
-            pull_subscription(arc.as_ref());
+            let arc = Arc::pin(source);
+            arc.as_ref().ref_as_subscribable().pull();
             Self { source: arc }
         })
     }
@@ -100,32 +101,32 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Sour
     type Value = T;
 
     fn touch(&self) {
-        self.source.as_ref().touch()
+        self.source.as_ref().ref_as_source().touch()
     }
 
     fn get_clone(&self) -> Self::Value
     where
         Self::Value: Sync + Clone,
     {
-        self.source.as_ref().get_clone()
+        self.source.as_ref().ref_as_source().get_clone()
     }
 
     fn get_clone_exclusive(&self) -> Self::Value
     where
         Self::Value: Clone,
     {
-        self.source.as_ref().get_clone_exclusive()
+        self.source.as_ref().ref_as_source().get_clone_exclusive()
     }
 
     fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>>
     where
         Self::Value: 'r + Sync,
     {
-        self.source.as_ref().read()
+        self.source.as_ref().ref_as_source().read()
     }
 
     fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>> {
-        self.source.as_ref().read_exclusive()
+        self.source.as_ref().ref_as_source().read_exclusive()
     }
 
     fn clone_runtime_ref(&self) -> SR
