@@ -8,6 +8,7 @@ use crate::{
     SignalSR, SourcePin,
 };
 
+/// Type inference helper alias for [`SubscriptionSR`] (using [`GlobalSignalRuntime`]).
 pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
 
 #[must_use = "Subscriptions are cancelled when dropped."]

@@ -39,4 +39,4 @@ macro_rules! shadow_clone {
 
 mod utils;
 
-//TODO: IntoFuture for Signal<Option<T>>.
+//TODO: Consistent formatting setup (with tabs).

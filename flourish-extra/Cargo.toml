@@ -2,6 +2,8 @@
 name = "flourish-extra"
 edition = "2021"
 
+#TODO Badges, meta data
+
 [dependencies]
 async-lock = { version = "3.4.0", default-features = false, features = ["std"] }
 flourish = { path = "../flourish" }

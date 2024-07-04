@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 #[allow(async_fn_in_trait)]
 pub mod prelude {
     use std::ops::{AddAssign, Sub};

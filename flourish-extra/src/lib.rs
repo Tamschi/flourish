@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use std::{
     ops::{AddAssign, Sub},
     pin::Pin,

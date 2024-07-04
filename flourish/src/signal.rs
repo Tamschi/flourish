@@ -8,15 +8,17 @@ use crate::{
     SourcePin, SubscriptionSR,
 };
 
+/// Type inference helper alias for [`SignalSR`] (using [`GlobalSignalRuntime`]).
 pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
 
 /// A largely type-erased signal handle that is all of [`Clone`], [`Send`], [`Sync`] and [`Unpin`].
 ///
 /// You can [`Borrow`] this handle into a reference without indirection that is [`ToOwned`].
 ///
-/// This type is [`Deref`] towards its pinned `dyn `[`Source`]`<SR, Value = T>`, through which you can retrieve its current value.
+/// To access values, import [`SourcePin`].
 ///
-/// Signals are not evaluated unless they are subscribed-to.
+/// Signals are not evaluated unless they are subscribed-to (or on demand if if not current).  
+/// Uncached signals are instead evaluated on direct demand **only** (but still communicate subscriptions and invalidation).
 #[derive(Clone)]
 pub struct SignalSR<
     'a,
@@ -30,7 +32,7 @@ unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Send for Signal
 unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Sync for SignalSR<'a, T, SR> {}
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {
-    /// Creates a new [`SignalSR`] from the provided raw [`Source`].
+    /// Creates a new [`SignalSR`] from the provided raw [`Subscribable`].
     pub fn new(source: impl 'a + Subscribable<SR, Value = T>) -> Self {
         SignalSR {
             source: Arc::pin(source),
