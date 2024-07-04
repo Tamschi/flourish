@@ -20,6 +20,8 @@ mod stale_queue;
 
 pub trait SignalRuntimeRef: Send + Sync + Clone {
     type Symbol: Clone + Copy + Send;
+    type CallbackTableTypes: ?Sized + CallbackTableTypes;
+
     fn next_id(&self) -> Self::Symbol;
     fn reentrant_critical<T>(&self, f: impl FnOnce() -> T) -> T;
     fn touch(&self, id: Self::Symbol);
@@ -27,7 +29,7 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
         &self,
         id: Self::Symbol,
         f: impl FnOnce() -> T,
-        callback_table: *const CallbackTable<D>,
+        callback_table: *const CallbackTable<D, Self::CallbackTableTypes>,
         callback_data: *const D,
     ) -> T;
     fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
@@ -58,7 +60,7 @@ unsafe impl Sync for ASignalRuntime {}
 struct ASignalRuntime_ {
     stale_queue: StaleQueue<ASymbol>,
     context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
-    callbacks: BTreeMap<ASymbol, (*const CallbackTable<()>, *const ())>,
+    callbacks: BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
 }
 
 impl ASignalRuntime_ {
@@ -151,8 +153,14 @@ impl ASignalRuntime {
     }
 }
 
+enum ACallbackTableTypes {}
+impl CallbackTableTypes for ACallbackTableTypes {
+    type SubscribedStatus = bool;
+}
+
 impl SignalRuntimeRef for &ASignalRuntime {
     type Symbol = ASymbol;
+    type CallbackTableTypes = ACallbackTableTypes;
 
     fn next_id(&self) -> Self::Symbol {
         ASymbol(
@@ -183,7 +191,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
         &self,
         id: Self::Symbol,
         f: impl FnOnce() -> T,
-        callback_table: *const CallbackTable<D>,
+        callback_table: *const CallbackTable<D, Self::CallbackTableTypes>,
         callback_data: *const D,
     ) -> T {
         let lock = self.critical_mutex.lock();
@@ -440,8 +448,16 @@ pub struct GlobalSignalRuntime;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GSRSymbol(ASymbol);
 
+#[repr(transparent)]
+pub struct GlobalCallbackTableTypes(ACallbackTableTypes);
+impl CallbackTableTypes for GlobalCallbackTableTypes {
+    //SAFETY: Everything here must be the same as for `ACallbackTableTypes`!
+    type SubscribedStatus = bool;
+}
+
 impl SignalRuntimeRef for GlobalSignalRuntime {
     type Symbol = GSRSymbol;
+    type CallbackTableTypes = GlobalCallbackTableTypes;
 
     fn next_id(&self) -> GSRSymbol {
         GSRSymbol((&GLOBAL_SIGNAL_RUNTIME).next_id())
@@ -459,10 +475,19 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
         &self,
         id: Self::Symbol,
         f: impl FnOnce() -> T,
-        callback_table: *const CallbackTable<D>,
+        callback_table: *const CallbackTable<D, Self::CallbackTableTypes>,
         callback_data: *const D,
     ) -> T {
-        (&GLOBAL_SIGNAL_RUNTIME).start(id.0, f, callback_table, callback_data)
+        (&GLOBAL_SIGNAL_RUNTIME).start(
+            id.0,
+            f,
+            //SAFETY: `GlobalCallbackTableTypes` is deeply transmute-compatible and ABI-compatible to `ACallbackTableTypes`.
+            mem::transmute::<
+                *const CallbackTable<D, GlobalCallbackTableTypes>,
+                *const CallbackTable<D, ACallbackTableTypes>,
+            >(callback_table),
+            callback_data,
+        )
     }
 
     fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
@@ -500,18 +525,68 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
 
 #[repr(C)]
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct CallbackTable<T: ?Sized> {
+pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
     pub update: Option<unsafe fn(*const T) -> Update>,
-    pub on_subscribed_change: Option<unsafe fn(*const T, subscribed: bool)>,
+    pub on_subscribed_change: Option<unsafe fn(*const T, status: CTT::SubscribedStatus)>,
 }
 
-impl<T: ?Sized> CallbackTable<T> {
-    pub fn into_erased_ptr(this: *const Self) -> *const CallbackTable<()> {
+impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Debug for CallbackTable<T, CTT> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CallbackTable")
+            .field("update", &self.update)
+            .field("on_subscribed_change", &self.on_subscribed_change)
+            .finish()
+    }
+}
+
+impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Clone for CallbackTable<T, CTT> {
+    fn clone(&self) -> Self {
+        Self {
+            update: self.update.clone(),
+            on_subscribed_change: self.on_subscribed_change.clone(),
+        }
+    }
+}
+
+impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialEq for CallbackTable<T, CTT> {
+    fn eq(&self, other: &Self) -> bool {
+        self.update == other.update && self.on_subscribed_change == other.on_subscribed_change
+    }
+}
+
+impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Eq for CallbackTable<T, CTT> {}
+
+impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialOrd for CallbackTable<T, CTT> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.update.partial_cmp(&other.update) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.on_subscribed_change
+            .partial_cmp(&other.on_subscribed_change)
+    }
+}
+
+impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Ord for CallbackTable<T, CTT> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.update.cmp(&other.update) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        self.on_subscribed_change.cmp(&other.on_subscribed_change)
+    }
+}
+
+pub trait CallbackTableTypes: 'static {
+    type SubscribedStatus;
+}
+
+impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
+    pub fn into_erased_ptr(this: *const Self) -> *const CallbackTable<(), CTT> {
         unsafe { mem::transmute(this) }
     }
 
-    pub fn into_erased(self) -> CallbackTable<()> {
+    pub fn into_erased(self) -> CallbackTable<(), CTT> {
         unsafe { mem::transmute(self) }
     }
 }

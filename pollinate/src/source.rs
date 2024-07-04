@@ -4,6 +4,7 @@ use core::{
     pin::Pin,
 };
 use std::{
+    any::TypeId,
     cell::UnsafeCell,
     collections::{btree_map::Entry, BTreeMap},
     mem::{self, MaybeUninit},
@@ -11,7 +12,7 @@ use std::{
 };
 
 use crate::{
-    runtime::{CallbackTable, GlobalSignalRuntime, SignalRuntimeRef, Update},
+    runtime::{CallbackTable, CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update},
     slot::{Slot, Token},
 };
 
@@ -43,7 +44,7 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
     unsafe fn start<T, D: ?Sized>(
         &self,
         f: impl FnOnce() -> T,
-        callback: *const CallbackTable<D>,
+        callback: *const CallbackTable<D, SR::CallbackTableTypes>,
         callback_data: *const D,
     ) -> T {
         self.runtime.start(self.id, f, callback, callback_data)
@@ -147,7 +148,32 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
             (&*self.lazy.get()).get_or_init(|| {
                 let mut lazy = MaybeUninit::uninit();
                 let init = || drop(init(eager, Slot::new(&mut lazy)));
-                let callback_table = match CALLBACK_TABLES.lock().expect("unreachable").entry(
+                let callback_table = match match match CALLBACK_TABLES
+                    .lock()
+                    .expect("unreachable")
+                    .entry(TypeId::of::<SR::CallbackTableTypes>())
+                {
+                    Entry::Vacant(vacant) => vacant.insert(AssertSend(
+                        (Box::leak(Box::new(BTreeMap::<
+                            CallbackTable<(), SR::CallbackTableTypes>,
+                            Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+                        >::new()))
+                            as *mut BTreeMap<
+                                CallbackTable<(), SR::CallbackTableTypes>,
+                                Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+                            >)
+                            .cast::<()>(),
+                    )),
+                    Entry::Occupied(cached) => cached.into_mut(),
+                } {
+                    AssertSend(ptr) => unsafe {
+                        &mut *ptr.cast::<BTreeMap<
+                            CallbackTable<(), SR::CallbackTableTypes>,
+                            Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+                        >>()
+                    },
+                }
+                .entry(
                     CallbackTable {
                         update: C::UPDATE.is_some().then_some(update::<Eager, Lazy, SR, C>),
                         on_subscribed_change: C::ON_SUBSCRIBED_CHANGE
@@ -168,8 +194,12 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     (Pin::into_inner_unchecked(self) as *const Self).cast(),
                 );
 
+                struct AssertSend<T>(T);
+                unsafe impl<T> Send for AssertSend<T> {}
+
                 static CALLBACK_TABLES: Mutex<
-                    BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
+                    //BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
+                    BTreeMap<TypeId, AssertSend<*mut ()>>,
                 > = Mutex::new(BTreeMap::new());
 
                 unsafe fn update<
@@ -194,7 +224,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     C: Callbacks<Eager, Lazy, SR>,
                 >(
                     this: *const Source<Eager, Lazy, SR>,
-                    subscribed: bool,
+                    subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
                 ) {
                     let this = &*this;
                     C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
@@ -324,7 +354,11 @@ pub trait Callbacks<Eager: ?Sized, Lazy, SR: SignalRuntimeRef> {
     ///
     /// Only called once at a time for each initialised [`Source`], and not concurrently with [`Self::UPDATE`].
     const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>, subscribed: bool),
+        unsafe fn(
+            eager: Pin<&Eager>,
+            lazy: Pin<&Lazy>,
+            subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+        ),
     >;
 }
 
@@ -332,6 +366,10 @@ pub enum NoCallbacks {}
 impl<Eager: ?Sized, Lazy, SR: SignalRuntimeRef> Callbacks<Eager, Lazy, SR> for NoCallbacks {
     const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update> = None;
     const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>, subscribed: bool),
+        unsafe fn(
+            eager: Pin<&Eager>,
+            lazy: Pin<&Lazy>,
+            subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+        ),
     > = None;
 }

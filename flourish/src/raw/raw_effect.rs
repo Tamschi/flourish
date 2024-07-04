@@ -2,7 +2,7 @@ use std::{borrow::BorrowMut, pin::Pin, sync::Mutex};
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update},
+    runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update},
     slot::{Slot, Token},
     source::{Callbacks, Source},
 };
@@ -82,7 +82,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
         unsafe fn(
             eager: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
             lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
-            subscribed: bool,
+            subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
         ),
     > = None;
 }

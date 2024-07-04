@@ -29,7 +29,7 @@ pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 
 use crate::traits::Subscribable;
 
-//FIXME: The individual macros (as opposed to `signals_helper`) below are outdated.
+//TODO: Can these individual macros still communicate their eventual return type?
 
 pub fn subject<T: Send, SR: SignalRuntimeRef>(initial_value: T, runtime: SR) -> RawSubject<T, SR> {
     RawSubject::with_runtime(initial_value, runtime)

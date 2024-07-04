@@ -8,7 +8,7 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update},
+    runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update},
     slot::{Slot, Token},
     source::{Callbacks, Source},
 };
@@ -178,7 +178,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>
         unsafe fn(
             eager: Pin<&ForceSyncUnpin<S>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
-            subscribed: bool,
+            subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
         ),
     > = None;
 }
