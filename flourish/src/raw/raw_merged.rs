@@ -271,8 +271,6 @@ impl<
         SR: SignalRuntimeRef,
     > Subscribable<SR> for RawMerged<T, S, M, SR>
 {
-    type Value = T;
-
     fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
         Box::new(self.pull())
     }

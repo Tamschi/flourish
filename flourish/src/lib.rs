@@ -15,7 +15,7 @@ mod effect;
 pub use effect::{Effect, EffectSR};
 
 mod traits;
-pub use traits::{Source, SourcePin, Subscribable, SubscribableSource};
+pub use traits::{Source, SourcePin, Subscribable};
 
 mod signal;
 pub use signal::{Signal, SignalRef, SignalSR};

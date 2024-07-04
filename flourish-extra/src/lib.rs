@@ -5,7 +5,7 @@ use std::{
 
 use flourish::{
     raw::{computed, folded, merged},
-    SignalRuntimeRef, Source, SubscribableSource, SubscriptionSR, Update,
+    SignalRuntimeRef, Source, Subscribable, SubscriptionSR, Update,
 };
 use num_traits::Zero;
 
@@ -18,7 +18,7 @@ pub mod future;
 pub fn debounce<'a, T: 'a + Send + PartialEq, SR: 'a + SignalRuntimeRef>(
     fn_pin: impl 'a + Send + FnMut() -> T,
     runtime: SR,
-) -> impl 'a + SubscribableSource<SR, Value = T> {
+) -> impl 'a + Subscribable<SR, Value = T> {
     merged(
         fn_pin,
         |current, next| {
@@ -39,7 +39,7 @@ pub fn debounce_from_source<
     SR: 'a + SignalRuntimeRef,
 >(
     source: impl 'a + Source<SR, Value = T>,
-) -> impl 'a + SubscribableSource<SR, Value = T> {
+) -> impl 'a + Subscribable<SR, Value = T> {
     let runtime = source.clone_runtime_ref();
     debounce(
         move || unsafe { Pin::new_unchecked(&source) }.get(),
@@ -50,7 +50,7 @@ pub fn debounce_from_source<
 pub fn delta<'a, V: 'a + Send, T: 'a + Send + Zero, SR: 'a + SignalRuntimeRef>(
     mut fn_pin: impl 'a + Send + FnMut() -> V,
     runtime: SR,
-) -> impl 'a + SubscribableSource<SR, Value = T>
+) -> impl 'a + Subscribable<SR, Value = T>
 where
     for<'b> &'b V: Sub<Output = T>,
 {
@@ -76,7 +76,7 @@ pub fn delta_from_source<
     SR: 'a + SignalRuntimeRef,
 >(
     source: impl 'a + Source<SR, Value = V>,
-) -> impl 'a + SubscribableSource<SR, Value = T>
+) -> impl 'a + Subscribable<SR, Value = T>
 where
     for<'b> &'b V: Sub<Output = T>,
 {
@@ -90,7 +90,7 @@ where
 pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalRuntimeRef>(
     mut fn_pin: impl 'a + Send + FnMut() -> V,
     runtime: SR,
-) -> impl 'a + SubscribableSource<SR, Value = T> {
+) -> impl 'a + Subscribable<SR, Value = T> {
     folded(
         T::zero(),
         move |tally| {
@@ -108,7 +108,7 @@ pub fn sparse_tally_from_source<
     SR: 'a + SignalRuntimeRef,
 >(
     source: impl 'a + Source<SR, Value = V>,
-) -> impl 'a + SubscribableSource<SR, Value = T> {
+) -> impl 'a + Subscribable<SR, Value = T> {
     let runtime = source.clone_runtime_ref();
     sparse_tally(
         move || unsafe { Pin::new_unchecked(&source) }.get(),
@@ -143,7 +143,7 @@ pub fn map<'a, T: 'a + Send + Sync + Copy, U: 'a + Send + Clone, SR: 'a + Signal
     mut fn_pin: impl 'a + Send + FnMut() -> T,
     mut map_fn_pin: impl 'a + Send + FnMut(T) -> U,
     runtime: SR,
-) -> impl 'a + SubscribableSource<SR, Value = U> {
+) -> impl 'a + Subscribable<SR, Value = U> {
     computed(move || map_fn_pin(fn_pin()), runtime)
 }
 
@@ -155,7 +155,7 @@ pub fn map_from_source<
 >(
     source: impl 'a + Source<SR, Value = T>,
     map_fn_pin: impl 'a + Send + FnMut(T) -> U,
-) -> impl 'a + SubscribableSource<SR, Value = U> {
+) -> impl 'a + Subscribable<SR, Value = U> {
     let runtime = source.clone_runtime_ref();
     map(
         move || unsafe { Pin::new_unchecked(&source) }.get(),

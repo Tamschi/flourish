@@ -83,9 +83,7 @@ pub trait SourcePin<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
         SR: Sized;
 }
 
-pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
-    type Value: ?Sized + Send;
-
+pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Source<SR> {
     fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>>;
 
     /// Unsubscribes this [`Subscribable`] (only regarding innate subscription!).
@@ -96,37 +94,4 @@ pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
     ///
     /// An innate subscription is a subscription not caused by a dependent subscriber.
     fn unsubscribe(self: Pin<&Self>) -> bool;
-}
-
-/// # Safety
-///
-/// Both `ref_as_source` and `ref_as_subscribable` must be casts with identical data pointer!
-pub unsafe trait SubscribableSource<SR: ?Sized + SignalRuntimeRef>: Sync + Send {
-    type Value: ?Sized + Send;
-
-    fn ref_as_source(self: Pin<&Self>) -> Pin<&dyn Source<SR, Value = Self::Value>>;
-
-    fn ref_as_subscribable(self: Pin<&Self>) -> Pin<&dyn Subscribable<SR, Value = Self::Value>>;
-
-    fn clone_runtime_ref(&self) -> SR;
-}
-
-unsafe impl<S: Sized + Send + Sync, T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef>
-    SubscribableSource<SR> for S
-where
-    S: Sized + Source<SR, Value = T> + Subscribable<SR, Value = T>,
-{
-    type Value = T;
-
-    fn ref_as_source(self: Pin<&Self>) -> Pin<&dyn Source<SR, Value = T>> {
-        self
-    }
-
-    fn ref_as_subscribable(self: Pin<&Self>) -> Pin<&dyn Subscribable<SR, Value = T>> {
-        self
-    }
-
-    fn clone_runtime_ref(&self) -> SR {
-        self.clone_runtime_ref()
-    }
 }

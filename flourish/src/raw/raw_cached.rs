@@ -13,16 +13,13 @@ use pollinate::{
     source::{Callbacks, Source},
 };
 
-use crate::{
-    traits::{Subscribable, SubscribableSource},
-    utils::conjure_zst,
-};
+use crate::{traits::Subscribable, utils::conjure_zst};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawCached<
     T: Send + Clone,
-    S: SubscribableSource<SR, Value = T>,
+    S: Subscribable<SR, Value = T>,
     SR: SignalRuntimeRef = GlobalSignalRuntime,
 >(#[pin] Source<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>);
 
@@ -62,14 +59,12 @@ impl<'a, T: ?Sized> Borrow<T> for RawCachedGuardExclusive<'a, T> {
 }
 
 /// TODO: Safety documentation.
-unsafe impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef + Sync> Sync
+unsafe impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef + Sync> Sync
     for RawCached<T, S, SR>
 {
 }
 
-impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef>
-    RawCached<T, S, SR>
-{
+impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
     pub fn new(source: S) -> Self {
         let runtime = source.clone_runtime_ref();
         Self(Source::with_runtime(ForceSyncUnpin(source.into()), runtime))
@@ -157,22 +152,18 @@ impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef
 }
 
 enum E {}
-impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef>
+impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>
     Callbacks<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
     const UPDATE: Option<
         unsafe fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Update,
     > = {
-        unsafe fn eval<
-            T: Send + Clone,
-            S: SubscribableSource<SR, Value = T>,
-            SR: SignalRuntimeRef,
-        >(
+        unsafe fn eval<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>(
             source: Pin<&ForceSyncUnpin<S>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
             //FIXME: This can be split up to avoid congestion where not necessary.
-            let new_value = source.project_ref().0.ref_as_source().get_clone_exclusive();
+            let new_value = source.project_ref().0.get_clone_exclusive();
             if needs_drop::<T>() || size_of::<T>() > 0 {
                 *cache.project_ref().0.write().unwrap() = new_value;
             } else {
@@ -196,26 +187,19 @@ impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef>
-    RawCached<T, S, SR>
-{
+impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
     unsafe fn init<'a>(
         source: Pin<&'a ForceSyncUnpin<S>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
     ) -> Token<'a> {
         cache.write(ForceSyncUnpin(
             //FIXME: This can be split up to avoid congestion where not necessary.
-            source
-                .project_ref()
-                .0
-                .ref_as_source()
-                .get_clone_exclusive()
-                .into(),
+            source.project_ref().0.get_clone_exclusive().into(),
         ))
     }
 }
 
-impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef> crate::Source<SR>
+impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> crate::Source<SR>
     for RawCached<T, S, SR>
 {
     type Value = T;
@@ -271,11 +255,9 @@ impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef
     }
 }
 
-impl<T: Send + Clone, S: SubscribableSource<SR, Value = T>, SR: SignalRuntimeRef> Subscribable<SR>
+impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> Subscribable<SR>
     for RawCached<T, S, SR>
 {
-    type Value = T;
-
     fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
         Box::new(self.pull())
     }

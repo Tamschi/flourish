@@ -243,8 +243,6 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Subscribable<SR>
     for RawComputed<T, F, SR>
 {
-    type Value = T;
-
     fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
         Box::new(self.pull())
     }
