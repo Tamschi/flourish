@@ -1,11 +1,11 @@
-use std::{borrow::Borrow, marker::PhantomData, pin::Pin, sync::Arc};
+use std::{borrow::Borrow, marker::PhantomData, mem, pin::Pin, sync::Arc};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
     raw::{computed, computed_uncached, computed_uncached_mut, folded, merged},
     traits::Subscribable,
-    SourcePin,
+    SourcePin, SubscriptionSR,
 };
 
 pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
@@ -23,7 +23,7 @@ pub struct SignalSR<
     T: 'a + Send + ?Sized,
     SR: 'a + ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
 > {
-    source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
+    pub(super) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
 }
 
 unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Send for SignalSR<'a, T, SR> {}
@@ -37,6 +37,39 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         }
     }
 
+    pub fn try_subscribe(mut self) -> Result<SubscriptionSR<'a, T, SR>, Self> {
+        //TODO: This could be more efficient.
+        match Arc::get_mut(unsafe {
+            mem::transmute::<
+                &'_ mut Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
+                &'_ mut Arc<dyn 'a + Subscribable<SR, Value = T>>,
+            >(&mut self.source)
+        }) {
+            Some(_) => {
+                let source = Pin::clone(&self.source);
+                source.as_ref().pull();
+                Ok(SubscriptionSR { source })
+            }
+            None => Err(self),
+        }
+    }
+
+    pub fn subscribe_or_computed<FnPin: 'a + Send + FnMut() -> T>(
+        self,
+        make_fn_pin: impl FnOnce(Self) -> FnPin,
+    ) -> SubscriptionSR<'a, T, SR>
+    where
+        T: Sized,
+    {
+        self.try_subscribe().unwrap_or_else(move |this| {
+            let runtime = this.clone_runtime_ref();
+            SubscriptionSR::computed_with_runtime(make_fn_pin(this), runtime)
+        })
+    }
+}
+
+/// Secondary constructors.
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {
     /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T`.
     ///
     /// This pins the provided closure. The resulting `T` is cached.

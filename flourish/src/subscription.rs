@@ -5,7 +5,7 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 use crate::{
     raw::{computed, folded, merged},
     traits::Subscribable,
-    SourcePin,
+    SignalSR, SourcePin,
 };
 
 pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
@@ -13,22 +13,22 @@ pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct SubscriptionSR<
     'a,
-    T: 'a + Send + ?Sized + Clone,
+    T: 'a + Send + ?Sized,
     SR: 'a + ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
 > {
-    source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
+    pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
 }
 
-unsafe impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Send
+unsafe impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Send
     for SubscriptionSR<'a, T, SR>
 {
 }
-unsafe impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Sync
+unsafe impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Sync
     for SubscriptionSR<'a, T, SR>
 {
 }
 
-impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Drop
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop
     for SubscriptionSR<'a, T, SR>
 {
     fn drop(&mut self) {
@@ -37,7 +37,7 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> Drop
 }
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
+impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
     pub fn new<S: 'a + Subscribable<SR, Value = T>>(source: S) -> Self {
         source.clone_runtime_ref().run_detached(|| {
             let arc = Arc::pin(source);
@@ -46,6 +46,24 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a,
         })
     }
 
+    #[must_use = "Use `drop(self)` instead of converting first. The effect is the same."]
+    pub fn unsubscribe(self) -> SignalSR<'a, T, SR> {
+        //FIXME: This could avoid refcounting up and down and the associated memory ordering.
+        SignalSR {
+            source: Pin::clone(&self.source),
+        }
+    } // Implicit drop(self) unsubscribes.
+
+    #[must_use = "Pure function."]
+    pub fn to_signal(self) -> SignalSR<'a, T, SR> {
+        SignalSR {
+            source: Pin::clone(&self.source),
+        }
+    }
+}
+
+// Secondary constructors.
+impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
     pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
     where
         SR: Default,
@@ -95,7 +113,7 @@ impl<'a, T: 'a + Send + ?Sized + Clone, SR: SignalRuntimeRef> SubscriptionSR<'a,
     }
 }
 
-impl<'a, T: 'a + Send + ?Sized + Clone, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>
     for SubscriptionSR<'a, T, SR>
 {
     type Value = T;
