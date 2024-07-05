@@ -176,6 +176,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>
 
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(
+            source: Pin<&Source<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>>,
             eager: Pin<&ForceSyncUnpin<S>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,

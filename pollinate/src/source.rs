@@ -228,6 +228,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                 ) {
                     let this = &*this;
                     C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
+                        Pin::new_unchecked(this),
                         Pin::new_unchecked(&this.eager),
                         Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
                         subscribed,
@@ -342,7 +343,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eag
     }
 }
 
-pub trait Callbacks<Eager: ?Sized, Lazy, SR: SignalRuntimeRef> {
+pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
     /// # Safety
     ///
     /// Only called once at a time for each initialised [`Source`].
@@ -355,6 +356,7 @@ pub trait Callbacks<Eager: ?Sized, Lazy, SR: SignalRuntimeRef> {
     /// Only called once at a time for each initialised [`Source`], and not concurrently with [`Self::UPDATE`].
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(
+            source: Pin<&Source<Eager, Lazy, SR>>,
             eager: Pin<&Eager>,
             lazy: Pin<&Lazy>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -363,10 +365,13 @@ pub trait Callbacks<Eager: ?Sized, Lazy, SR: SignalRuntimeRef> {
 }
 
 pub enum NoCallbacks {}
-impl<Eager: ?Sized, Lazy, SR: SignalRuntimeRef> Callbacks<Eager, Lazy, SR> for NoCallbacks {
+impl<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> Callbacks<Eager, Lazy, SR>
+    for NoCallbacks
+{
     const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update> = None;
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(
+            source: Pin<&Source<Eager, Lazy, SR>>,
             eager: Pin<&Eager>,
             lazy: Pin<&Lazy>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,

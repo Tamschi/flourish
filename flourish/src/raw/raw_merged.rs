@@ -178,6 +178,7 @@ impl<
 
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(
+            source: Pin<&Source<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>>,
             eager: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,

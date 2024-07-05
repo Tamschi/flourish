@@ -160,6 +160,7 @@ impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>
 
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(
+            source: Pin<&Source<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>>,
             eager: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
             lazy: Pin<&()>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,

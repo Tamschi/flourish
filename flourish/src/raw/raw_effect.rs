@@ -80,6 +80,9 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
 
     const ON_SUBSCRIBED_CHANGE: Option<
         unsafe fn(
+            source: Pin<
+                &Source<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
+            >,
             eager: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
             lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,

@@ -1,3 +1,6 @@
+use std::pin::Pin;
+
+use pollinate::runtime::CallbackTableTypes;
 use pollinate::runtime::SignalRuntimeRef;
 use pollinate::runtime::Update;
 
@@ -15,6 +18,9 @@ pub(crate) use raw_computed_uncached_mut::RawComputedUncachedMut;
 
 mod raw_subject;
 pub(crate) use raw_subject::RawSubject;
+
+mod raw_provider;
+pub(crate) use raw_provider::RawProvider;
 
 mod raw_folded;
 pub(crate) use raw_folded::RawFolded;
@@ -37,12 +43,55 @@ pub fn subject<T: Send, SR: SignalRuntimeRef>(initial_value: T, runtime: SR) -> 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! subject {
-    ($source:expr) => {{
+    ($source:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
 pub use crate::subject;
+#[macro_export]
+#[doc(hidden)]
+macro_rules! subject_with_runtime {
+    ($source:expr, $runtime:expr$(,)?) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+	}};
+}
+#[doc(hidden)]
+pub use crate::subject_with_runtime;
+
+pub fn provider<
+    T: Send,
+    H: Send
+        + FnMut(
+            Pin<&RawProvider<T, H, SR>>,
+            <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+        ),
+    SR: SignalRuntimeRef,
+>(
+    initial_value: T,
+    handler: H,
+    runtime: SR,
+) -> RawProvider<T, H, SR> {
+    RawProvider::with_runtime(initial_value, handler, runtime)
+}
+#[macro_export]
+#[doc(hidden)]
+macro_rules! provider {
+    ($source:expr, $handler:expr$(,)?) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+	}};
+}
+#[doc(hidden)]
+pub use crate::provider;
+#[macro_export]
+#[doc(hidden)]
+macro_rules! provider_with_runtime {
+    ($source:expr, $runtime:expr$(,)?) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+	}};
+}
+#[doc(hidden)]
+pub use crate::provider_with_runtime;
 
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Subscribable<SR, Value = T>,
@@ -52,7 +101,7 @@ pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
 #[macro_export]
 #[doc(hidden)]
 macro_rules! cached {
-    ($f:expr) => {{
+    ($f:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -61,7 +110,7 @@ pub use crate::cached;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! cached_from_source {
-    ($source:expr) => {{
+    ($source:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -77,7 +126,7 @@ pub fn computed<'a, T: 'a + Send, F: 'a + Send + FnMut() -> T, SR: 'a + SignalRu
 #[macro_export]
 #[doc(hidden)]
 macro_rules! computed {
-    ($f:expr) => {{
+    ($f:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -86,7 +135,7 @@ pub use crate::computed;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! computed_with_runtime {
-    ($source:expr, $runtime:expr) => {{
+    ($source:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -107,7 +156,7 @@ pub fn computed_uncached<
 #[macro_export]
 #[doc(hidden)]
 macro_rules! computed_uncached {
-    ($f:expr) => {{
+    ($f:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -116,7 +165,7 @@ pub use crate::computed_uncached;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! computed_uncached_with_runtime {
-    ($source:expr, $runtime:expr) => {{
+    ($source:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -137,7 +186,7 @@ pub fn computed_uncached_mut<
 #[macro_export]
 #[doc(hidden)]
 macro_rules! computed_uncached_mut {
-    ($f:expr) => {{
+    ($f:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -146,7 +195,7 @@ pub use crate::computed_uncached_mut;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! computed_uncached_mut_with_runtime {
-    ($source:expr, $runtime:expr) => {{
+    ($source:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -163,7 +212,7 @@ pub fn folded<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
 #[macro_export]
 #[doc(hidden)]
 macro_rules! folded {
-    ($select:expr, $init:expr, $fold:expr) => {{
+    ($select:expr, $init:expr, $fold:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -172,7 +221,7 @@ pub use crate::folded;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! folded_from_source {
-    ($source:expr, $init:expr, $f:expr) => {{
+    ($source:expr, $init:expr, $f:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -189,7 +238,7 @@ pub fn merged<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
 #[macro_export]
 #[doc(hidden)]
 macro_rules! merged {
-    ($select:expr, $fold:expr) => {{
+    ($select:expr, $fold:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -198,7 +247,7 @@ pub use crate::merged;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! merged_with_runtime {
-    ($select:expr, $merge:expr, $runtime:expr) => {{
+    ($select:expr, $merge:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -208,7 +257,7 @@ pub use crate::merged_with_runtime;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! subscription {
-    ($f:expr) => {{
+    ($f:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
     }};
 }
@@ -217,7 +266,7 @@ pub use crate::subscription;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! subscription_with_runtime {
-    ($f:expr, $runtime:expr) => {{
+    ($f:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
     }};
 }
@@ -226,7 +275,7 @@ pub use crate::subscription_with_runtime;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! subscription_from_source {
-    ($source:expr) => {{
+    ($source:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
     }};
 }
@@ -235,7 +284,7 @@ pub use crate::subscription_from_source;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! effect {
-    ($f:expr, $drop:expr) => {{
+    ($f:expr, $drop:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
     }};
 }
@@ -244,7 +293,7 @@ pub use crate::effect;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! effect_with_runtime {
-    ($f:expr, $drop:expr, $runtime:expr) => {{
+    ($f:expr, $drop:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
     }};
 }
@@ -260,6 +309,14 @@ macro_rules! signals_helper {
 	};
 	{let $name:ident = subject_with_runtime!($initial_value:expr, $runtime:expr$(,)?);} => {
 		let $name = ::core::pin::pin!($crate::raw::subject($initial_value, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = provider!($initial_value:expr, $handler:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::provider($initial_value, $handler, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = provider_with_runtime!($initial_value:expr, $handler:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::provider($initial_value, $handler, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = cached!($source:expr$(,)?);} => {

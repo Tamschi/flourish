@@ -1,85 +1,134 @@
 use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
-    mem::{needs_drop, size_of},
+    mem::{self, needs_drop, size_of},
     pin::Pin,
-    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{GlobalSignalRuntime, SignalRuntimeRef},
-    source::{NoCallbacks, Source},
+    runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef},
+    source::{Callbacks, Source},
 };
 
 use crate::utils::conjure_zst;
 
 #[pin_project]
-pub struct RawSubject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime> {
+#[repr(transparent)]
+pub struct RawProvider<
+    T: ?Sized + Send,
+    H: Send
+        + FnMut(
+            Pin<&RawProvider<T, H, SR>>,
+            <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+        ),
+    SR: SignalRuntimeRef = GlobalSignalRuntime,
+> {
     #[pin]
-    source: Source<AssertSync<RwLock<T>>, (), SR>,
+    source: Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>,
 }
 
-impl<T: ?Sized + Send + Debug, SR: SignalRuntimeRef + Debug> Debug for RawSubject<T, SR>
+impl<
+        T: ?Sized + Send + Debug,
+        H: Send
+            + FnMut(
+                Pin<&RawProvider<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ) + Debug,
+        SR: SignalRuntimeRef + Debug,
+    > Debug for RawProvider<T, H, SR>
 where
     SR::Symbol: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RawSubject")
+        f.debug_struct("RawProvider")
             .field("source", &&self.source)
             .finish()
     }
 }
 
 /// TODO: Safety.
-unsafe impl<T: Send, SR: SignalRuntimeRef + Sync> Sync for RawSubject<T, SR> {}
+unsafe impl<
+        T: Send,
+        H: Send
+            + FnMut(
+                Pin<&RawProvider<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ),
+        SR: SignalRuntimeRef + Sync,
+    > Sync for RawProvider<T, H, SR>
+{
+}
 
 struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
 
-impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
+impl<T: Debug + ?Sized, H: Debug> Debug for AssertSync<(Mutex<H>, RwLock<T>)> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let maybe_guard = self.0.try_write();
-        f.debug_tuple("AssertSync")
-            .field(
+        let debug_tuple = &mut f.debug_tuple("AssertSync");
+        {
+            let maybe_guard = self.0 .1.try_read();
+            debug_tuple.field(
                 maybe_guard
                     .as_ref()
                     .map_or_else(|_| &"(locked)" as &dyn Debug, |guard| guard),
-            )
-            .finish()
+            );
+        }
+        {
+            let maybe_guard = self.0 .0.try_lock();
+            debug_tuple.field(
+                maybe_guard
+                    .as_ref()
+                    .map_or_else(|_| &"(locked)" as &dyn Debug, |guard| guard),
+            );
+        }
+        debug_tuple.finish()
     }
 }
 
-struct RawSubjectGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct RawSubjectGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+struct RawProviderGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct RawProviderGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawProviderGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuardExclusive<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawProviderGuardExclusive<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
 
-/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-/// TODO: Use `SR: Default` and alias instead!
-impl<T: Send> RawSubject<T> {
-    pub fn new(initial_value: T) -> Self {
-        Self::with_runtime(initial_value, GlobalSignalRuntime)
+impl<
+        T: ?Sized + Send,
+        H: Send
+            + FnMut(
+                Pin<&RawProvider<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ),
+        SR: SignalRuntimeRef,
+    > RawProvider<T, H, SR>
+{
+    pub fn new(initial_value: T, handler: H) -> Self
+    where
+        T: Sized,
+        SR: Default,
+    {
+        Self::with_runtime(initial_value, handler, SR::default())
     }
-}
 
-impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
-    pub fn with_runtime(initial_value: T, runtime: SR) -> Self
+    pub fn with_runtime(initial_value: T, handler: H, runtime: SR) -> Self
     where
         T: Sized,
     {
         Self {
-            source: Source::with_runtime(AssertSync(RwLock::new(initial_value)), runtime),
+            source: Source::with_runtime(
+                AssertSync((Mutex::new(handler), RwLock::new(initial_value))),
+                runtime,
+            ),
         }
     }
 
@@ -108,16 +157,16 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         T: Sync,
     {
         let this = &self;
-        RawSubjectGuard(this.touch().read().unwrap())
+        RawProviderGuard(this.touch().read().unwrap())
     }
 
     pub fn read_exclusive<'a>(&'a self) -> impl 'a + Borrow<T> {
         let this = &self;
-        RawSubjectGuardExclusive(this.touch().write().unwrap())
+        RawProviderGuardExclusive(this.touch().write().unwrap())
     }
 
     pub fn get_mut<'a>(&'a mut self) -> &mut T {
-        self.source.eager_mut().0.get_mut().unwrap()
+        self.source.eager_mut().0 .1.get_mut().unwrap()
     }
 
     pub fn get_exclusive(&self) -> T
@@ -144,9 +193,10 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         unsafe {
             // SAFETY: Doesn't defer memory access.
             &*(&Pin::new_unchecked(&self.source)
-                .project_or_init::<NoCallbacks>(|_, slot| slot.write(()))
+                .project_or_init::<E>(|_, slot| slot.write(()))
                 .0
-                 .0 as *const _)
+                 .0
+                 .1 as *const _)
         }
     }
 
@@ -178,7 +228,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
             .run_detached(|| self.touch());
         self.project_ref()
             .source
-            .update(|value, _| update(&mut value.0.write().unwrap()))
+            .update(|value, _| update(&mut value.0 .1.write().unwrap()))
     }
 
     pub fn set_blocking(&self, new_value: T)
@@ -195,7 +245,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
 
     pub fn update_blocking(&self, update: impl FnOnce(&mut T)) {
         self.source
-            .update_blocking(|value, _| update(&mut value.0.write().unwrap()))
+            .update_blocking(|value, _| update(&mut value.0 .1.write().unwrap()))
     }
 
     pub fn get_set_blocking<'a>(
@@ -323,7 +373,56 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
     }
 }
 
-impl<T: Send, SR: SignalRuntimeRef> crate::Source<SR> for RawSubject<T, SR> {
+enum E {}
+impl<
+        T: ?Sized + Send,
+        H: Send
+            + FnMut(
+                Pin<&RawProvider<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ),
+        SR: SignalRuntimeRef,
+    > Callbacks<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR> for E
+{
+    const UPDATE: Option<
+        unsafe fn(
+            eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>,
+            lazy: Pin<&()>,
+        ) -> pollinate::runtime::Update,
+    > = None;
+
+    const ON_SUBSCRIBED_CHANGE: Option<
+		unsafe fn(
+			source: Pin<&Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,
+			eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>,
+			lazy: Pin<&()>,
+			subscribed: <<SR as SignalRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+		),
+	>={
+		unsafe fn handler<
+			T: ?Sized + Send,
+			H: Send + FnMut(Pin<&RawProvider<T, H, SR>>, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+			SR: SignalRuntimeRef,
+		>(source: Pin<&Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus){
+			eager.0.0.lock().unwrap()({
+				//SAFETY: `RawProvider<T, H, SR>` is `#[repr(transparent)` towards `Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>`.
+				source.map_unchecked(|r| mem::transmute::<&Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>, &RawProvider<T, H, SR>>(r))}, status)
+		}
+
+		Some(handler::<T,H,SR>)
+	};
+}
+
+impl<
+        T: Send,
+        H: Send
+            + FnMut(
+                Pin<&RawProvider<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ),
+        SR: SignalRuntimeRef,
+    > crate::Source<SR> for RawProvider<T, H, SR>
+{
     type Value = T;
 
     fn touch(self: Pin<&Self>) {
