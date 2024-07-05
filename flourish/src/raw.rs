@@ -22,6 +22,9 @@ pub(crate) use raw_subject::RawSubject;
 mod raw_provider;
 pub(crate) use raw_provider::RawProvider;
 
+mod raw_provider_reflexive;
+pub(crate) use raw_provider_reflexive::RawProviderReflexive;
+
 mod raw_folded;
 pub(crate) use raw_folded::RawFolded;
 
@@ -61,11 +64,7 @@ pub use crate::subject_with_runtime;
 
 pub fn provider<
     T: Send,
-    H: Send
-        + FnMut(
-            Pin<&RawProvider<T, H, SR>>,
-            <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-        ),
+    H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
     SR: SignalRuntimeRef,
 >(
     initial_value: T,
@@ -92,6 +91,40 @@ macro_rules! provider_with_runtime {
 }
 #[doc(hidden)]
 pub use crate::provider_with_runtime;
+
+pub fn provider_reflexive<
+    T: Send,
+    H: Send
+        + FnMut(
+            Pin<&RawProviderReflexive<T, H, SR>>,
+            <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+        ),
+    SR: SignalRuntimeRef,
+>(
+    initial_value: T,
+    handler: H,
+    runtime: SR,
+) -> RawProviderReflexive<T, H, SR> {
+    RawProviderReflexive::with_runtime(initial_value, handler, runtime)
+}
+#[macro_export]
+#[doc(hidden)]
+macro_rules! provider_reflexive {
+    ($source:expr, $handler:expr$(,)?) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+	}};
+}
+#[doc(hidden)]
+pub use crate::provider_reflexive;
+#[macro_export]
+#[doc(hidden)]
+macro_rules! provider_reflexive_with_runtime {
+    ($source:expr, $runtime:expr$(,)?) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+	}};
+}
+#[doc(hidden)]
+pub use crate::provider_reflexive_with_runtime;
 
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Subscribable<SR, Value = T>,

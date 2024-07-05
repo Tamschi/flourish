@@ -8,6 +8,9 @@ pub mod raw;
 mod subject;
 pub use subject::{Subject, SubjectSR};
 
+mod provider;
+pub use provider::{Provider, ProviderSR};
+
 mod subscription;
 pub use subscription::{Subscription, SubscriptionSR};
 

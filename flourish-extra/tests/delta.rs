@@ -1,5 +1,5 @@
 use flourish::{
-    raw::computed_uncached, shadow_clone, GlobalSignalRuntime, Signal, SourcePin as _, SubjectSR,
+    raw::computed_uncached, shadow_clone, GlobalSignalRuntime, Signal, SourcePin as _, Subject,
     Subscription,
 };
 use flourish_extra::delta_from_source;
@@ -11,7 +11,7 @@ use _validator::Validator;
 fn delta_test() {
     let v = &Validator::new();
 
-    let (get, set) = SubjectSR::new(1).into_get_set();
+    let (get, set) = Subject::new(1).into_get_set();
     let delta = Signal::new(delta_from_source(computed_uncached(
         get,
         GlobalSignalRuntime,

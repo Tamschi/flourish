@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
-    mem::{needs_drop, size_of},
+    mem::{self, needs_drop, size_of},
     pin::Pin,
     sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -16,9 +16,13 @@ use crate::utils::conjure_zst;
 
 #[pin_project]
 #[repr(transparent)]
-pub struct RawProvider<
+pub struct RawProviderReflexive<
     T: ?Sized + Send,
-    H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+    H: Send
+        + FnMut(
+            Pin<&RawProviderReflexive<T, H, SR>>,
+            <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+        ),
     SR: SignalRuntimeRef,
 > {
     #[pin]
@@ -27,14 +31,18 @@ pub struct RawProvider<
 
 impl<
         T: ?Sized + Send + Debug,
-        H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) + Debug,
+        H: Send
+            + FnMut(
+                Pin<&RawProviderReflexive<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ) + Debug,
         SR: SignalRuntimeRef + Debug,
-    > Debug for RawProvider<T, H, SR>
+    > Debug for RawProviderReflexive<T, H, SR>
 where
     SR::Symbol: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RawProvider")
+        f.debug_struct("RawProviderReflexive")
             .field("source", &&self.source)
             .finish()
     }
@@ -43,9 +51,13 @@ where
 /// TODO: Safety.
 unsafe impl<
         T: Send,
-        H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+        H: Send
+            + FnMut(
+                Pin<&RawProviderReflexive<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ),
         SR: SignalRuntimeRef + Sync,
-    > Sync for RawProvider<T, H, SR>
+    > Sync for RawProviderReflexive<T, H, SR>
 {
 }
 
@@ -75,16 +87,16 @@ impl<T: Debug + ?Sized, H: Debug> Debug for AssertSync<(Mutex<H>, RwLock<T>)> {
     }
 }
 
-struct RawProviderGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct RawProviderGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+struct RawProviderReflexiveGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct RawProviderReflexiveGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for RawProviderGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawProviderReflexiveGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawProviderGuardExclusive<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawProviderReflexiveGuardExclusive<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
@@ -92,9 +104,13 @@ impl<'a, T: ?Sized> Borrow<T> for RawProviderGuardExclusive<'a, T> {
 
 impl<
         T: ?Sized + Send,
-        H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+        H: Send
+            + FnMut(
+                Pin<&RawProviderReflexive<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ),
         SR: SignalRuntimeRef,
-    > RawProvider<T, H, SR>
+    > RawProviderReflexive<T, H, SR>
 {
     pub fn new(initial_value: T, handler: H) -> Self
     where
@@ -141,12 +157,12 @@ impl<
         T: Sync,
     {
         let this = &self;
-        RawProviderGuard(this.touch().read().unwrap())
+        RawProviderReflexiveGuard(this.touch().read().unwrap())
     }
 
     pub fn read_exclusive<'a>(&'a self) -> impl 'a + Borrow<T> {
         let this = &self;
-        RawProviderGuardExclusive(this.touch().write().unwrap())
+        RawProviderReflexiveGuardExclusive(this.touch().write().unwrap())
     }
 
     pub fn get_mut<'a>(&'a mut self) -> &mut T {
@@ -360,7 +376,11 @@ impl<
 enum E {}
 impl<
         T: ?Sized + Send,
-        H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+        H: Send
+            + FnMut(
+                Pin<&RawProviderReflexive<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ),
         SR: SignalRuntimeRef,
     > Callbacks<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR> for E
 {
@@ -381,10 +401,13 @@ impl<
 	> = {
 		unsafe fn handler<
 			T: ?Sized + Send,
-			H: Send + FnMut( <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+			H: Send + FnMut(Pin<&RawProviderReflexive<T, H, SR>>, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 			SR: SignalRuntimeRef,
-		>(_: Pin<&Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus){
-			eager.0.0.lock().unwrap()(status)
+		>(source: Pin<&Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus){
+			eager.0.0.lock().unwrap()({
+				//SAFETY: `RawProviderReflexive<T, H, SR>` is `#[repr(transparent)` towards `Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>`.
+				source.map_unchecked(|r| mem::transmute::<&Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>, &RawProviderReflexive<T, H, SR>>(r))
+			}, status)
 		}
 
 		Some(handler::<T,H,SR>)
@@ -393,9 +416,13 @@ impl<
 
 impl<
         T: Send,
-        H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+        H: Send
+            + FnMut(
+                Pin<&RawProviderReflexive<T, H, SR>>,
+                <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+            ),
         SR: SignalRuntimeRef,
-    > crate::Source<SR> for RawProvider<T, H, SR>
+    > crate::Source<SR> for RawProviderReflexive<T, H, SR>
 {
     type Value = T;
 

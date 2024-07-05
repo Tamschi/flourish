@@ -1,51 +1,76 @@
 use std::{borrow::Borrow, fmt::Debug, pin::Pin, sync::Arc};
 
-use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
+use pollinate::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{raw::RawSubject, Source, SourcePin};
+use crate::{raw::RawProvider, Source, SourcePin};
 
-pub type Subject<T> = SubjectSR<T, GlobalSignalRuntime>;
+pub type Provider<'a, T> = ProviderSR<'a, T, GlobalSignalRuntime>;
 
-#[derive(Clone)]
-pub struct SubjectSR<T: ?Sized + Send, SR: SignalRuntimeRef> {
-    subject: Pin<Arc<RawSubject<T, SR>>>,
+pub struct ProviderSR<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> {
+    subject: Pin<
+        Arc<
+            RawProvider<
+                T,
+                Box<
+                    dyn 'a
+                        + Send
+                        + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+                >,
+                SR,
+            >,
+        >,
+    >,
 }
 
-impl<T: ?Sized + Debug + Send, SR: SignalRuntimeRef + Debug> Debug for SubjectSR<T, SR>
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> Clone for ProviderSR<'a, T, SR> {
+    fn clone(&self) -> Self {
+        Self {
+            subject: self.subject.clone(),
+        }
+    }
+}
+
+impl<'a, T: ?Sized + Debug + Send, SR: SignalRuntimeRef + Debug> Debug for ProviderSR<'a, T, SR>
 where
     SR::Symbol: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Subject").field(&self.subject).finish()
+        //FIXME: This could be more informative.
+        f.debug_struct("Provider").finish_non_exhaustive()
     }
 }
 
-impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
-    pub fn new(initial_value: T) -> Self
+/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
+impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
+    pub fn new(
+        initial_value: T,
+        handler: impl 'a
+            + Send
+            + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+    ) -> Self
     where
         SR: Default,
     {
-        Self::with_runtime(initial_value, SR::default())
+        Self::with_runtime(initial_value, handler, SR::default())
     }
 
-    pub fn with_runtime(initial_value: T, runtime: SR) -> Self
+    pub fn with_runtime(
+        initial_value: T,
+        handler: impl 'a
+            + Send
+            + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+        runtime: SR,
+    ) -> Self
     where
         SR: Default,
     {
         Self {
-            subject: Arc::pin(RawSubject::with_runtime(initial_value, runtime)),
+            subject: Arc::pin(RawProvider::with_runtime(
+                initial_value,
+                Box::new(handler),
+                runtime,
+            )),
         }
-    }
-
-    pub fn read<'r>(&'r self) -> impl 'r + Borrow<T>
-    where
-        T: Sync,
-    {
-        self.subject.read()
-    }
-
-    pub fn read_exclusive<'r>(&'r self) -> impl 'r + Borrow<T> {
-        self.subject.read_exclusive()
     }
 
     pub fn set(&self, new_value: T)
@@ -73,7 +98,7 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         self.subject.update_blocking(update)
     }
 
-    pub fn into_get_set_blocking<'a>(self) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
+    pub fn into_get_set_blocking(self) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
     where
         Self: 'a,
         T: Sync + Send + Copy,
@@ -81,7 +106,7 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         self.into_get_clone_set_blocking()
     }
 
-    pub fn into_get_set<'a>(
+    pub fn into_get_set(
         self,
     ) -> (
         impl 'a + Clone + Send + Sync + Unpin + Fn() -> T,
@@ -96,7 +121,7 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         self.into_get_clone_set()
     }
 
-    pub fn into_get_clone_set_blocking<'a>(
+    pub fn into_get_clone_set_blocking(
         self,
     ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
     where
@@ -110,7 +135,7 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         )
     }
 
-    pub fn into_get_clone_set<'a>(
+    pub fn into_get_clone_set(
         self,
     ) -> (
         impl 'a + Clone + Send + Sync + Unpin + Fn() -> T,
@@ -129,7 +154,7 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         )
     }
 
-    pub fn into_get_exclusive_set_blocking<'a>(
+    pub fn into_get_exclusive_set_blocking(
         self,
     ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
     where
@@ -139,7 +164,7 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         self.into_get_clone_exclusive_set_blocking()
     }
 
-    pub fn into_get_exclusive_set<'a>(
+    pub fn into_get_exclusive_set(
         self,
     ) -> (
         impl 'a + Clone + Send + Sync + Fn() -> T,
@@ -154,7 +179,7 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         self.into_get_clone_exclusive_set()
     }
 
-    pub fn into_get_clone_exclusive_set_blocking<'a>(
+    pub fn into_get_clone_exclusive_set_blocking(
         self,
     ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
     where
@@ -168,7 +193,7 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         )
     }
 
-    pub fn into_get_clone_exclusive_set<'a>(
+    pub fn into_get_clone_exclusive_set(
         self,
     ) -> (
         impl 'a + Clone + Send + Sync + Fn() -> T,
@@ -188,11 +213,13 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
     }
 }
 
-impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR> for SubjectSR<T, SR> {
+impl<'a, T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR>
+    for ProviderSR<'a, T, SR>
+{
     type Value = T;
 
     fn touch(&self) {
-        self.subject.as_ref().touch()
+        self.subject.as_ref().touch();
     }
 
     fn get_clone(&self) -> Self::Value
