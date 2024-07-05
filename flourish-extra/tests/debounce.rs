@@ -9,7 +9,7 @@ fn debounce_test() {
     let v = &Validator::new();
     let x = &Validator::new();
 
-    let (get, set) = Subject::new(0).into_get_set();
+    let (get, set) = Subject::new(0).into_get_set_blocking();
     let debounced = Signal::new(debounce_from_source(computed(
         move || {
             x.push("d");

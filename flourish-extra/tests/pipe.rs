@@ -8,7 +8,7 @@ use _validator::Validator;
 fn concise() {
     let v = &Validator::new();
 
-    let (get, set) = Subject::new(0).into_get_set();
+    let (get, set) = Subject::new(0).into_get_set_blocking();
     let debounced = Signal::new(pipe((
         computed(get, GlobalSignalRuntime),
         debounce_from_source,

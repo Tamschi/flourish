@@ -11,7 +11,7 @@ fn use_macros() {
     let a = ::core::pin::Pin::into_ref(a);
     let b = ::core::pin::pin!(flourish::raw::subject(2, flourish::GlobalSignalRuntime));
     let b = ::core::pin::Pin::into_ref(b);
-    let (b, set_b) = b.get_set();
+    let (b, set_b) = b.get_set_blocking();
     let c = ::core::pin::pin!(flourish::raw::computed(
         || {
             x.push("c");
@@ -59,15 +59,15 @@ fn use_macros() {
         v.expect([2]);
         x.expect(["c", "d", "sub_aa", "aa"]);
 
-        a.set(0);
+        a.set_blocking(0);
         v.expect([0]);
         x.expect(["c", "d", "sub_aa", "aa"]);
     } // drop sub
 
     // These evaluate *no* closures!
-    a.set(2);
+    a.set_blocking(2);
     set_b(3);
-    a.set(5);
+    a.set_blocking(5);
     v.expect([]);
     x.expect([]);
 
@@ -98,7 +98,7 @@ fn use_macros() {
     v.expect([8, 2]);
     x.expect(["sub_c", "c", "sub_d", "d"]);
 
-    a.set(4);
+    a.set_blocking(4);
     v.expect([7, 1]);
     x.expect(["c", "d", "sub_c", "sub_d"]);
 }

@@ -6,7 +6,7 @@ use _validator::Validator;
 fn heap() {
     let v = &Validator::new();
 
-    let (a, set_a) = Subject::new(()).into_get_set();
+    let (a, set_a) = Subject::new(()).into_get_set_blocking();
 
     let e = Effect::new(
         move || {

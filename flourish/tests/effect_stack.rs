@@ -22,7 +22,7 @@ fn stack() {
             }
             v.expect(["f"]);
 
-            a.set(());
+            a.set_blocking(());
             v.expect(["drop", "f"]);
         } // drop e
         v.expect(["drop"]);

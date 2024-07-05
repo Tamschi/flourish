@@ -36,29 +36,29 @@ fn auto_dependencies() {
     let subscription = Subscription::computed(|| signal.touch());
     v.expect([""]);
 
-    a.set("a");
-    b.set("b");
+    a.set_blocking("a");
+    b.set_blocking("b");
     v.expect([]);
 
-    index.set(1);
+    index.set_blocking(1);
     v.expect(["a"]);
 
-    a.set("aa");
+    a.set_blocking("aa");
     v.expect(["aa"]);
 
-    b.set("bb");
+    b.set_blocking("bb");
     v.expect([]);
 
-    index.set(2);
+    index.set_blocking(2);
     v.expect(["bb"]);
 
-    a.set("a");
+    a.set_blocking("a");
     v.expect([]);
 
-    b.set("b");
+    b.set_blocking("b");
     v.expect(["b"]);
 
     drop(subscription);
-    index.set(3);
+    index.set_blocking(3);
     v.expect([]);
 }
