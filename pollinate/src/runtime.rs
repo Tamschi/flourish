@@ -147,6 +147,7 @@ impl ASignalRuntime {
             debug_assert!(borrow.callbacks.contains_key(&id));
             drop(borrow);
             next();
+			self.propagate_from(id);
             update_queue = self.update_queue.lock().expect("unreachable");
         }
         drop(critical);
