@@ -65,7 +65,7 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         self.runtime.update_or_enqueue(self.id, f);
     }
 
-    async fn update_async(&self, f: impl Send + FnOnce()) {
+    async fn update_async(&self, f: impl 'static + Send + FnOnce()) {
         self.runtime.update_async(self.id, f).await;
     }
 
@@ -294,10 +294,19 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         self.handle.update_or_enqueue(update);
     }
 
-    pub async fn update_async<F: Send + FnOnce(&Eager, &OnceLock<Lazy>)>(&self, f: F) {
-        self.handle
-            .update_async(move || f(&self.eager, unsafe { &*self.lazy.get() }))
-            .await;
+    pub async fn update_async<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&Lazy>)>(
+        self: Pin<&Self>,
+        f: F,
+    ) {
+        let this = Pin::clone(&self);
+        let update: Box<dyn Send + FnOnce()> = Box::new(move || unsafe {
+            f(
+                this.map_unchecked(|this| &this.eager),
+                this.map_unchecked(|this| (&*this.lazy.get()).get().expect("unreachable")),
+            )
+        });
+        let update: Box<dyn 'static + Send + FnOnce()> = unsafe { mem::transmute(update) };
+        self.handle.update_async(update).await;
     }
 
     pub fn update_blocking<F: FnOnce(&Eager, &OnceLock<Lazy>)>(&self, f: F) {

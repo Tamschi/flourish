@@ -38,7 +38,7 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
     /// Whether there was a change.
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
-    async fn update_async(&self, id: Self::Symbol, f: impl Send + FnOnce());
+    async fn update_async(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
     fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
@@ -255,7 +255,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
         self.process_updates_if_ready();
     }
 
-    async fn update_async(&self, id: Self::Symbol, f: impl Send + FnOnce()) {
+    async fn update_async(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
         todo!();
     }
 
@@ -470,7 +470,7 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
         (&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue(id.0, f)
     }
 
-    async fn update_async(&self, id: Self::Symbol, f: impl Send + FnOnce()) {
+    async fn update_async(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
         (&GLOBAL_SIGNAL_RUNTIME).update_async(id.0, f).await
     }
 

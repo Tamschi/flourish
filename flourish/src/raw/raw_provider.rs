@@ -217,7 +217,7 @@ impl<
 
     pub async fn set_async(self: Pin<&Self>, new_value: T)
     where
-        T: Send + Sized,
+        T: 'static + Send + Sized,
         SR: Sync,
         SR::Symbol: Sync,
     {
@@ -232,7 +232,7 @@ impl<
         }
     }
 
-    pub async fn update_async(self: Pin<&Self>, update: impl Send + FnOnce(&mut T))
+    pub async fn update_async(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T))
     where
         T: Send,
         SR: Sync,
