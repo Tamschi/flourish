@@ -9,4 +9,3 @@ edition = "2021"
 [dependencies]
 pin-project = "1.1.5"
 pollinate = { path = "../pollinate" }
-sptr = "0.3.2"
