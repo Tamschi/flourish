@@ -4,6 +4,8 @@ use flourish::{Signal, SourcePin as _, Subject, Subscription};
 mod _validator;
 use _validator::Validator;
 
+//FIXME: This has a race condition somewhere!
+
 #[test]
 fn heap() {
     let v = &Validator::new();
