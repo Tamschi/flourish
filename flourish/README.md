@@ -97,16 +97,16 @@ let signal = Signal::computed({
 
 let subscription = Subscription::computed(|| signal.touch()); // ""
 
-a.set("a"); b.set("b"); // nothing
-index.set(1); // "a"
-a.set("aa"); // "aa"
-b.set("bb"); // nothing
-index.set(2); // "bb"
-a.set("a"); // nothing
-b.set("b"); // "b"
+a.set_blocking("a"); b.set_blocking("b"); // nothing
+index.set_blocking(1); // "a"
+a.set_blocking("aa"); // "aa"
+b.set_blocking("bb"); // nothing
+index.set_blocking(2); // "bb"
+a.set_blocking("a"); // nothing
+b.set_blocking("b"); // "b"
 
 drop(subscription);
-index.set(3); // nothing
+index.set_blocking(3); // nothing
 ```
 
 `Signal`s are fully lazy, so they only update while subscribed or to refresh their value if dirty.

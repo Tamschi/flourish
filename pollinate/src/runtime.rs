@@ -38,7 +38,8 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
     /// Whether there was a change.
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
-    fn update_or_enqueue_blocking(&self, id: Self::Symbol, f: impl FnOnce());
+    async fn update_async(&self, id: Self::Symbol, f: impl Send + FnOnce());
+    fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
     fn refresh(&self, id: Self::Symbol);
@@ -268,7 +269,11 @@ impl SignalRuntimeRef for &ASignalRuntime {
         drop(self.process_updates_if_ready(update_queue));
     }
 
-    fn update_or_enqueue_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
+    async fn update_async(&self, id: Self::Symbol, f: impl Send + FnOnce()) {
+        todo!();
+    }
+
+    fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
         // This is indirected because the nested function's text size may be relatively large.
         //BLOCKED: Avoid the heap allocation once the `Allocator` API is stabilised.
         fn update_or_enqueue_blocking(
@@ -502,8 +507,12 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
         (&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue(id.0, f)
     }
 
-    fn update_or_enqueue_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
-        (&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue_blocking(id.0, f)
+    async fn update_async(&self, id: Self::Symbol, f: impl Send + FnOnce()) {
+        (&GLOBAL_SIGNAL_RUNTIME).update_async(id.0, f).await
+    }
+
+    fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
+        (&GLOBAL_SIGNAL_RUNTIME).update_blocking(id.0, f)
     }
 
     fn propagate_from(&self, id: Self::Symbol) {

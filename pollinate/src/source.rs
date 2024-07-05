@@ -65,8 +65,12 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         self.runtime.update_or_enqueue(self.id, f);
     }
 
-    fn update_or_enqueue_blocking(&self, f: impl FnOnce()) {
-        self.runtime.update_or_enqueue_blocking(self.id, f);
+    async fn update_async(&self, f: impl Send + FnOnce()) {
+        self.runtime.update_async(self.id, f).await;
+    }
+
+    fn update_blocking(&self, f: impl FnOnce()) {
+        self.runtime.update_blocking(self.id, f);
     }
 
     fn refresh(&self) {
@@ -290,9 +294,15 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         self.handle.update_or_enqueue(update);
     }
 
+    pub async fn update_async<F: Send + FnOnce(&Eager, &OnceLock<Lazy>)>(&self, f: F) {
+        self.handle
+            .update_async(move || f(&self.eager, unsafe { &*self.lazy.get() }))
+            .await;
+    }
+
     pub fn update_blocking<F: FnOnce(&Eager, &OnceLock<Lazy>)>(&self, f: F) {
         self.handle
-            .update_or_enqueue_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }));
+            .update_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }));
     }
 
     pub fn update_dependency_set<T, F: FnOnce(Pin<&Eager>, Pin<&Lazy>) -> T>(

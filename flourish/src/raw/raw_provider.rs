@@ -215,6 +215,38 @@ impl<
             .update(|value, _| update(&mut value.0 .1.write().unwrap()))
     }
 
+    pub async fn set_async(self: Pin<&Self>, new_value: T)
+    where
+        T: Send + Sized,
+        SR: Sync,
+        SR::Symbol: Sync,
+    {
+        if needs_drop::<T>() || size_of::<T>() > 0 {
+            self.update_async(|value| *value = new_value).await;
+        } else {
+            // The write is unobservable, so just skip locking.
+            self.source
+                .clone_runtime_ref()
+                .run_detached(|| self.touch());
+            self.project_ref().source.update_async(|_, _| ()).await;
+        }
+    }
+
+    pub async fn update_async(self: Pin<&Self>, update: impl Send + FnOnce(&mut T))
+    where
+        T: Send,
+        SR: Sync,
+        SR::Symbol: Sync,
+    {
+        self.source
+            .clone_runtime_ref()
+            .run_detached(|| self.touch());
+        self.project_ref()
+            .source
+            .update_async(|value, _| update(&mut value.0 .1.write().unwrap()))
+            .await
+    }
+
     pub fn set_blocking(&self, new_value: T)
     where
         T: Sized,
