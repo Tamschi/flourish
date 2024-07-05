@@ -148,8 +148,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
             (&*self.lazy.get()).get_or_init(|| {
                 let mut lazy = MaybeUninit::uninit();
                 let init = || drop(init(eager, Slot::new(&mut lazy)));
-                let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
-                let callback_table =
+                let callback_table = {
+                    let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
                     match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
                         Entry::Vacant(vacant) => vacant.insert(AssertSend(
                             (Box::leak(Box::new(BTreeMap::<
@@ -185,7 +185,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                             &**v.insert(Box::pin(table)) as *const _
                         }
                         Entry::Occupied(o) => &**o.get() as *const _,
-                    };
+                    }
+                };
                 self.handle.start(
                     init,
                     callback_table,
