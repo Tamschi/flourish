@@ -6,7 +6,7 @@ Flourish is a signals library inspired by [🚦 JavaScript Signals standard prop
 
 ## Known Issues
 
-⚠️ The update task queue is currently not fair whatsoever, so one busy-looping thread will block all others.
+⚠️ The update task queue is currently not fair whatsoever, so one thread looping inside signal processing will block all others.
 
 ## Quick-Start
 
