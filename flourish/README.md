@@ -4,14 +4,20 @@
 
 Flourish is a signals library inspired by [🚦 JavaScript Signals standard proposal🚦](https://github.com/tc39/proposal-signals?tab=readme-ov-file#-javascript-signals-standard-proposal) (but Rust-y).
 
+## Known Issues
+
+⚠️ There's a race condition somewhere in set_blocking that seemingly causes it to either not block or not set.
+
 ## Quick-Start
 
 You can put signals on the heap:
 
 ```rust
-use flourish::{Subject, Signal, Update, Subscription, Effect};
+use flourish::{Subject, Provider, Signal, Update, Subscription, Effect};
 
 let _ = Subject::new(());
+let _ = Provider::new((), |_status| ());
+let _ = Provider::new_cyclic((), |_weak| |_status| ());
 
 // The closure type is erased!
 // Not evaluated unless subscribed.
@@ -38,6 +44,7 @@ use flourish::{signals_helper, Update};
 
 signals_helper! {
   let _subject = subject!(());
+  let _provider = provider!((), |_status| ());
 
   // The closure type is erased!
   // Not evaluated unless subscribed.

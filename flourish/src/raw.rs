@@ -1,5 +1,3 @@
-use std::pin::Pin;
-
 use pollinate::runtime::CallbackTableTypes;
 use pollinate::runtime::SignalRuntimeRef;
 use pollinate::runtime::Update;
@@ -22,8 +20,8 @@ pub(crate) use raw_subject::RawSubject;
 mod raw_provider;
 pub(crate) use raw_provider::RawProvider;
 
-mod raw_provider_reflexive;
-pub(crate) use raw_provider_reflexive::RawProviderReflexive;
+// mod raw_provider_reflexive;
+// pub(crate) use raw_provider_reflexive::RawProviderReflexive;
 
 mod raw_folded;
 pub(crate) use raw_folded::RawFolded;
@@ -92,39 +90,41 @@ macro_rules! provider_with_runtime {
 #[doc(hidden)]
 pub use crate::provider_with_runtime;
 
-pub fn provider_reflexive<
-    T: Send,
-    H: Send
-        + FnMut(
-            Pin<&RawProviderReflexive<T, H, SR>>,
-            <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-        ),
-    SR: SignalRuntimeRef,
->(
-    initial_value: T,
-    handler: H,
-    runtime: SR,
-) -> RawProviderReflexive<T, H, SR> {
-    RawProviderReflexive::with_runtime(initial_value, handler, runtime)
-}
-#[macro_export]
-#[doc(hidden)]
-macro_rules! provider_reflexive {
-    ($source:expr, $handler:expr$(,)?) => {{
-		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
-	}};
-}
-#[doc(hidden)]
-pub use crate::provider_reflexive;
-#[macro_export]
-#[doc(hidden)]
-macro_rules! provider_reflexive_with_runtime {
-    ($source:expr, $runtime:expr$(,)?) => {{
-		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
-	}};
-}
-#[doc(hidden)]
-pub use crate::provider_reflexive_with_runtime;
+//FIXME: Figure out how to use this or remove it entirely.
+// // > **Note:** This does not work with closures due to the cyclic signature. See <https://github.com/rust-lang/rust/issues/46062>.
+// pub fn provider_reflexive<
+//     T: Send,
+//     H: Send
+//         + FnMut(
+//             Pin<&RawProviderReflexive<T, H, SR>>,
+//             <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+//         ),
+//     SR: SignalRuntimeRef,
+// >(
+//     initial_value: T,
+//     handler: H,
+//     runtime: SR,
+// ) -> RawProviderReflexive<T, H, SR> {
+//     RawProviderReflexive::with_runtime(initial_value, handler, runtime)
+// }
+// #[macro_export]
+// #[doc(hidden)]
+// macro_rules! provider_reflexive {
+//     ($source:expr, $handler:expr$(,)?) => {{
+// 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+// 	}};
+// }
+// #[doc(hidden)]
+// pub use crate::provider_reflexive;
+// #[macro_export]
+// #[doc(hidden)]
+// macro_rules! provider_reflexive_with_runtime {
+//     ($source:expr, $runtime:expr$(,)?) => {{
+// 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+// 	}};
+// }
+// #[doc(hidden)]
+// pub use crate::provider_reflexive_with_runtime;
 
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Subscribable<SR, Value = T>,
@@ -352,6 +352,14 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::provider($initial_value, $handler, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
+	// {let $name:ident = provider_reflexive!($initial_value:expr, $handler:expr$(,)?);} => {
+	// 	let $name = ::core::pin::pin!($crate::raw::provider_reflexive($initial_value, $handler, $crate::GlobalSignalRuntime));
+	// 	let $name = ::core::pin::Pin::into_ref($name);
+	// };
+	// {let $name:ident = provider_reflexive_with_runtime!($initial_value:expr, $handler:expr, $runtime:expr$(,)?);} => {
+	// 	let $name = ::core::pin::pin!($crate::raw::provider_reflexive($initial_value, $handler, $runtime));
+	// 	let $name = ::core::pin::Pin::into_ref($name);
+	// };
 	{let $name:ident = cached!($source:expr$(,)?);} => {
 		let $name = ::core::pin::pin!($crate::raw::cached($source));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::Source<_, Value = _>>;
@@ -430,7 +438,7 @@ macro_rules! signals_helper {
 		// The compiler still squiggles the entire macro, unfortunately.
 		::core::compile_error!(::core::concat!(
 			"Unrecognised macro name or wrong argument count (for) `", ::core::stringify!($macro), "`. The following macros are supported:\n",
-			"subject[_with_runtime]!(1/2), cached!(1), computed[_uncached[_mut]][_with_runtime]!(1/2), ",
+			"subject[_with_runtime]!(1/2), provider[_with_runtime]!(2/3), cached!(1), computed[_uncached[_mut]][_with_runtime]!(1/2), ",
 			"folded[_with_runtime]!(2/3), merged[_with_runtime]!(2/3), subscription[_with_runtime]!(1/2), ",
 			"subscription_from_source!(1), effect[_with_runtime]!(2/3)"
 		));
