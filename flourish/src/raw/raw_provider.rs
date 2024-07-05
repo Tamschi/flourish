@@ -261,6 +261,9 @@ impl<
 
     pub fn update_blocking(&self, update: impl FnOnce(&mut T)) {
         self.source
+            .clone_runtime_ref()
+            .run_detached(|| self.touch());
+        self.source
             .update_blocking(|value, _| update(&mut value.0 .1.write().unwrap()))
     }
 
