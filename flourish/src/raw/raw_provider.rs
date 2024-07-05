@@ -8,7 +8,7 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef},
+    runtime::{CallbackTableTypes, SignalRuntimeRef},
     source::{Callbacks, Source},
 };
 

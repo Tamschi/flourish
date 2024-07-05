@@ -23,7 +23,7 @@ pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
 pub struct SignalSR<
     'a,
     T: 'a + Send + ?Sized,
-    SR: 'a + ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
+    SR: 'a + ?Sized + SignalRuntimeRef ,
 > {
     pub(super) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
 }
@@ -229,7 +229,7 @@ pub struct SignalRef<
     'r,
     'a,
     T: 'a + Send + ?Sized,
-    SR: ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
+    SR: ?Sized + SignalRuntimeRef ,
 > {
     pub(crate) source: *const (dyn 'a + Subscribable<SR, Value = T>),
     _phantom: PhantomData<(&'r (dyn 'a + Subscribable<SR, Value = T>), SR)>,

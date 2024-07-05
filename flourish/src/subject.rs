@@ -4,12 +4,14 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::{raw::RawSubject, Source, SourcePin};
 
+pub type Subject<T: ?Sized + Send> = SubjectSR<T, GlobalSignalRuntime>;
+
 #[derive(Clone)]
-pub struct Subject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime> {
+pub struct SubjectSR<T: ?Sized + Send, SR: SignalRuntimeRef> {
     subject: Pin<Arc<RawSubject<T, SR>>>,
 }
 
-impl<T: ?Sized + Debug + Send, SR: SignalRuntimeRef + Debug> Debug for Subject<T, SR>
+impl<T: ?Sized + Debug + Send, SR: SignalRuntimeRef + Debug> Debug for SubjectSR<T, SR>
 where
     SR::Symbol: Debug,
 {
@@ -18,15 +20,14 @@ where
     }
 }
 
-/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-impl<T: Send> Subject<T> {
+impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
     pub fn new(initial_value: T) -> Self
-where {
-        Self::with_runtime(initial_value, GlobalSignalRuntime)
+    where
+        SR: Default,
+    {
+        Self::with_runtime(initial_value, SR::default())
     }
-}
 
-impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
     pub fn with_runtime(initial_value: T, runtime: SR) -> Self
     where
         SR: Default,
@@ -187,7 +188,7 @@ impl<T: Send, SR: SignalRuntimeRef> Subject<T, SR> {
     }
 }
 
-impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR> for Subject<T, SR> {
+impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR> for SubjectSR<T, SR> {
     type Value = T;
 
     fn touch(&self) {

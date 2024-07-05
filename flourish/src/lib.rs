@@ -6,7 +6,7 @@ pub mod raw;
 //TODO: Inter-runtime signals (i.e. takes two signal runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
 mod subject;
-pub use subject::Subject;
+pub use subject::{Subject, SubjectSR};
 
 mod subscription;
 pub use subscription::{Subscription, SubscriptionSR};

@@ -8,7 +8,7 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update},
+    runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
     source::{Callbacks, Source},
 };
@@ -17,11 +17,9 @@ use crate::{traits::Subscribable, utils::conjure_zst};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct RawFolded<
-    T: Send,
-    F: Send + FnMut(&mut T) -> Update,
-    SR: SignalRuntimeRef = GlobalSignalRuntime,
->(#[pin] Source<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>);
+pub(crate) struct RawFolded<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>(
+    #[pin] Source<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>,
+);
 
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(T);

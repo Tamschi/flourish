@@ -2,19 +2,16 @@ use std::{borrow::BorrowMut, pin::Pin, sync::Mutex};
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update},
+    runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
     source::{Callbacks, Source},
 };
 
 #[must_use = "Effects are cancelled when dropped."]
 #[repr(transparent)]
-pub struct RawEffect<
-    T: Send,
-    S: Send + FnMut() -> T,
-    D: Send + FnMut(T),
-    SR: SignalRuntimeRef = GlobalSignalRuntime,
->(Source<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>);
+pub struct RawEffect<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>(
+    Source<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
+);
 
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);

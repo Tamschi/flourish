@@ -1,7 +1,7 @@
 use std::{borrow::Borrow, pin::Pin};
 
 use pin_project::pin_project;
-use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
+use pollinate::runtime::SignalRuntimeRef;
 
 use crate::{traits::Subscribable, Source};
 
@@ -17,7 +17,7 @@ pub struct RawSubscription<
     // should be crate-private.
     T: Send + Clone,
     S: Subscribable<SR, Value = T>,
-    SR: SignalRuntimeRef = GlobalSignalRuntime,
+    SR: SignalRuntimeRef,
 >(#[pin] RawCached<T, S, SR>);
 
 //TODO: Add some associated methods, like not-boxing `read`/`read_exclusive`.

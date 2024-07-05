@@ -8,7 +8,7 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update},
+    runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
     source::{Callbacks, Source},
 };
@@ -21,7 +21,7 @@ pub(crate) struct RawMerged<
     T: Send,
     S: Send + FnMut() -> T,
     M: Send + FnMut(&mut T, T) -> Update,
-    SR: SignalRuntimeRef = GlobalSignalRuntime,
+    SR: SignalRuntimeRef,
 >(#[pin] Source<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>);
 
 #[pin_project]

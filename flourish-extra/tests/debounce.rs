@@ -1,4 +1,4 @@
-use flourish::{raw::computed, GlobalSignalRuntime, Signal, SourcePin as _, Subject, Subscription};
+use flourish::{raw::computed, GlobalSignalRuntime, Signal, SourcePin as _, SubjectSR, Subscription};
 use flourish_extra::debounce_from_source;
 
 mod _validator;
@@ -9,7 +9,7 @@ fn debounce_test() {
     let v = &Validator::new();
     let x = &Validator::new();
 
-    let (get, set) = Subject::new(0).into_get_set();
+    let (get, set) = SubjectSR::new(0).into_get_set();
     let debounced = Signal::new(debounce_from_source(computed(
         move || {
             x.push("d");

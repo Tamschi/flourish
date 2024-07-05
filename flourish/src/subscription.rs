@@ -15,7 +15,7 @@ pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
 pub struct SubscriptionSR<
     'a,
     T: 'a + Send + ?Sized,
-    SR: 'a + ?Sized + SignalRuntimeRef = GlobalSignalRuntime,
+    SR: 'a + ?Sized + SignalRuntimeRef ,
 > {
     pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
 }

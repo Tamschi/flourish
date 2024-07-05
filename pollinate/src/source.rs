@@ -12,12 +12,12 @@ use std::{
 };
 
 use crate::{
-    runtime::{CallbackTable, CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update},
+    runtime::{CallbackTable, CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct SourceId<SR: SignalRuntimeRef = GlobalSignalRuntime> {
+pub(crate) struct SourceId<SR: SignalRuntimeRef> {
     id: SR::Symbol,
     runtime: SR,
 }
@@ -78,7 +78,7 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
     }
 }
 
-pub struct Source<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef = GlobalSignalRuntime> {
+pub struct Source<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> {
     handle: SourceId<SR>,
     _pinned: PhantomPinned,
     lazy: UnsafeCell<OnceLock<Lazy>>,

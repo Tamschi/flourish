@@ -2,7 +2,7 @@ use std::{borrow::Borrow, pin::Pin, sync::Mutex};
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{GlobalSignalRuntime, SignalRuntimeRef},
+    runtime::SignalRuntimeRef,
     slot::{Slot, Token},
     source::{NoCallbacks, Source},
 };
@@ -11,11 +11,9 @@ use crate::traits::Subscribable;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct RawComputedUncachedMut<
-    T: Send,
-    F: Send + FnMut() -> T,
-    SR: SignalRuntimeRef = GlobalSignalRuntime,
->(#[pin] Source<ForceSyncUnpin<Mutex<F>>, (), SR>);
+pub(crate) struct RawComputedUncachedMut<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
+    #[pin] Source<ForceSyncUnpin<Mutex<F>>, (), SR>,
+);
 
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);

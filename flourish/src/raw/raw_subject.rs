@@ -8,14 +8,14 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
-    runtime::{GlobalSignalRuntime, SignalRuntimeRef},
+    runtime::SignalRuntimeRef,
     source::{NoCallbacks, Source},
 };
 
 use crate::utils::conjure_zst;
 
 #[pin_project]
-pub struct RawSubject<T: ?Sized + Send, SR: SignalRuntimeRef = GlobalSignalRuntime> {
+pub struct RawSubject<T: ?Sized + Send, SR: SignalRuntimeRef> {
     #[pin]
     source: Source<AssertSync<RwLock<T>>, (), SR>,
 }
@@ -65,15 +65,15 @@ impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuardExclusive<'a, T> {
     }
 }
 
-/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
-/// TODO: Use `SR: Default` and alias instead!
-impl<T: Send> RawSubject<T> {
-    pub fn new(initial_value: T) -> Self {
-        Self::with_runtime(initial_value, GlobalSignalRuntime)
-    }
-}
-
 impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
+    pub fn new(initial_value: T) -> Self
+    where
+        T: Sized,
+        SR: Default,
+    {
+        Self::with_runtime(initial_value, SR::default())
+    }
+
     pub fn with_runtime(initial_value: T, runtime: SR) -> Self
     where
         T: Sized,

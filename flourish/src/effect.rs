@@ -15,7 +15,7 @@ pub type Effect<'a> = EffectSR<'a, GlobalSignalRuntime>;
 ///
 /// The specified `drop` function also runs when the [`Effect`] is dropped.
 #[must_use = "Effects are cancelled when dropped."]
-pub struct EffectSR<'a, SR: 'a + ?Sized + SignalRuntimeRef = GlobalSignalRuntime> {
+pub struct EffectSR<'a, SR: 'a + ?Sized + SignalRuntimeRef> {
     _raw_effect: Pin<Box<dyn 'a + DropHandle>>,
     _phantom: PhantomData<SR>,
 }
