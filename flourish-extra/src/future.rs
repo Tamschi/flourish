@@ -1,8 +1,10 @@
 //! `Source` <=> `Future` adapters.
 
 use std::{
+    marker::PhantomData,
     mem::{self, MaybeUninit},
     pin::Pin,
+    process::Output,
     sync::Arc,
 };
 
@@ -167,4 +169,14 @@ pub async fn flatten_some_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + S
         runtime,
     )
     .await
+}
+
+pub struct CancellableSlot<T> {
+    _phantom: PhantomData<T>,
+}
+
+pub fn while_subscribed<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
+    mut load: impl FnMut(CancellableSlot<T>),
+) {
+    todo!()
 }

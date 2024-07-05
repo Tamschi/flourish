@@ -18,6 +18,7 @@ use flourish::{Subject, Provider, Signal, Update, Subscription, Effect};
 let _ = Subject::new(());
 let _ = Provider::new((), |_status| ());
 let _ = Provider::new_cyclic((), |_weak| |_status| ());
+// The crate *flourish-extra* has an abstraction for async-cancellable provision.
 
 // The closure type is erased!
 // Not evaluated unless subscribed.
