@@ -49,7 +49,10 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
 #[derive(Default)]
 struct ASignalRuntime {
     source_counter: AtomicU64,
+    /// Overlapping locks are always in the order `critical_mutex`->`update_queue`.
     critical_mutex: ReentrantMutex<RefCell<ASignalRuntime_>>,
+    /// Overlapping locks are always in the order `critical_mutex`->`update_queue`.
+    update_queue: Mutex<VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce()>)>>,
 }
 
 unsafe impl Sync for ASignalRuntime {}
@@ -59,8 +62,6 @@ struct ASignalRuntime_ {
     stale_queue: StaleQueue<ASymbol>,
     context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
     callbacks: BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
-    ///FIXME: This is not-at-all a fair queue.
-    update_queue: RefCell<VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce()>)>>,
 }
 
 impl ASignalRuntime_ {
@@ -69,7 +70,6 @@ impl ASignalRuntime_ {
             stale_queue: StaleQueue::new(),
             context_stack: Vec::new(),
             callbacks: BTreeMap::new(),
-            update_queue: RefCell::new(VecDeque::new()),
         }
     }
 }
@@ -82,6 +82,7 @@ impl ASignalRuntime {
         Self {
             source_counter: AtomicU64::new(0),
             critical_mutex: ReentrantMutex::new(RefCell::new(ASignalRuntime_::new())),
+            update_queue: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -123,21 +124,33 @@ impl ASignalRuntime {
         borrow
     }
 
-    fn process_updates_if_ready<'a>(&'a self) {
-        let lock = self.critical_mutex.lock();
-        let mut borrow = lock.borrow();
-        if !borrow.context_stack.is_empty() || borrow.stale_queue.peek().is_some() {
-            // Still processing something else (which will) process updates afterwards.
-            return;
+    #[must_use = "The guard drop order is important! Drop the reentrant guard first if you have one."]
+    fn process_updates_if_ready<'a>(
+        &'a self,
+        mut update_queue: MutexGuard<'a, VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce()>)>>,
+    ) -> MutexGuard<VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce()>)>> {
+        let Some(critical) = self.critical_mutex.try_lock() else {
+            return update_queue;
+        };
+        {
+            let borrow = critical.borrow();
+            if !borrow.context_stack.is_empty() || borrow.stale_queue.peek().is_some() {
+                // Still processing something else (which will)
+                return update_queue;
+            }
         }
 
-        while let Some((id, next)) = (|| borrow.update_queue.borrow_mut().pop_front())() {
+        while let Some((id, next)) = update_queue.pop_front() {
+            // Still holding onto `critical`, so this code remains synchronised!
+            drop(update_queue);
+            let borrow = critical.borrow();
             debug_assert!(borrow.callbacks.contains_key(&id));
             drop(borrow);
             next();
-            self.propagate_from(id);
-            borrow = lock.borrow();
+            update_queue = self.update_queue.lock().expect("unreachable");
         }
+        drop(critical);
+        update_queue
     }
 }
 
@@ -238,19 +251,22 @@ impl SignalRuntimeRef for &ASignalRuntime {
     }
 
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
-        let lock = self.critical_mutex.lock();
-        let borrow = (*lock).borrow();
-
-        if !borrow.callbacks.contains_key(&id) {
-            panic!("Tried to update without starting the `pollinate::source::Source` first! (This panic may be sporadic when threading.)")
+        match self.critical_mutex.try_lock() {
+            Some(lock) if !(*lock).borrow().callbacks.contains_key(&id) => panic!("Tried to update without starting the `pollinate::source::Source` first! (This panic may be sporadic when threading.)"),
+            Some(lock)
+                if (*lock).borrow().context_stack.is_empty()
+                    && (*lock).borrow().stale_queue.peek().is_none() =>
+            {
+                f();
+                self.propagate_from(id);
+                return;
+            }
+            _ => (),
         }
 
-        borrow
-            .update_queue
-            .borrow_mut()
-            .push_back((id, Box::new(f)));
-        drop(borrow);
-        self.process_updates_if_ready();
+        let mut update_queue = self.update_queue.lock().expect("unreachable");
+        update_queue.push_back((id, Box::new(f)));
+        drop(self.process_updates_if_ready(update_queue));
     }
 
     async fn update_async(&self, id: Self::Symbol, f: impl Send + FnOnce()) {
@@ -260,24 +276,44 @@ impl SignalRuntimeRef for &ASignalRuntime {
     fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
         // This is indirected because the nested function's text size may be relatively large.
         //BLOCKED: Avoid the heap allocation once the `Allocator` API is stabilised.
+        fn update_or_enqueue_blocking(
+            this: &ASignalRuntime,
+            id: ASymbol,
+            f: Box<dyn '_ + FnOnce()>,
+        ) {
+            //FIXME: This could avoid the heap allocation.
+            let barrier = Arc::new(Barrier::new(2));
 
-        fn update_blocking(this: &ASignalRuntime, id: ASymbol, f: Box<dyn '_ + FnOnce()>) {
-            let lock = this.critical_mutex.lock();
-            let borrow = (*lock).borrow();
-
-            if !borrow.callbacks.contains_key(&id) {
-                panic!("Tried to update without starting the `pollinate::source::Source` first! (This panic may be sporadic when threading.)")
-            }
-
-            if !(borrow.context_stack.is_empty() && borrow.stale_queue.peek().is_none()) {
-                panic!("Called `update_blocking` (via `set_blocking`?) while propagating another update. This would deadlock with a better queue.");
-            }
-
-            f();
-            drop(borrow);
-            this.propagate_from(id);
+            //FIXME: This can *maybe* may deadlock if called on the same thread while processing updates.
+            //FIXME: This should NOT have to spawn new threads.
+            thread::scope(|s| {
+                s.spawn({
+                    let barrier = Arc::clone(&barrier);
+                    move || {
+                        this.update_or_enqueue(id, move || {
+                            barrier.wait();
+                            barrier.wait();
+                        })
+                    }
+                });
+                barrier.wait();
+                f();
+                barrier.wait();
+            });
+            // Ensure propagation is complete:
+            thread::scope(|s| {
+                s.spawn({
+                    let barrier = Arc::clone(&barrier);
+                    move || {
+                        this.update_or_enqueue(id, move || {
+                            barrier.wait();
+                        })
+                    }
+                });
+                barrier.wait();
+            })
         }
-        update_blocking(self, id, Box::new(f))
+        update_or_enqueue_blocking(self, id, Box::new(f))
     }
 
     fn propagate_from(&self, id: Self::Symbol) {
@@ -319,7 +355,11 @@ impl SignalRuntimeRef for &ASignalRuntime {
                 }
             }
         }
-        self.process_updates_if_ready();
+
+        let update_queue =
+            self.process_updates_if_ready(self.update_queue.lock().expect("unreachable"));
+        drop(lock);
+        drop(update_queue);
     }
 
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
@@ -395,16 +435,14 @@ impl SignalRuntimeRef for &ASignalRuntime {
         let notifications = borrow.stale_queue.purge_id(id);
         let mut borrow = ASignalRuntime::notify_all(&lock, notifications, borrow);
         borrow.callbacks.remove(&id);
+        drop(borrow);
 
-        borrow
-            .update_queue
-            .borrow_mut()
-            .retain(|(item_id, _)| *item_id != id);
+        let mut update_queue = self.update_queue.lock().expect("infallible");
+        update_queue.retain(|(item_id, _)| *item_id != id);
 
         // The order is important!
-        drop(borrow);
         drop(lock);
-        self.process_updates_if_ready();
+        drop(self.process_updates_if_ready(update_queue));
     }
 }
 
