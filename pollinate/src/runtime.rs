@@ -4,14 +4,19 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use std::{
-    cell::{RefCell, RefMut},
+    borrow::Borrow,
+    cell::{RefCell, RefMut, UnsafeCell},
     collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
-    mem,
+    future::Future,
+    mem::{self, needs_drop},
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
-    sync::{Arc, Barrier, Mutex, MutexGuard},
+    pin::Pin,
+    ptr::addr_of,
+    sync::{Arc, Barrier, MutexGuard, OnceLock},
     thread,
 };
 
+use jobsteal::{make_pool, Pool, Spawner};
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use stale_queue::{SensorNotification, StaleQueue};
 
@@ -38,7 +43,11 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
     /// Whether there was a change.
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
-    async fn update_async(&self, id: Self::Symbol, f: impl Send + FnOnce());
+    fn update_async(
+        &self,
+        id: Self::Symbol,
+        f: impl Send + FnOnce(),
+    ) -> impl Future<Output = ()> + Send;
     fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
@@ -52,7 +61,14 @@ struct ASignalRuntime {
     /// Overlapping locks are always in the order `critical_mutex`->`update_queue`.
     critical_mutex: ReentrantMutex<RefCell<ASignalRuntime_>>,
     /// Overlapping locks are always in the order `critical_mutex`->`update_queue`.
-    update_queue: Mutex<VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce()>)>>,
+    update_queues_key: OnceLock<u64>,
+}
+
+static UPDATE_QUEUES_COUNTER: AtomicU64 = AtomicU64::new(0);
+thread_local! {
+    // These are dropped by best effort, so they could leak on some platforms.
+    static UPDATE_QUEUES: RefCell<BTreeMap<u64, Pin<Box<UnsafeCell<Spawner<'static, 'static>>>>>> = RefCell::new(BTreeMap::new());
+    static POOLS: RefCell<Vec<Pin<Box<UnsafeCell<Pool>>>>> = RefCell::new(vec![]);
 }
 
 unsafe impl Sync for ASignalRuntime {}
@@ -82,8 +98,37 @@ impl ASignalRuntime {
         Self {
             source_counter: AtomicU64::new(0),
             critical_mutex: ReentrantMutex::new(RefCell::new(ASignalRuntime_::new())),
-            update_queue: Mutex::new(VecDeque::new()),
+            update_queues_key: OnceLock::new(),
         }
+    }
+
+    fn update_queue(&self) -> impl '_ + Borrow<Spawner<'static, 'static>> {
+        let key = *self
+            .update_queues_key
+            .get_or_init(|| UPDATE_QUEUES_COUNTER.fetch_add(1, Ordering::Relaxed));
+
+        let spawner =
+            UPDATE_QUEUES.with_borrow_mut(|update_queues| match update_queues.entry(key) {
+                Entry::Vacant(vacant) => &**vacant.insert({
+                    let pool = Box::pin(UnsafeCell::new(make_pool(1).unwrap()));
+                    let pool_ptr = addr_of!(*pool);
+                    POOLS.with_borrow_mut(|pools| pools.push(pool));
+
+                    unsafe {
+                        //SAFETY: Since the `Spawner`s can't notify the `Pool`s on drop, it's safe to put them into statics like this.
+                        const {
+                            assert!(!needs_drop::<Spawner<'static, 'static>>());
+                        };
+                        Box::pin(UnsafeCell::new((&mut *(&*pool_ptr).get()).spawner()))
+                    }
+                })
+                    as *const UnsafeCell<Spawner<'static, 'static>>,
+                Entry::Occupied(occupied) => {
+                    &**occupied.get() as *const UnsafeCell<Spawner<'static, 'static>>
+                }
+            });
+
+        unsafe { &*(&*spawner).get() }
     }
 
     #[must_use]
