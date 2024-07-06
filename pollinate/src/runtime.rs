@@ -1,3 +1,5 @@
+//! Low-level types for implementing [`SignalRuntimeRef`], as well as a functional [`GlobalSignalRuntime`].
+
 use core::{
     fmt::Debug,
     num::NonZeroU64,
@@ -22,13 +24,56 @@ use stale_queue::{SensorNotification, StaleQueue};
 mod deferred_queue;
 mod stale_queue;
 
-pub trait SignalRuntimeRef: Send + Sync + Clone {
+/// Trait for handles that let signals refer to a specific runtime (instance).
+///
+/// [`GlobalSignalRuntime`] provides a usable default.
+///
+/// # Safety
+///
+/// Please see the 'Safety' sections on individual associated items.
+pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
+    /// The signal instance key used by this [`SignalRuntimeRef`].
+    ///
+    /// Used to manage dependencies and callbacks.
     type Symbol: Clone + Copy + Send;
+
+    /// Types used in callback signatures.
     type CallbackTableTypes: ?Sized + CallbackTableTypes;
 
+    /// Creates a fresh unique [`SignalRuntimeRef::Symbol`] for this instance.
+    ///
+    /// Symbols are usually not interchangeable between different instances of a runtime!  
+    /// Runtimes **should** detect and panic on misuse when debug-assertions are enabled.
+    ///
+    /// # Safety
+    ///
+    /// The return value **must** be able to uniquely identify a signal towards this runtime.  
+    /// Symbols **may not** be reused even after calls to [`.stop(id)`](`SignalRuntimeRef::stop`).
     fn next_id(&self) -> Self::Symbol;
-    fn reentrant_critical<T>(&self, f: impl FnOnce() -> T) -> T;
+
+    /// Runs `f` in the runtime's reentrant critical section for `id`.
+    ///
+    /// # Safety
+    ///
+    /// Callbacks associated with `id` **may not** run in parallel.
+    fn reentrant_critical<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
+
+    /// When run in a context that records dependencies, records `id` as dependency of that context.
+    ///
+    /// # Panics
+    ///
+    /// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
     fn touch(&self, id: Self::Symbol);
+
+    /// Starts managed callback processing for `id`.
+    ///
+    /// # Safety
+    ///
+    /// Before this method returns, `f` **must** be called.
+    ///
+    /// Only after `f` completes, the runtime **may** run the functions specified in `callback_table` with
+    /// `callback_data`, but only one at a time and only before the next [`.stop(id)`](`SignalRuntimeRef::stop`)
+    /// call for the same runtime with an identical `id` completes.
     unsafe fn start<T, D: ?Sized>(
         &self,
         id: Self::Symbol,
@@ -36,26 +81,99 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
         callback_table: *const CallbackTable<D, Self::CallbackTableTypes>,
         callback_data: *const D,
     ) -> T;
-    fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
-    /// # Returns
+
+    /// Executes `f` while recording dependencies for `id`, updating the recorded dependencies for `id` to the new set.
     ///
-    /// Whether there was a change.
+    /// This process **may** cause subscription notification callbacks to be called.  
+    /// This **may or may not** happen before this method returns.
+    ///
+    /// # Panics
+    ///
+    /// This function **may** panic unless called between the start of [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
+    fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
+
+    /// Enables or disables the inherent subscription of `id`.
+    ///
+    /// An inherent subscription is one that is active regardless of dependents.
+    ///
+    /// **Idempotent** aside from the return value.  
+    /// **Returns** whether there was a change in the inherent subscription.
+    ///
+    /// # Panics
+    ///
+    /// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
+
+    /// Submits `f` to run exclusively for `id` outside of recording dependencies.
+    ///
+    /// The runtime **should** run `f` eventually, but **may** cancel it in response to
+    /// a [`.stop(id)`](`SignalRuntimeRef::stop`) call with the same `id``.
+    ///
+    /// # Panics
+    ///
+    /// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
+    ///
+    /// # Safety
+    ///
+    /// `f` **must** be dropped or consumed before the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
 
-    /// Iff polled, schedules `f` to be run as update to the signal with `id` (meaning no other callback for `id` may run at the same time).
+    /// **Iff polled**, submits `f` to run exclusively for `id` outside of recording dependencies.
     ///
-    /// This may be cancelled by calling [`.stop(id)`](`SignalRuntimeRef::stop`) with the same `id`, in which case `f` is returned.
+    /// The runtime **should** run `f` eventually, but **may** instead cancel and return it in response to
+    /// a [`.stop(id)`](`SignalRuntimeRef::stop`) call with the same `id``.
+    ///
+    /// # Panics
+    ///
+    /// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
+    ///
+    /// # Safety
+    ///
+    /// `f` **must not** be dropped or consumed after the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.  
+    /// `f` **must not** run after the [`Future`] returned by this function is dropped.
     fn update_async<T: Send, F: Send + FnOnce() -> T>(
         &self,
         id: Self::Symbol,
         f: F,
     ) -> impl Send + Future<Output = Result<T, F>>;
 
+    /// Runs `f` exclusively for `id` outside of recording dependencies.
+    ///
+    /// # Threading
+    ///
+    /// This function **may** deadlock when called in any other exclusivity context.  
+    /// (Runtimes **may** limit situations where this can occur in their documentation.)
+    ///
+    /// # Panics
+    ///
+    /// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.  
+    /// This function **may** panic when called in any other exclusivity context.  
+    /// (Runtimes **may** limit situations where this can occur in their documentation.)
+    ///
+    /// # Safety
+    ///
+    /// `f` **must** be consumed before this method returns.
     fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce());
+
+    /// Recursively marks dependencies of `id` as stale.
+    ///
+    /// Iff a dependency is currently subscribed, whether inherently or because of a
+    /// transitive dependency, it is first updated to determine whether to propagate
+    /// staleness through it, removing its stale-flag.
     fn propagate_from(&self, id: Self::Symbol);
+
+    /// Runs `f` exempted from any outer dependency recordings.
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
+
+    /// # Safety
+    ///
+    /// Iff `id` is stale, its staleness **must** be cleared by running its
+    /// [`update`][`CallbackTable::update`] callback before this method returns.
     fn refresh(&self, id: Self::Symbol);
+
+    /// # Safety
+    ///
+    /// Once this method returns, previously-scheduled callbacks for `id` **must not** run.
     fn stop(&self, id: Self::Symbol);
 }
 
@@ -159,7 +277,7 @@ impl CallbackTableTypes for ACallbackTableTypes {
     type SubscribedStatus = bool;
 }
 
-impl SignalRuntimeRef for &ASignalRuntime {
+unsafe impl SignalRuntimeRef for &ASignalRuntime {
     type Symbol = ASymbol;
     type CallbackTableTypes = ACallbackTableTypes;
 
@@ -172,7 +290,8 @@ impl SignalRuntimeRef for &ASignalRuntime {
         )
     }
 
-    fn reentrant_critical<T>(&self, f: impl FnOnce() -> T) -> T {
+    fn reentrant_critical<T>(&self, _id: Self::Symbol, f: impl FnOnce() -> T) -> T {
+        // This implementation is globally critical, so the `_id` isn't needed here.
         let _guard = self.critical_mutex.lock();
         f()
     }
@@ -495,11 +614,19 @@ impl SignalRuntimeRef for &ASignalRuntime {
 
 static GLOBAL_SIGNAL_RUNTIME: ASignalRuntime = ASignalRuntime::new();
 
+/// A plain [`SignalRuntimeRef`] implementation that represents a static signal runtime.
+///
+/// It makes no additional guarantees over those specified in [`SignalRuntimeRef`]'s documentation.
+///
+/// 🚧 This implementation is currently not optimised. 🚧
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GlobalSignalRuntime;
+
+/// [`SignalRuntimeRef::Symbol`] for [`GlobalSignalRuntime`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GSRSymbol(ASymbol);
 
+/// [`SignalRuntimeRef::CallbackTableTypes`] for [`GlobalSignalRuntime`].
 #[repr(transparent)]
 pub struct GlobalCallbackTableTypes(ACallbackTableTypes);
 impl CallbackTableTypes for GlobalCallbackTableTypes {
@@ -507,7 +634,7 @@ impl CallbackTableTypes for GlobalCallbackTableTypes {
     type SubscribedStatus = bool;
 }
 
-impl SignalRuntimeRef for GlobalSignalRuntime {
+unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
     type Symbol = GSRSymbol;
     type CallbackTableTypes = GlobalCallbackTableTypes;
 
@@ -515,8 +642,8 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
         GSRSymbol((&GLOBAL_SIGNAL_RUNTIME).next_id())
     }
 
-    fn reentrant_critical<T>(&self, f: impl FnOnce() -> T) -> T {
-        (&GLOBAL_SIGNAL_RUNTIME).reentrant_critical(f)
+    fn reentrant_critical<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
+        (&GLOBAL_SIGNAL_RUNTIME).reentrant_critical(id.0, f)
     }
 
     fn touch(&self, id: Self::Symbol) {
@@ -583,6 +710,8 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
     }
 }
 
+/// The `unsafe` at-runtime version of [`Callbacks`](`crate::source::Callbacks`),
+/// mainly for use between [`Source`](`crate::source::Source`) and [`SignalRuntimeRef`].
 #[repr(C)]
 #[non_exhaustive]
 pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {

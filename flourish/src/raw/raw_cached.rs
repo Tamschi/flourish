@@ -154,9 +154,9 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>
     Callbacks<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
     const UPDATE: Option<
-        unsafe fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Update,
+        fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Update,
     > = {
-        unsafe fn eval<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>(
+        fn eval<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>(
             source: Pin<&ForceSyncUnpin<S>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
@@ -173,7 +173,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>
     };
 
     const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(
+        fn(
             source: Pin<&Source<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>>,
             eager: Pin<&ForceSyncUnpin<S>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,

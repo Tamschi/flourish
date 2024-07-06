@@ -400,21 +400,21 @@ impl<
     > Callbacks<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR> for E
 {
     const UPDATE: Option<
-        unsafe fn(
+        fn(
             eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>,
             lazy: Pin<&()>,
         ) -> pollinate::runtime::Update,
     > = None;
 
     const ON_SUBSCRIBED_CHANGE: Option<
-		unsafe fn(
+		fn(
 			source: Pin<&Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,
 			eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>,
 			lazy: Pin<&()>,
 			subscribed: <<SR as SignalRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		),
 	> = {
-		unsafe fn handler<
+		fn handler<
 			T: ?Sized + Send,
 			H: Send + FnMut( <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 			SR: SignalRuntimeRef,

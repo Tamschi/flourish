@@ -1,3 +1,5 @@
+//! Wrap a [`Source`] to create signal primitives.
+
 use core::{
     fmt::{self, Debug, Formatter},
     marker::PhantomPinned,
@@ -31,7 +33,7 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
     }
 
     fn mark<T>(&self, f: impl FnOnce() -> T) -> T {
-        self.runtime.reentrant_critical(|| {
+        self.runtime.reentrant_critical(self.id, || {
             self.runtime.touch(self.id);
             f()
         })
@@ -82,6 +84,9 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
     }
 }
 
+//TODO: Rename? `raw::RawSignal`?
+/// A slightly higher-level signal primitive than using a runtime's [`SignalRuntimeRef::Symbol`] directly.
+/// This type comes with some lifecycle management to ensure orderly callbacks and safe data access.
 pub struct Source<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> {
     handle: SourceId<SR>,
     _pinned: PhantomPinned,
@@ -143,13 +148,14 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     /// After `init` returns, `E::eval` may be called any number of times with the state initialised by `init`, but at most once at a time.
     ///
     /// [`Source`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
-    pub unsafe fn project_or_init<C: Callbacks<Eager, Lazy, SR>>(
+    pub fn project_or_init<C: Callbacks<Eager, Lazy, SR>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
-        let eager = Pin::new_unchecked(&self.eager);
-        let lazy = self.handle.mark(|| {
-            (&*self.lazy.get()).get_or_init(|| {
+        unsafe {
+            let eager = Pin::new_unchecked(&self.eager);
+            let lazy = self.handle.mark(|| {
+                (&*self.lazy.get()).get_or_init(|| {
                 let mut lazy = MaybeUninit::uninit();
                 let init = || drop(init(eager, Slot::new(&mut lazy)));
                 let callback_table = {
@@ -238,21 +244,22 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     )
                 }
 
-                unsafe { lazy.assume_init() }
+                lazy.assume_init()
             })
-        });
-        self.handle.refresh();
-        unsafe { mem::transmute((eager, Pin::new_unchecked(lazy))) }
+            });
+            self.handle.refresh();
+            mem::transmute((eager, Pin::new_unchecked(lazy)))
+        }
     }
 
     /// TODO: Naming! `project_or_init_and_subscribe`?
     ///
-    /// Acts as [`Self::project_or_init`], but also marks this [`Source`] permanently as subscribed (until dropped).
+    /// Acts as [`Self::project_or_init`], but also marks this [`Source`] indefinitely as subscribed (until dropped or [`.unsubscribe()`](`Source::unsubscribe`) is called). Idempotent.
     ///
     /// # Safety
     ///
     /// This function has the same safety requirements as [`Self::project_or_init`].
-    pub unsafe fn pull_or_init<E: Callbacks<Eager, Lazy, SR>>(
+    pub fn pull_or_init<E: Callbacks<Eager, Lazy, SR>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
     ) -> (Pin<&Eager>, Pin<&Lazy>) {
@@ -365,19 +372,27 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eag
     }
 }
 
+/// Static callback tables used to set up each [`Source`].
+///
+/// For each [`Source`] instance, these functions are called altogether at most once at a time.
 pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
+    /// The primary update callback for signals. Whenever a signal has internally cached state,
+    /// it should specify an [`UPDATE`](`Callbacks::UPDATE`) handler to recompute it.
+    ///
+    /// **Note:** At least with the default runtime, the stale flag *always* propagates while this is [`None`] or there are no active subscribers.
+    ///
     /// # Safety
     ///
     /// Only called once at a time for each initialised [`Source`].
-    ///
-    /// **Note:** At least with the default runtime, the stale flag *always* propagates while this is [`None`] or there are no active subscribers.
-    const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update>;
+    const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update>;
 
+    /// A subscription change notification callback.
+    ///
     /// # Safety
     ///
     /// Only called once at a time for each initialised [`Source`], and not concurrently with [`Self::UPDATE`].
     const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(
+        fn(
             source: Pin<&Source<Eager, Lazy, SR>>,
             eager: Pin<&Eager>,
             lazy: Pin<&Lazy>,
@@ -386,13 +401,18 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
     >;
 }
 
+/// A [`Callbacks`] implementation that only specifies [`None`].
+///
+/// When using this [`Callbacks`], updates still propagate to dependent signals.
+///
+/// Callbacks are internally type-erased, so [`None`] helps to skip locks in some circumstances.
 pub enum NoCallbacks {}
 impl<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> Callbacks<Eager, Lazy, SR>
     for NoCallbacks
 {
-    const UPDATE: Option<unsafe fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update> = None;
+    const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update> = None;
     const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(
+        fn(
             source: Pin<&Source<Eager, Lazy, SR>>,
             eager: Pin<&Eager>,
             lazy: Pin<&Lazy>,

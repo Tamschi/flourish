@@ -155,20 +155,19 @@ impl<
     > Callbacks<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
     const UPDATE: Option<
-        unsafe fn(
+        fn(
             eager: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update,
     > = {
-        unsafe fn eval<
-            T: Send,
-            S: Send + FnMut() -> T,
-            M: Send + ?Sized + FnMut(&mut T, T) -> Update,
-        >(
+        fn eval<T: Send, S: Send + FnMut() -> T, M: Send + ?Sized + FnMut(&mut T, T) -> Update>(
             state: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
-            let (select, merge) = &mut *state.0.get();
+            let (select, merge) = unsafe {
+                //SAFETY: This function has exclusive access to `state`.
+                &mut *state.0.get()
+            };
             // TODO: Split this up to avoid congestion where possible.
             let next_value = select();
             merge(&mut *cache.project_ref().0.write().unwrap(), next_value)
@@ -177,7 +176,7 @@ impl<
     };
 
     const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(
+        fn(
             source: Pin<&Source<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>>,
             eager: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,

@@ -141,23 +141,26 @@ impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>
     Callbacks<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR> for E
 {
     const UPDATE: Option<
-        unsafe fn(
+        fn(
             eager: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
             lazy: Pin<&()>,
         ) -> Update,
     > = {
-        unsafe fn eval<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Update>(
+        fn eval<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Update>(
             state: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
             _: Pin<&()>,
         ) -> Update {
-            let f = &mut *state.1 .0.get();
+            let f = unsafe {
+                //SAFETY: This function has exclusive access to `state`.
+                &mut *state.1 .0.get()
+            };
             f(&mut *state.0 .0.write().unwrap())
         }
         Some(eval)
     };
 
     const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(
+        fn(
             source: Pin<&Source<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>>,
             eager: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
             lazy: Pin<&()>,

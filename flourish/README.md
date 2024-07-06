@@ -1,6 +1,7 @@
 # `flourish`
 
 🚧 This is a(n optimisable) proof of concept! 🚧
+🚧 The API is full-featured, but the code is not (much at all) optimised. 🚧
 
 Flourish is a signals library inspired by [🚦 JavaScript Signals standard proposal🚦](https://github.com/tc39/proposal-signals?tab=readme-ov-file#-javascript-signals-standard-proposal) (but Rust-y).
 

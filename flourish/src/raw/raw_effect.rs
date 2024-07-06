@@ -57,12 +57,12 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
     Callbacks<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR> for E
 {
     const UPDATE: Option<
-        unsafe fn(
+        fn(
             eager: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
             lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
         ) -> pollinate::runtime::Update,
     > = {
-        unsafe fn eval<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T)>(
+        fn eval<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T)>(
             source: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
             cache: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
         ) -> Update {
@@ -76,7 +76,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
     };
 
     const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(
+        fn(
             source: Pin<
                 &Source<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
             >,

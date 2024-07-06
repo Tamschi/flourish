@@ -136,12 +136,9 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
     Callbacks<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
     const UPDATE: Option<
-        unsafe fn(
-            eager: Pin<&ForceSyncUnpin<Mutex<F>>>,
-            lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
-        ) -> Update,
+        fn(eager: Pin<&ForceSyncUnpin<Mutex<F>>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Update,
     > = {
-        unsafe fn eval<T: Send, F: Send + FnMut() -> T>(
+        fn eval<T: Send, F: Send + FnMut() -> T>(
             f: Pin<&ForceSyncUnpin<Mutex<F>>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
@@ -158,7 +155,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
     };
 
     const ON_SUBSCRIBED_CHANGE: Option<
-        unsafe fn(
+        fn(
             source: Pin<&Source<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR>>,
             eager: Pin<&ForceSyncUnpin<Mutex<F>>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
