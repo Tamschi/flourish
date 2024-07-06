@@ -7,7 +7,9 @@ use pollinate::{
     slot::{Slot, Token},
 };
 
-use crate::{traits::Subscribable, Source};
+use crate::traits::Subscribable;
+
+use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]

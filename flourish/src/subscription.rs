@@ -5,12 +5,14 @@ use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 use crate::{
     raw::{computed, folded, merged},
     traits::Subscribable,
-    SignalSR, SourcePin,
+    SignalRef, SignalSR, SourcePin,
 };
 
 /// Type inference helper alias for [`SubscriptionSR`] (using [`GlobalSignalRuntime`]).
 pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
 
+/// Inherently-subscribed version of [`SignalSR`].  
+/// Can be directly constructed but also converted to and fro.
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct SubscriptionSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> {
     pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
@@ -35,6 +37,10 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
+
+    /// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
+    ///
+    /// The subscribable is [`pull`](`Subscribable::pull`)ed once.
     pub fn new<S: 'a + Subscribable<SR, Value = T>>(source: S) -> Self {
         source.clone_runtime_ref().run_detached(|| {
             let arc = Arc::pin(source);
@@ -43,14 +49,20 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> 
         })
     }
 
+    /// Unsubscribes the [`SubscriptionSR`], turning it into a [`SignalSR`] in the process.
+    ///
+    /// The underlying [`Source`](`crate::raw::Source`) may remain effectively subscribed due to subscribed dependencies.
     #[must_use = "Use `drop(self)` instead of converting first. The effect is the same."]
     pub fn unsubscribe(self) -> SignalSR<'a, T, SR> {
-        //FIXME: This could avoid refcounting up and down and the associated memory ordering.
+        //FIXME: This could avoid refcounting up and down and the associated memory barriers.
         SignalSR {
             source: Pin::clone(&self.source),
         }
     } // Implicit drop(self) unsubscribes.
 
+    /// Cheaply clones this handle into a [`SignalSR`].
+    ///
+    /// Only one handle can own the inherent subscription of the managed [`Subscribable`].
     #[must_use = "Pure function."]
     pub fn to_signal(self) -> SignalSR<'a, T, SR> {
         SignalSR {
@@ -59,8 +71,28 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> 
     }
 }
 
-// Secondary constructors.
+/// Secondary constructors.
+///
+/// # Omissions
+///
+/// The "uncached" versions of [`computed`](`computed()`) are intentionally not wrapped here,
+/// as their behaviour may be unexpected at first glance.
+///
+/// You can still easily construct them as [`SignalSR`] and subscribe afterwards:
+///
+/// ```
+/// use flourish::Signal;
+///
+/// // The closure runs once on subscription, but not to refresh `sub`!
+/// // It re-runs with each access of its value through `SourcePin`, instead.
+/// let sub = Signal::computed_uncached(|| ())
+///     .try_subscribe()
+///     .expect("contextually infallible");
+/// ```
 impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
+    /// A simple cached computation.
+    ///
+    /// Wraps [`computed`](`computed()`).
     pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
     where
         SR: Default,
@@ -68,11 +100,16 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
         Self::new(computed(f, SR::default()))
     }
 
+    /// A simple cached computation.
+    ///
+    /// Wraps [`computed`](`computed()`).
     pub fn computed_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self {
         Self::new(computed(f, runtime))
     }
 
-    /// This is a convenience method. See [`folded`](`folded()`).
+    /// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+    ///
+    /// Wraps [`folded`](`folded()`).
     pub fn folded(init: T, f: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
     where
         SR: Default,
@@ -80,7 +117,9 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
         Self::new(folded(init, f, SR::default()))
     }
 
-    /// This is a convenience method. See [`folded`](`folded()`).
+    /// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+    ///
+    /// Wraps [`folded`](`folded()`).
     pub fn folded_with_runtime(
         init: T,
         f: impl 'a + Send + FnMut(&mut T) -> Update,
@@ -89,7 +128,10 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
         Self::new(folded(init, f, runtime))
     }
 
-    /// This is a convenience method. See [`merged`](`merged()`).
+    /// `select` computes each value, `merge` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+    /// Dependencies are detected across both closures.
+    ///
+    /// Wraps [`merged`](`merged()`).
     pub fn merged(
         select: impl 'a + Send + FnMut() -> T,
         merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
@@ -100,13 +142,24 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
         Self::new(merged(select, merge, SR::default()))
     }
 
-    /// This is a convenience method. See [`merged`](`merged()`).
+    /// `select` computes each value, `merge` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+    /// Dependencies are detected across both closures.
+    ///
+    /// Wraps [`merged`](`merged()`).
     pub fn merged_with_runtime(
         select: impl 'a + Send + FnMut() -> T,
         merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
         runtime: SR,
     ) -> Self {
         Self::new(merged(select, merge, runtime))
+    }
+}
+
+impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef>
+    Borrow<SignalRef<'r, 'a, T, SR>> for SubscriptionSR<'a, T, SR>
+{
+    fn borrow(&self) -> &SignalRef<'r, 'a, T, SR> {
+        unsafe { &*((self as *const Self).cast()) }
     }
 }
 

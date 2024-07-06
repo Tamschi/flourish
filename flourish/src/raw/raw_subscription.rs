@@ -3,9 +3,9 @@ use std::{borrow::Borrow, pin::Pin};
 use pin_project::pin_project;
 use pollinate::runtime::SignalRuntimeRef;
 
-use crate::{traits::Subscribable, Source};
+use crate::traits::Subscribable;
 
-use super::RawCached;
+use super::{RawCached, Source};
 
 #[pin_project]
 #[must_use = "Subscriptions are cancelled when dropped."]

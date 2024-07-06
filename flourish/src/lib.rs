@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
 
 pub mod raw;
@@ -18,7 +19,7 @@ mod effect;
 pub use effect::{Effect, EffectSR};
 
 mod traits;
-pub use traits::{Source, SourcePin, Subscribable};
+pub use traits::SourcePin;
 
 mod signal;
 pub use signal::{Signal, SignalRef, SignalSR};

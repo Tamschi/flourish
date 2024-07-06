@@ -1,4 +1,4 @@
-use flourish::{signals_helper, GlobalSignalRuntime, Source};
+use flourish::{raw::Source, signals_helper, GlobalSignalRuntime};
 mod _validator;
 use _validator::Validator;
 

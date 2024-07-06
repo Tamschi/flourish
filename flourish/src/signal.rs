@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, marker::PhantomData, mem, pin::Pin, sync::Arc};
+use std::{borrow::Borrow, fmt::Debug, marker::PhantomData, mem, pin::Pin, sync::Arc};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
@@ -68,9 +68,9 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
 
 /// Secondary constructors.
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {
-    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T`.
+    /// A simple cached computation.
     ///
-    /// This pins the provided closure. The resulting `T` is cached.
+    /// Wraps [`computed`](`computed()`).
     pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
     where
         T: Sized,
@@ -79,9 +79,9 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed(f, SR::default()))
     }
 
-    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T` and [`SignalRuntimeRef`].
+    /// A simple cached computation.
     ///
-    /// This pins the provided closure. The resulting `T` is cached.
+    /// Wraps [`computed`](`computed()`).
     pub fn computed_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
     where
         T: Sized,
@@ -89,9 +89,9 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed(f, runtime))
     }
 
-    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`Sync`]` + `[`Fn`]`() -> T`.
+    /// A simple **uncached** computation.
     ///
-    /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs each time the value is retrieved. This may lead to congestion.
+    /// Wraps [`computed_uncached`](`computed_uncached()`).
     pub fn computed_uncached(f: impl 'a + Send + Sync + Fn() -> T) -> Self
     where
         T: Sized,
@@ -100,9 +100,9 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::computed_uncached_with_runtime(f, SR::default())
     }
 
-    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`Sync`]` + `[`Fn`]`() -> T` and [`SignalRuntimeRef`].
+    /// A simple **uncached** computation.
     ///
-    /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs each time the value is retrieved. This may lead to congestion.
+    /// Wraps [`computed_uncached`](`computed_uncached()`).
     pub fn computed_uncached_with_runtime(f: impl 'a + Send + Sync + Fn() -> T, runtime: SR) -> Self
     where
         T: Sized,
@@ -110,9 +110,11 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed_uncached(f, runtime))
     }
 
-    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T`.
+    /// A simple **stateful uncached** computation.
     ///
-    /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs **exclusively** each time the value is retrieved. This may lead to (more) congestion.
+    /// ⚠️ Care must be taken to avoid unexpected behaviour!
+    ///
+    /// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
     pub fn computed_uncached_mut(f: impl 'a + Send + FnMut() -> T) -> Self
     where
         T: Sized,
@@ -121,9 +123,11 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::computed_uncached_mut_with_runtime(f, SR::default())
     }
 
-    /// Creates a new [`SignalSR`] from the provided [`Send`]` + `[`FnMut`]`() -> T` and [`SignalRuntimeRef`].
+    /// A simple **stateful uncached** computation.
     ///
-    /// This pins the provided closure. The resulting `T` is **not** cached, so the closure runs **exclusively** each time the value is retrieved. This may lead to (more) congestion.
+    /// ⚠️ Care must be taken to avoid unexpected behaviour!
+    ///
+    /// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
     pub fn computed_uncached_mut_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
     where
         T: Sized,
@@ -131,7 +135,9 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(computed_uncached_mut(f, runtime))
     }
 
-    /// This is a convenience method. See [`folded`](`folded()`).
+    /// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+    ///
+    /// Wraps [`folded`](`folded()`).
     pub fn folded(init: T, f: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
     where
         T: Sized,
@@ -140,7 +146,9 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::folded_with_runtime(init, f, SR::default())
     }
 
-    /// This is a convenience method. See [`folded`](`folded()`).
+    /// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+    ///
+    /// Wraps [`folded`](`folded()`).
     pub fn folded_with_runtime(
         init: T,
         f: impl 'a + Send + FnMut(&mut T) -> Update,
@@ -152,7 +160,10 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(folded(init, f, runtime))
     }
 
-    /// This is a convenience method. See [`merged`](`merged()`).
+    /// `select` computes each value, `merge` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+    /// Dependencies are detected across both closures.
+    ///
+    /// Wraps [`merged`](`merged()`).
     pub fn merged(
         select: impl 'a + Send + FnMut() -> T,
         merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
@@ -164,7 +175,10 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         Self::new(merged(select, merge, SR::default()))
     }
 
-    /// This is a convenience method. See [`merged`](`merged()`).
+    /// `select` computes each value, `merge` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+    /// Dependencies are detected across both closures.
+    ///
+    /// Wraps [`merged`](`merged()`).
     pub fn merged_with_runtime(
         select: impl 'a + Send + FnMut() -> T,
         merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
@@ -219,6 +233,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR
     }
 }
 
+/// A free [`SignalSR`] or [`SubscriptionSR`] borrow that can be easily copied.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SignalRef<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> {
@@ -236,21 +251,6 @@ unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Sync
     for SignalRef<'r, 'a, T, SR>
 {
     // SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
-}
-
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> ToOwned
-    for SignalRef<'r, 'a, T, SR>
-{
-    type Owned = SignalSR<'a, T, SR>;
-
-    fn to_owned(&self) -> Self::Owned {
-        Self::Owned {
-            source: unsafe {
-                Arc::increment_strong_count(self.source);
-                Pin::new_unchecked(Arc::from_raw(self.source))
-            },
-        }
-    }
 }
 
 impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef>

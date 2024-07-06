@@ -12,7 +12,9 @@ use pollinate::{
     runtime::{CallbackTableTypes, SignalRuntimeRef},
 };
 
-use crate::{utils::conjure_zst, Source};
+use crate::utils::conjure_zst;
+
+use super::Source;
 
 #[pin_project]
 #[repr(transparent)]

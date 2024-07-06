@@ -2,8 +2,9 @@ use std::{borrow::Borrow, fmt::Debug, pin::Pin, sync::Arc};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{raw::RawSubject, Source, SourcePin};
+use crate::{raw::RawSubject, traits::Source, SourcePin};
 
+/// Type inference helper alias for [`SubjectSR`] (using [`GlobalSignalRuntime`]).
 pub type Subject<T> = SubjectSR<T, GlobalSignalRuntime>;
 
 #[derive(Clone)]

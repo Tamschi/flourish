@@ -12,7 +12,9 @@ use pollinate::{
     runtime::SignalRuntimeRef,
 };
 
-use crate::{utils::conjure_zst, Source};
+use crate::utils::conjure_zst;
+
+use super::Source;
 
 #[pin_project]
 pub struct RawSubject<T: ?Sized + Send, SR: SignalRuntimeRef> {

@@ -1,9 +1,15 @@
 # `flourish`
 
-🚧 This is a(n optimisable) proof of concept! 🚧
+Convenient and composable signals for Rust.
+
+🚧 This is a(n optimisable) proof of concept! 🚧  
 🚧 The API is full-featured, but the code is not (much at all) optimised. 🚧
 
 Flourish is a signals library inspired by [🚦 JavaScript Signals standard proposal🚦](https://github.com/tc39/proposal-signals?tab=readme-ov-file#-javascript-signals-standard-proposal) (but Rust-y).
+
+When combined with for example [`Option`](https://doc.rust-lang.org/stable/core/option/enum.Option.html) and [`Future`](https://doc.rust-lang.org/stable/core/future/trait.Future.html), `flourish` can model asynchronous-and-cancellable resource loads. See the crate `flourish-extra` for example combinators and `flourish-extensions` to use them conveniently through constructor extensions.
+
+This makes it a suitable replacement for most standard use cases of RxJS-style observables.
 
 ## Known Issues
 
@@ -19,7 +25,6 @@ use flourish::{Subject, Provider, Signal, Update, Subscription, Effect};
 let _ = Subject::new(());
 let _ = Provider::new((), |_status| ());
 let _ = Provider::new_cyclic((), |_weak| |_status| ());
-// The crate *flourish-extra* has an abstraction for async-cancellable provision.
 
 // The closure type is erased!
 // Not evaluated unless subscribed.

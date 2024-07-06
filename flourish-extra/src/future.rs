@@ -9,7 +9,8 @@ use std::{
 
 use async_lock::OnceCell;
 use flourish::{
-    shadow_clone, signals_helper, SignalRuntimeRef, Source, SourcePin as _, SubscriptionSR, Update,
+    raw::Source, shadow_clone, signals_helper, SignalRuntimeRef, SourcePin as _, SubscriptionSR,
+    Update,
 };
 
 //TODO: Investigate: It may be possible to also implement some of this with a potential

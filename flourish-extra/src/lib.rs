@@ -6,8 +6,8 @@ use std::{
 };
 
 use flourish::{
-    raw::{computed, folded, merged},
-    SignalRuntimeRef, Source, Subscribable, SubscriptionSR, Update,
+    raw::{computed, folded, merged, Source, Subscribable},
+    SignalRuntimeRef, SubscriptionSR, Update,
 };
 use num_traits::Zero;
 

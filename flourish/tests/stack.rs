@@ -1,4 +1,4 @@
-use flourish::{signals_helper, Source};
+use flourish::{raw::Source, signals_helper};
 mod _validator;
 use _validator::Validator;
 

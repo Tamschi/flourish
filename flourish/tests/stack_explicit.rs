@@ -1,4 +1,4 @@
-use flourish::Source;
+use flourish::raw::Source;
 mod _validator;
 use _validator::Validator;
 

@@ -8,8 +8,9 @@ use std::{
 
 use pollinate::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{raw::RawProvider, Source, SourcePin};
+use crate::{raw::RawProvider, traits::Source, SourcePin};
 
+/// Type inference helper alias for [`ProviderSR`] (using [`GlobalSignalRuntime`]).
 pub type Provider<'a, T> = ProviderSR<'a, T, GlobalSignalRuntime>;
 
 pub struct ProviderSR<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> {
