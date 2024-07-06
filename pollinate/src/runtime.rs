@@ -8,8 +8,10 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
     mem,
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+    sync::{Arc, Weak},
 };
 
+use async_lock::OnceCell;
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use stale_queue::{SensorNotification, StaleQueue};
 
@@ -36,7 +38,11 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
     /// Whether there was a change.
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
-    async fn update_async(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
+    fn update_async(
+        &self,
+        id: Self::Symbol,
+        f: impl 'static + Send + FnOnce(),
+    ) -> impl Send + std::future::Future<Output = ()>;
     fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
@@ -253,8 +259,20 @@ impl SignalRuntimeRef for &ASignalRuntime {
         self.process_updates_if_ready();
     }
 
+    /// In theory, this could have a much more cancellable alternative, taking an `IntoFuture` instead.
     async fn update_async(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
-        todo!();
+        self.update_or_enqueue(id, move || {
+            f();
+        });
+        // Separate so that propagation also completes first.
+        let once = Arc::new(OnceCell::<()>::new());
+        let weak: Weak<_> = Arc::downgrade(&once);
+        self.update_or_enqueue(id, move || {
+            if let Some(once) = weak.upgrade() {
+                once.set_blocking(()).expect("unreachable");
+            }
+        });
+        once.wait().await;
     }
 
     fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
