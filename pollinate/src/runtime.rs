@@ -376,7 +376,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
         let borrow = (*lock).borrow();
 
         if !borrow.callbacks.contains_key(&id) {
-            panic!("Tried to update without starting the `pollinate::source::Source` first! (This panic may be sporadic when threading.)")
+            panic!("Tried to update without starting the `pollinate::raw::RawSignal` first! (This panic may be sporadic when threading.)")
         }
 
         borrow
@@ -400,7 +400,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
             let weak: Weak<_> = Arc::downgrade(&once);
             let guard = {
                 let weak = weak.clone();
-                scopeguard::guard(f, move |f| {
+                guard(f, move |f| {
                     if let Some(once) = weak.upgrade() {
                         once.set_blocking(
                             Some(Err(f.lock().expect("unreachable").borrow_mut().take())).into(),
@@ -447,7 +447,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
         // Wait again so that propagation also completes first.
         let once = Arc::new(OnceCell::<()>::new());
         self.update_or_enqueue(id, {
-            let guard = scopeguard::guard(Arc::downgrade(&once), |c| {
+            let guard = guard(Arc::downgrade(&once), |c| {
                 if let Some(c) = c.upgrade() {
                     c.set_blocking(()).expect("unreachable");
                 }
@@ -471,7 +471,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
             let borrow = (*lock).borrow();
 
             if !borrow.callbacks.contains_key(&id) {
-                panic!("Tried to update without starting the `pollinate::source::Source` first! (This panic may be sporadic when threading.)")
+                panic!("Tried to update without starting the `pollinate::raw::RawSignal` first! (This panic may be sporadic when threading.)")
             }
 
             if !(borrow.context_stack.is_empty() && borrow.stale_queue.peek().is_none()) {
@@ -710,12 +710,32 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
     }
 }
 
-/// The `unsafe` at-runtime version of [`Callbacks`](`crate::source::Callbacks`),
-/// mainly for use between [`Source`](`crate::source::Source`) and [`SignalRuntimeRef`].
+/// The `unsafe` at-runtime version of [`Callbacks`](`crate::raw::Callbacks`),
+/// mainly for use between [`RawSignal`](`crate::raw::RawSignal`) and [`SignalRuntimeRef`].
 #[repr(C)]
 #[non_exhaustive]
 pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
+    /// An "update" callback used to refresh stale signals.
+    ///
+    /// Signals that are not currently subscribed don't auto-refresh and **may** remain stale for extended periods of time.
+    ///
+    /// # Safety
+    ///
+    /// This **must** be called by the runtime at most with the appropriate `callback_data` pointer introduced alongside the function pointer,
+    /// and **must not** be called concurrently within the group of callbacks associated with one `id`.
     pub update: Option<unsafe fn(*const T) -> Update>,
+    /// An "on subscribed change" callback used to notify a signal of a change in its subscribed-state.
+    ///
+    /// This is separate from the automatic refresh applied to stale signals that become subscribed to.
+    ///
+    /// # Safety
+    ///
+    /// This **must** be called by the runtime at most with the appropriate `callback_data` pointer introduced alongside the function pointer,
+    /// and **must not** be called concurrently within the group of callbacks associated with one `id`.
+    ///
+    /// # Logic
+    ///
+    /// The runtime **must** run this function only while not recording dependencies (but may start a nested recording in response to the callback).
     pub on_subscribed_change: Option<unsafe fn(*const T, status: CTT::SubscribedStatus)>,
 }
 
@@ -766,22 +786,37 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Ord for CallbackTable<T, CTT> 
     }
 }
 
+/// Describes types appearing in callback signatures for a particular [`SignalRuntimeRef`] implementation.
 pub trait CallbackTableTypes: 'static {
+    /// A status indicating "how subscribed" a signal now is.
+    ///
+    /// [`GlobalSignalRuntime`] notifies only for the first and removal of the last subscription for each signal,
+    /// so it uses a [`bool`], but other runtimes may notify with the direct or total subscriber count or a more complex measure.
     type SubscribedStatus;
 }
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
+    /// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()`.
+    ///
+    /// Note that the callback functions still may only be called using the originally correct data pointer(s).
     pub fn into_erased_ptr(this: *const Self) -> *const CallbackTable<(), CTT> {
         unsafe { mem::transmute(this) }
     }
 
+    /// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()`.
+    ///
+    /// Note that the callback functions still may only be called using the originally correct data pointer(s).
     pub fn into_erased(self) -> CallbackTable<(), CTT> {
         unsafe { mem::transmute(self) }
     }
 }
 
+/// A return value used by [`update`](`CallbackTable::update`)/[`UPDATE`](`crate::raw::Callbacks::UPDATE`) callbacks
+/// to indicate whether to flag dependent signals as stale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Update {
+    /// Mark at least directly dependent signals, and possibly refresh them.
     Propagate,
+    /// Do not mark dependent signals as stale, except through other (parallel) dependency relationships.
     Halt,
 }

@@ -2,15 +2,15 @@ use std::{borrow::BorrowMut, pin::Pin, sync::Mutex};
 
 use pin_project::pin_project;
 use pollinate::{
+    raw::{Callbacks, RawSignal},
     runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
-    source::{Callbacks, Source},
 };
 
 #[must_use = "Effects are cancelled when dropped."]
 #[repr(transparent)]
 pub struct RawEffect<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>(
-    Source<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
+    RawSignal<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
 );
 
 #[pin_project]
@@ -30,7 +30,7 @@ pub fn new_raw_unsubscribed_effect<
     drop: D,
     runtime: SR,
 ) -> RawEffect<T, S, D, SR> {
-    RawEffect(Source::with_runtime(
+    RawEffect(RawSignal::with_runtime(
         ForceSyncUnpin((source, drop).into()),
         runtime,
     ))
@@ -78,7 +78,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
     const ON_SUBSCRIBED_CHANGE: Option<
         fn(
             source: Pin<
-                &Source<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
+                &RawSignal<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
             >,
             eager: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
             lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,

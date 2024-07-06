@@ -7,17 +7,17 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
+    raw::{Callbacks, RawSignal},
     runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
-    source::{Callbacks, Source},
 };
 
-use crate::{traits::Subscribable, utils::conjure_zst};
+use crate::{traits::Subscribable, utils::conjure_zst, Source};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawComputed<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
-    #[pin] Source<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR>,
+    #[pin] RawSignal<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR>,
 );
 
 #[pin_project]
@@ -47,7 +47,7 @@ unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
 
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
     pub fn new(f: F, runtime: SR) -> Self {
-        Self(Source::with_runtime(ForceSyncUnpin(f.into()), runtime))
+        Self(RawSignal::with_runtime(ForceSyncUnpin(f.into()), runtime))
     }
 
     pub fn get(self: Pin<&Self>) -> T
@@ -156,7 +156,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 
     const ON_SUBSCRIBED_CHANGE: Option<
         fn(
-            source: Pin<&Source<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR>>,
+            source: Pin<&RawSignal<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR>>,
             eager: Pin<&ForceSyncUnpin<Mutex<F>>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -180,9 +180,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR
     }
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
-    for RawComputed<T, F, SR>
-{
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR> for RawComputed<T, F, SR> {
     type Value = T;
 
     fn touch(self: Pin<&Self>) {

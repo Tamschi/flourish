@@ -12,11 +12,7 @@ use crate::{
 pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
 
 #[must_use = "Subscriptions are cancelled when dropped."]
-pub struct SubscriptionSR<
-    'a,
-    T: 'a + Send + ?Sized,
-    SR: 'a + ?Sized + SignalRuntimeRef ,
-> {
+pub struct SubscriptionSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> {
     pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
 }
 

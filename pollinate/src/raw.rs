@@ -1,4 +1,4 @@
-//! Wrap a [`Source`] to create signal primitives.
+//! Wrap a [`RawSignal`] to create signal primitives.
 
 use core::{
     fmt::{self, Debug, Formatter},
@@ -19,12 +19,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct SourceId<SR: SignalRuntimeRef> {
+pub(crate) struct SignalId<SR: SignalRuntimeRef> {
     id: SR::Symbol,
     runtime: SR,
 }
 
-impl<SR: SignalRuntimeRef> SourceId<SR> {
+impl<SR: SignalRuntimeRef> SignalId<SR> {
     fn with_runtime(runtime: SR) -> Self {
         Self {
             id: runtime.next_id(),
@@ -84,29 +84,28 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
     }
 }
 
-//TODO: Rename? `raw::RawSignal`?
 /// A slightly higher-level signal primitive than using a runtime's [`SignalRuntimeRef::Symbol`] directly.
 /// This type comes with some lifecycle management to ensure orderly callbacks and safe data access.
-pub struct Source<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> {
-    handle: SourceId<SR>,
+pub struct RawSignal<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> {
+    handle: SignalId<SR>,
     _pinned: PhantomPinned,
     lazy: UnsafeCell<OnceLock<Lazy>>,
     eager: Eager,
 }
 
 unsafe impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Sync
-    for Source<Eager, Lazy, SR>
+    for RawSignal<Eager, Lazy, SR>
 {
     // Access to `eval` is synchronised through `lazy`.
 }
 
 impl<Eager: Sync + ?Sized + Debug, Lazy: Sync + Debug, SR: SignalRuntimeRef + Debug> Debug
-    for Source<Eager, Lazy, SR>
+    for RawSignal<Eager, Lazy, SR>
 where
     SR::Symbol: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Source")
+        f.debug_struct("RawSignal")
             .field("handle", &self.handle)
             .field("_pinned", &self._pinned)
             .field("lazy", &self.lazy)
@@ -114,9 +113,9 @@ where
             .finish()
     }
 }
-impl<SR: SignalRuntimeRef + Unpin> Unpin for Source<(), (), SR> {}
+impl<SR: SignalRuntimeRef + Unpin> Unpin for RawSignal<(), (), SR> {}
 
-impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy, SR> {
+impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, Lazy, SR> {
     pub fn new(eager: Eager) -> Self
     where
         Eager: Sized,
@@ -130,7 +129,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         Eager: Sized,
     {
         Self {
-            handle: SourceId::with_runtime(runtime),
+            handle: SignalId::with_runtime(runtime),
             _pinned: PhantomPinned,
             lazy: OnceLock::new().into(),
             eager: eager.into(),
@@ -147,7 +146,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     ///
     /// After `init` returns, `E::eval` may be called any number of times with the state initialised by `init`, but at most once at a time.
     ///
-    /// [`Source`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
+    /// [`RawSignal`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
     pub fn project_or_init<C: Callbacks<Eager, Lazy, SR>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
@@ -174,7 +173,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                         )),
                         Entry::Occupied(cached) => cached.into_mut(),
                     } {
-                        AssertSend(ptr) => unsafe {
+                        AssertSend(ptr) => {
                             &mut *ptr.cast::<BTreeMap<
                                 CallbackTable<(), SR::CallbackTableTypes>,
                                 Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
@@ -217,7 +216,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     SR: SignalRuntimeRef,
                     C: Callbacks<Eager, Lazy, SR>,
                 >(
-                    this: *const Source<Eager, Lazy, SR>,
+                    this: *const RawSignal<Eager, Lazy, SR>,
                 ) -> Update {
                     let this = &*this;
                     C::UPDATE.expect("unreachable")(
@@ -232,7 +231,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                     SR: SignalRuntimeRef,
                     C: Callbacks<Eager, Lazy, SR>,
                 >(
-                    this: *const Source<Eager, Lazy, SR>,
+                    this: *const RawSignal<Eager, Lazy, SR>,
                     subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
                 ) {
                     let this = &*this;
@@ -254,7 +253,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
 
     /// TODO: Naming! `project_or_init_and_subscribe`?
     ///
-    /// Acts as [`Self::project_or_init`], but also marks this [`Source`] indefinitely as subscribed (until dropped or [`.unsubscribe()`](`Source::unsubscribe`) is called). Idempotent.
+    /// Acts as [`Self::project_or_init`], but also marks this [`RawSignal`] indefinitely as subscribed (until dropped or [`.unsubscribe()`](`RawSignal::unsubscribe`) is called). Idempotent.
     ///
     /// # Safety
     ///
@@ -268,7 +267,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
         projected
     }
 
-    /// Unsubscribes this [`Source`] (only regarding innate subscription!).
+    /// Unsubscribes this [`RawSignal`] (only regarding innate subscription!).
     ///
     /// # Returns
     ///
@@ -334,7 +333,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
                 Pin::new_unchecked(&self.eager),
                 Pin::new_unchecked(match (&*self.lazy.get()).get() {
                     Some(lazy) => lazy,
-                    None => panic!("`Source::track` may only be used after initialisation."),
+                    None => panic!("`RawSignal::track` may only be used after initialisation."),
                 }),
             )
         })
@@ -364,7 +363,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
     }
 }
 
-impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eager, Lazy, SR> {
+impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
     fn drop(&mut self) {
         if unsafe { &*self.lazy.get() }.get().is_some() {
             self.handle.stop()
@@ -372,9 +371,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for Source<Eag
     }
 }
 
-/// Static callback tables used to set up each [`Source`].
+/// Static callback tables used to set up each [`RawSignal`].
 ///
-/// For each [`Source`] instance, these functions are called altogether at most once at a time.
+/// For each [`RawSignal`] instance, these functions are called altogether at most once at a time.
 pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
     /// The primary update callback for signals. Whenever a signal has internally cached state,
     /// it should specify an [`UPDATE`](`Callbacks::UPDATE`) handler to recompute it.
@@ -383,17 +382,17 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
     ///
     /// # Safety
     ///
-    /// Only called once at a time for each initialised [`Source`].
+    /// Only called once at a time for each initialised [`RawSignal`].
     const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update>;
 
     /// A subscription change notification callback.
     ///
     /// # Safety
     ///
-    /// Only called once at a time for each initialised [`Source`], and not concurrently with [`Self::UPDATE`].
+    /// Only called once at a time for each initialised [`RawSignal`], and not concurrently with [`Self::UPDATE`].
     const ON_SUBSCRIBED_CHANGE: Option<
         fn(
-            source: Pin<&Source<Eager, Lazy, SR>>,
+            source: Pin<&RawSignal<Eager, Lazy, SR>>,
             eager: Pin<&Eager>,
             lazy: Pin<&Lazy>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -413,7 +412,7 @@ impl<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> Callbacks<Eager, La
     const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update> = None;
     const ON_SUBSCRIBED_CHANGE: Option<
         fn(
-            source: Pin<&Source<Eager, Lazy, SR>>,
+            source: Pin<&RawSignal<Eager, Lazy, SR>>,
             eager: Pin<&Eager>,
             lazy: Pin<&Lazy>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,

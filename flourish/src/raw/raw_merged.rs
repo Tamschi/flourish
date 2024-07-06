@@ -8,12 +8,12 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
+    raw::{Callbacks, RawSignal},
     runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
-    source::{Callbacks, Source},
 };
 
-use crate::{traits::Subscribable, utils::conjure_zst};
+use crate::{traits::Subscribable, utils::conjure_zst, Source};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -22,7 +22,7 @@ pub(crate) struct RawMerged<
     S: Send + FnMut() -> T,
     M: Send + FnMut(&mut T, T) -> Update,
     SR: SignalRuntimeRef,
->(#[pin] Source<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>);
+>(#[pin] RawSignal<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>);
 
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(T);
@@ -62,7 +62,7 @@ impl<
     > RawMerged<T, S, M, SR>
 {
     pub fn new(select: S, merge: M, runtime: SR) -> Self {
-        Self(Source::with_runtime(
+        Self(RawSignal::with_runtime(
             ForceSyncUnpin((select, merge).into()),
             runtime,
         ))
@@ -177,7 +177,9 @@ impl<
 
     const ON_SUBSCRIBED_CHANGE: Option<
         fn(
-            source: Pin<&Source<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>>,
+            source: Pin<
+                &RawSignal<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>,
+            >,
             eager: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -209,7 +211,7 @@ impl<
         S: Send + FnMut() -> T,
         M: Send + FnMut(&mut T, T) -> Update,
         SR: SignalRuntimeRef,
-    > crate::Source<SR> for RawMerged<T, S, M, SR>
+    > Source<SR> for RawMerged<T, S, M, SR>
 {
     type Value = T;
 

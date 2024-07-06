@@ -8,16 +8,16 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
+    raw::{NoCallbacks, RawSignal},
     runtime::SignalRuntimeRef,
-    source::{NoCallbacks, Source},
 };
 
-use crate::utils::conjure_zst;
+use crate::{utils::conjure_zst, Source};
 
 #[pin_project]
 pub struct RawSubject<T: ?Sized + Send, SR: SignalRuntimeRef> {
     #[pin]
-    source: Source<AssertSync<RwLock<T>>, (), SR>,
+    source: RawSignal<AssertSync<RwLock<T>>, (), SR>,
 }
 
 impl<T: ?Sized + Send + Debug, SR: SignalRuntimeRef + Debug> Debug for RawSubject<T, SR>
@@ -79,7 +79,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         T: Sized,
     {
         Self {
-            source: Source::with_runtime(AssertSync(RwLock::new(initial_value)), runtime),
+            source: RawSignal::with_runtime(AssertSync(RwLock::new(initial_value)), runtime),
         }
     }
 
@@ -358,7 +358,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
     }
 }
 
-impl<T: Send, SR: SignalRuntimeRef> crate::Source<SR> for RawSubject<T, SR> {
+impl<T: Send, SR: SignalRuntimeRef> Source<SR> for RawSubject<T, SR> {
     type Value = T;
 
     fn touch(self: Pin<&Self>) {

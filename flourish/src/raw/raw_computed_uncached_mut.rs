@@ -2,17 +2,17 @@ use std::{borrow::Borrow, pin::Pin, sync::Mutex};
 
 use pin_project::pin_project;
 use pollinate::{
+    raw::{NoCallbacks, RawSignal},
     runtime::SignalRuntimeRef,
     slot::{Slot, Token},
-    source::{NoCallbacks, Source},
 };
 
-use crate::traits::Subscribable;
+use crate::{traits::Subscribable, Source};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawComputedUncachedMut<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
-    #[pin] Source<ForceSyncUnpin<Mutex<F>>, (), SR>,
+    #[pin] RawSignal<ForceSyncUnpin<Mutex<F>>, (), SR>,
 );
 
 #[pin_project]
@@ -27,7 +27,7 @@ unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
 
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedMut<T, F, SR> {
     pub(crate) fn new(f: F, runtime: SR) -> Self {
-        Self(Source::with_runtime(ForceSyncUnpin(f.into()), runtime))
+        Self(RawSignal::with_runtime(ForceSyncUnpin(f.into()), runtime))
     }
 
     fn get(self: Pin<&Self>) -> T {
@@ -70,7 +70,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedM
     }
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> crate::Source<SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
     for RawComputedUncachedMut<T, F, SR>
 {
     type Value = T;

@@ -20,11 +20,7 @@ pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
 /// Signals are not evaluated unless they are subscribed-to (or on demand if if not current).  
 /// Uncached signals are instead evaluated on direct demand **only** (but still communicate subscriptions and invalidation).
 #[derive(Clone)]
-pub struct SignalSR<
-    'a,
-    T: 'a + Send + ?Sized,
-    SR: 'a + ?Sized + SignalRuntimeRef ,
-> {
+pub struct SignalSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> {
     pub(super) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
 }
 
@@ -225,12 +221,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR
 
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct SignalRef<
-    'r,
-    'a,
-    T: 'a + Send + ?Sized,
-    SR: ?Sized + SignalRuntimeRef ,
-> {
+pub struct SignalRef<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> {
     pub(crate) source: *const (dyn 'a + Subscribable<SR, Value = T>),
     _phantom: PhantomData<(&'r (dyn 'a + Subscribable<SR, Value = T>), SR)>,
 }

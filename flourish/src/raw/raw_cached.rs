@@ -8,17 +8,17 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
+    raw::{Callbacks, RawSignal},
     runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
-    source::{Callbacks, Source},
 };
 
-use crate::{traits::Subscribable, utils::conjure_zst};
+use crate::{traits::Subscribable, utils::conjure_zst, Source};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawCached<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>(
-    #[pin] Source<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>,
+    #[pin] RawSignal<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>,
 );
 
 #[pin_project]
@@ -56,7 +56,7 @@ impl<'a, T: ?Sized> Borrow<T> for RawCachedGuardExclusive<'a, T> {
     }
 }
 
-/// TODO: Safety documentation.
+// TODO: Safety documentation.
 unsafe impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef + Sync> Sync
     for RawCached<T, S, SR>
 {
@@ -65,7 +65,10 @@ unsafe impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRe
 impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
     pub fn new(source: S) -> Self {
         let runtime = source.clone_runtime_ref();
-        Self(Source::with_runtime(ForceSyncUnpin(source.into()), runtime))
+        Self(RawSignal::with_runtime(
+            ForceSyncUnpin(source.into()),
+            runtime,
+        ))
     }
 
     pub fn get(self: Pin<&Self>) -> T
@@ -174,7 +177,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>
 
     const ON_SUBSCRIBED_CHANGE: Option<
         fn(
-            source: Pin<&Source<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>>,
+            source: Pin<&RawSignal<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>>,
             eager: Pin<&ForceSyncUnpin<S>>,
             lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -198,7 +201,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> RawC
     }
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> crate::Source<SR>
+impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> Source<SR>
     for RawCached<T, S, SR>
 {
     type Value = T;

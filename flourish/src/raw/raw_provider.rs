@@ -8,11 +8,11 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
+    raw::{Callbacks, RawSignal},
     runtime::{CallbackTableTypes, SignalRuntimeRef},
-    source::{Callbacks, Source},
 };
 
-use crate::utils::conjure_zst;
+use crate::{utils::conjure_zst, Source};
 
 #[pin_project]
 #[repr(transparent)]
@@ -22,7 +22,7 @@ pub struct RawProvider<
     SR: SignalRuntimeRef,
 > {
     #[pin]
-    source: Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>,
+    source: RawSignal<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>,
 }
 
 impl<
@@ -109,7 +109,7 @@ impl<
         T: Sized,
     {
         Self {
-            source: Source::with_runtime(
+            source: RawSignal::with_runtime(
                 AssertSync((Mutex::new(handler), RwLock::new(initial_value))),
                 runtime,
             ),
@@ -408,7 +408,7 @@ impl<
 
     const ON_SUBSCRIBED_CHANGE: Option<
 		fn(
-			source: Pin<&Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,
+			source: Pin<&RawSignal<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,
 			eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>,
 			lazy: Pin<&()>,
 			subscribed: <<SR as SignalRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -418,7 +418,7 @@ impl<
 			T: ?Sized + Send,
 			H: Send + FnMut( <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 			SR: SignalRuntimeRef,
-		>(_: Pin<&Source<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus){
+		>(_: Pin<&RawSignal<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus){
 			eager.0.0.lock().unwrap()(status)
 		}
 
@@ -430,7 +430,7 @@ impl<
         T: Send,
         H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
         SR: SignalRuntimeRef,
-    > crate::Source<SR> for RawProvider<T, H, SR>
+    > Source<SR> for RawProvider<T, H, SR>
 {
     type Value = T;
 

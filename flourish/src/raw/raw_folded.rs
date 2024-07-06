@@ -8,17 +8,17 @@ use std::{
 
 use pin_project::pin_project;
 use pollinate::{
+    raw::{Callbacks, RawSignal},
     runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
-    source::{Callbacks, Source},
 };
 
-use crate::{traits::Subscribable, utils::conjure_zst};
+use crate::{traits::Subscribable, utils::conjure_zst, Source};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
 pub(crate) struct RawFolded<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>(
-    #[pin] Source<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>,
+    #[pin] RawSignal<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>,
 );
 
 #[pin_project]
@@ -49,7 +49,7 @@ unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef + S
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded<T, F, SR> {
     pub fn new(init: T, f: F, runtime: SR) -> Self {
-        Self(Source::with_runtime(
+        Self(RawSignal::with_runtime(
             (ForceSyncUnpin(init.into()), ForceSyncUnpin(f.into())),
             runtime,
         ))
@@ -161,7 +161,9 @@ impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>
 
     const ON_SUBSCRIBED_CHANGE: Option<
         fn(
-            source: Pin<&Source<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>>,
+            source: Pin<
+                &RawSignal<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>,
+            >,
             eager: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
             lazy: Pin<&()>,
             subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -184,7 +186,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
     }
 }
 
-impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> crate::Source<SR>
+impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Source<SR>
     for RawFolded<T, F, SR>
 {
     type Value = T;
