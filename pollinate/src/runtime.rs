@@ -114,7 +114,7 @@ impl ASignalRuntime {
                 borrow.context_stack.push(None); // Important! Dependency isolation.
                 drop(borrow);
                 let r = catch_unwind(|| unsafe { on_subscribed_change(data, value) });
-                let mut borrow = (*lock).borrow_mut();
+                let mut borrow = (**lock).borrow_mut();
                 assert_eq!(borrow.context_stack.pop(), Some(None));
                 if let Err(payload) = r {
                     resume_unwind(payload)
@@ -282,11 +282,11 @@ impl SignalRuntimeRef for &ASignalRuntime {
         let once = Arc::new(OnceCell::<
             Mutex<Option<Result<T, Option<Box<dyn 'static + Send + FnOnce() -> T>>>>>,
         >::new());
-        self.update_or_enqueue(id, {
+        let update = Box::new({
             let weak: Weak<_> = Arc::downgrade(&once);
             let guard = {
                 let weak = weak.clone();
-                scopeguard::guard(f, |f| {
+                scopeguard::guard(f, move |f| {
                     if let Some(once) = weak.upgrade() {
                         once.set_blocking(
                             Some(Err(f.lock().expect("unreachable").borrow_mut().take())).into(),
@@ -298,13 +298,21 @@ impl SignalRuntimeRef for &ASignalRuntime {
             };
             move || {
                 // Allow (rough) cancellation.
-                let f_guard = ScopeGuard::into_inner(guard).lock().expect("unreachable");
+                let arc = ScopeGuard::into_inner(guard);
+                let mut f_guard = arc.lock().expect("unreachable");
                 if let (Some(once), Some(f)) = (weak.upgrade(), f_guard.borrow_mut().take()) {
                     once.set_blocking(Some(Ok(f())).into())
                         .map_err(|_| ())
                         .expect("unreachable");
                 }
             }
+        });
+
+        self.update_or_enqueue(id, unsafe {
+            //SAFETY: This function never handles `F` or `T` after `_f_guard` drops.
+            mem::transmute::<Box<dyn '_ + Send + FnOnce()>, Box<dyn 'static + Send + FnOnce()>>(
+                update,
+            )
         });
 
         let t = match identity(once)
