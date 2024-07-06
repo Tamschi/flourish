@@ -1,7 +1,6 @@
 use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
-    future::IntoFuture,
     mem::{needs_drop, size_of},
     pin::Pin,
     sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},

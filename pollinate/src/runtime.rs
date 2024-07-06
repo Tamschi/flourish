@@ -8,8 +8,6 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
     mem,
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
-    sync::{Arc, Barrier, Mutex, MutexGuard},
-    thread,
 };
 
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};

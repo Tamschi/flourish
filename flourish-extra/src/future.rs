@@ -4,7 +4,6 @@ use std::{
     marker::PhantomData,
     mem::{self, MaybeUninit},
     pin::Pin,
-    process::Output,
     sync::Arc,
 };
 
@@ -176,7 +175,7 @@ pub struct CancellableSlot<T> {
 }
 
 pub fn while_subscribed<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
-    mut load: impl FnMut(CancellableSlot<T>),
+    load: impl FnMut(CancellableSlot<T>),
 ) {
     todo!()
 }
