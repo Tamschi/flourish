@@ -15,7 +15,7 @@ use std::{
 };
 
 use async_lock::OnceCell;
-use parking_lot::{Once, ReentrantMutex, ReentrantMutexGuard};
+use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use scopeguard::{guard, ScopeGuard};
 use stale_queue::{SensorNotification, StaleQueue};
 
@@ -271,17 +271,10 @@ impl SignalRuntimeRef for &ASignalRuntime {
     ) -> Result<T, F> {
         //TODO: This needs critical section to safely extend the lifetime of `f`.
 
-        let f = Arc::new(Mutex::new(Some(unsafe {
-            mem::transmute::<
-                Box<dyn '_ + Send + FnOnce() -> T>,
-                Box<dyn 'static + Send + FnOnce() -> T>,
-            >(Box::new(f))
-        })));
+        let f = Arc::new(Mutex::new(Some(f)));
         let _f_guard = guard(Arc::clone(&f), |f| drop(f.lock().unwrap().take()));
 
-        let once = Arc::new(OnceCell::<
-            Mutex<Option<Result<T, Option<Box<dyn 'static + Send + FnOnce() -> T>>>>>,
-        >::new());
+        let once = Arc::new(OnceCell::<Mutex<Option<Result<T, Option<F>>>>>::new());
         let update = Box::new({
             let weak: Weak<_> = Arc::downgrade(&once);
             let guard = {
@@ -325,12 +318,7 @@ impl SignalRuntimeRef for &ASignalRuntime {
         {
             Some(Ok(t)) => t,
             Some(Err(f)) => {
-                return Err(*unsafe {
-                    Box::from_raw(
-                        Box::into_raw(f.expect("`_f_guard` didn't destroy `f` yet at this point."))
-                            .cast::<F>(),
-                    )
-                })
+                return Err(f.expect("`_f_guard` didn't destroy `f` yet at this point."))
             }
             None => unreachable!(),
         };
