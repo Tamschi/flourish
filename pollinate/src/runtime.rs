@@ -4,15 +4,19 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use std::{
+    borrow::BorrowMut,
     cell::{RefCell, RefMut},
     collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
+    convert::identity,
+    future::Future,
     mem,
     panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
-    sync::{Arc, Weak},
+    sync::{Arc, Mutex, Weak},
 };
 
 use async_lock::OnceCell;
-use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
+use parking_lot::{Once, ReentrantMutex, ReentrantMutexGuard};
+use scopeguard::ScopeGuard;
 use stale_queue::{SensorNotification, StaleQueue};
 
 mod deferred_queue;
@@ -38,11 +42,11 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
     /// Whether there was a change.
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
-    fn update_async(
+    fn update_async<T: Send, F: Send + FnOnce() -> T>(
         &self,
         id: Self::Symbol,
-        f: impl 'static + Send + FnOnce(),
-    ) -> impl Send + std::future::Future<Output = ()>;
+        f: F,
+    ) -> impl Send + Future<Output = Result<T, F>>;
     fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
@@ -259,20 +263,66 @@ impl SignalRuntimeRef for &ASignalRuntime {
         self.process_updates_if_ready();
     }
 
-    /// In theory, this could have a much more cancellable alternative, taking an `IntoFuture` instead.
-    async fn update_async(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
-        self.update_or_enqueue(id, move || {
-            f();
-        });
-        // Separate so that propagation also completes first.
-        let once = Arc::new(OnceCell::<()>::new());
-        let weak: Weak<_> = Arc::downgrade(&once);
-        self.update_or_enqueue(id, move || {
-            if let Some(once) = weak.upgrade() {
-                once.set_blocking(()).expect("unreachable");
+    /// Iff polled, schedules `f` to be run as update to the signal with `id`.
+    async fn update_async<T: Send, F: Send + FnOnce() -> T>(
+        &self,
+        id: Self::Symbol,
+        f: F,
+    ) -> Result<T, F> {
+        //TODO: This needs critical section to safely extend the lifetime of `f`.
+
+        let once = Arc::new(OnceCell::<Mutex<Option<Result<T, F>>>>::new());
+        self.update_or_enqueue(id, {
+            let weak: Weak<_> = Arc::downgrade(&once);
+            let guard = {
+                let weak = weak.clone();
+                scopeguard::guard(f, |f| {
+                    if let Some(once) = weak.upgrade() {
+                        once.set_blocking(Some(Err(f)).into())
+                            .map_err(|_| ())
+                            .expect("unreachable");
+                    }
+                })
+            };
+            move || {
+                // Allow (rough) cancellation.
+                if let Some(once) = weak.upgrade() {
+                    once.set_blocking(Some(Ok(ScopeGuard::into_inner(guard)())).into())
+                        .map_err(|_| ())
+                        .expect("unreachable");
+                }
             }
         });
+
+        let t = match identity(once)
+            .wait()
+            .await
+            .lock()
+            .expect("unreachable")
+            .borrow_mut()
+            .take()
+        {
+            Some(Ok(t)) => t,
+            Some(Err(f)) => return Err(f),
+            None => unreachable!(),
+        };
+
+        // Wait again so that propagation also completes first.
+        let once = Arc::new(OnceCell::<()>::new());
+        self.update_or_enqueue(id, {
+            let guard = scopeguard::guard(Arc::downgrade(&once), |c| {
+                if let Some(c) = c.upgrade() {
+                    c.set_blocking(()).expect("unreachable");
+                }
+            });
+            move || {
+                drop(guard);
+            }
+        });
+
         once.wait().await;
+
+        Ok(t)
     }
 
     fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
@@ -486,7 +536,11 @@ impl SignalRuntimeRef for GlobalSignalRuntime {
         (&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue(id.0, f)
     }
 
-    async fn update_async(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
+    async fn update_async<T: Send, F: Send + FnOnce() -> T>(
+        &self,
+        id: Self::Symbol,
+        f: F,
+    ) -> Result<T, F> {
         (&GLOBAL_SIGNAL_RUNTIME).update_async(id.0, f).await
     }
 

@@ -88,6 +88,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastrand"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fc0510504f03c51ada170672ac806f1f105a88aa97a5281117e1ddc3368e51a"
+
+[[package]]
 name = "flourish"
 version = "0.0.0"
 dependencies = [
@@ -112,6 +118,23 @@ dependencies = [
  "async-lock",
  "flourish",
  "num-traits",
+]
+
+[[package]]
+name = "futures-core"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfc6580bb841c5a68e9ef15c77ccc837b40a7504914d52e47b8b0e9bbda25a1d"
+
+[[package]]
+name = "futures-lite"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52527eb5074e35e9339c6b4e8d12600c7128b68fb25dcb9fa9dec18f7c25f3a5"
+dependencies = [
+ "fastrand",
+ "futures-core",
+ "pin-project-lite",
 ]
 
 [[package]]
@@ -199,7 +222,9 @@ name = "pollinate"
 version = "0.0.0"
 dependencies = [
  "async-lock",
+ "futures-lite",
  "parking_lot",
+ "scopeguard",
 ]
 
 [[package]]

@@ -8,7 +8,7 @@ use std::{
     cell::UnsafeCell,
     collections::{btree_map::Entry, BTreeMap},
     mem::{self, MaybeUninit},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use crate::{
@@ -65,8 +65,8 @@ impl<SR: SignalRuntimeRef> SourceId<SR> {
         self.runtime.update_or_enqueue(self.id, f);
     }
 
-    async fn update_async(&self, f: impl 'static + Send + FnOnce()) {
-        self.runtime.update_async(self.id, f).await;
+    async fn update_async<T: Send, F: Send + FnOnce() -> T>(&self, f: F) -> Result<T, F> {
+        self.runtime.update_async(self.id, f).await
     }
 
     fn update_blocking(&self, f: impl FnOnce()) {
@@ -306,7 +306,11 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Source<Eager, Lazy,
             )
         });
         let update: Box<dyn 'static + Send + FnOnce()> = unsafe { mem::transmute(update) };
-        self.handle.update_async(update).await;
+        self.handle
+            .update_async(update)
+            .await
+            .map_err(|_| ())
+            .expect("Cancelling the update in a way this here would be reached would require calling `.stop()`, which isn't possible here because that requires an exclusive/`mut` reference.");
     }
 
     pub fn update_blocking<F: FnOnce(&Eager, &OnceLock<Lazy>)>(&self, f: F) {
