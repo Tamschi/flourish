@@ -16,7 +16,7 @@ use std::{
 
 use async_lock::OnceCell;
 use parking_lot::{Once, ReentrantMutex, ReentrantMutexGuard};
-use scopeguard::ScopeGuard;
+use scopeguard::{guard, ScopeGuard};
 use stale_queue::{SensorNotification, StaleQueue};
 
 mod deferred_queue;
@@ -271,23 +271,36 @@ impl SignalRuntimeRef for &ASignalRuntime {
     ) -> Result<T, F> {
         //TODO: This needs critical section to safely extend the lifetime of `f`.
 
-        let once = Arc::new(OnceCell::<Mutex<Option<Result<T, F>>>>::new());
+        let f = Arc::new(Mutex::new(Some(unsafe {
+            mem::transmute::<
+                Box<dyn '_ + Send + FnOnce() -> T>,
+                Box<dyn 'static + Send + FnOnce() -> T>,
+            >(Box::new(f))
+        })));
+        let _f_guard = guard(Arc::clone(&f), |f| drop(f.lock().unwrap().take()));
+
+        let once = Arc::new(OnceCell::<
+            Mutex<Option<Result<T, Option<Box<dyn 'static + Send + FnOnce() -> T>>>>>,
+        >::new());
         self.update_or_enqueue(id, {
             let weak: Weak<_> = Arc::downgrade(&once);
             let guard = {
                 let weak = weak.clone();
                 scopeguard::guard(f, |f| {
                     if let Some(once) = weak.upgrade() {
-                        once.set_blocking(Some(Err(f)).into())
-                            .map_err(|_| ())
-                            .expect("unreachable");
+                        once.set_blocking(
+                            Some(Err(f.lock().expect("unreachable").borrow_mut().take())).into(),
+                        )
+                        .map_err(|_| ())
+                        .expect("unreachable");
                     }
                 })
             };
             move || {
                 // Allow (rough) cancellation.
-                if let Some(once) = weak.upgrade() {
-                    once.set_blocking(Some(Ok(ScopeGuard::into_inner(guard)())).into())
+                let f_guard = ScopeGuard::into_inner(guard).lock().expect("unreachable");
+                if let (Some(once), Some(f)) = (weak.upgrade(), f_guard.borrow_mut().take()) {
+                    once.set_blocking(Some(Ok(f())).into())
                         .map_err(|_| ())
                         .expect("unreachable");
                 }
@@ -303,7 +316,14 @@ impl SignalRuntimeRef for &ASignalRuntime {
             .take()
         {
             Some(Ok(t)) => t,
-            Some(Err(f)) => return Err(f),
+            Some(Err(f)) => {
+                return Err(*unsafe {
+                    Box::from_raw(
+                        Box::into_raw(f.expect("`_f_guard` didn't destroy `f` yet at this point."))
+                            .cast::<F>(),
+                    )
+                })
+            }
             None => unreachable!(),
         };
 
