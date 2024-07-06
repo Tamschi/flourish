@@ -8,7 +8,7 @@ use std::{
     cell::UnsafeCell,
     collections::{btree_map::Entry, BTreeMap},
     mem::{self, MaybeUninit},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Mutex, OnceLock},
 };
 
 use crate::{
