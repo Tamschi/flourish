@@ -42,11 +42,16 @@ pub trait SignalRuntimeRef: Send + Sync + Clone {
     /// Whether there was a change.
     fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
     fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
+
+    /// Iff polled, schedules `f` to be run as update to the signal with `id` (meaning no other callback for `id` may run at the same time).
+    ///
+    /// This may be cancelled by calling [`.stop(id)`](`SignalRuntimeRef::stop`) with the same `id`, in which case `f` is returned.
     fn update_async<T: Send, F: Send + FnOnce() -> T>(
         &self,
         id: Self::Symbol,
         f: F,
     ) -> impl Send + Future<Output = Result<T, F>>;
+
     fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce());
     fn propagate_from(&self, id: Self::Symbol);
     fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
@@ -263,14 +268,11 @@ impl SignalRuntimeRef for &ASignalRuntime {
         self.process_updates_if_ready();
     }
 
-    /// Iff polled, schedules `f` to be run as update to the signal with `id`.
     async fn update_async<T: Send, F: Send + FnOnce() -> T>(
         &self,
         id: Self::Symbol,
         f: F,
     ) -> Result<T, F> {
-        //TODO: This needs critical section to safely extend the lifetime of `f`.
-
         let f = Arc::new(Mutex::new(Some(f)));
         let _f_guard = guard(Arc::clone(&f), |f| drop(f.lock().unwrap().take()));
 
