@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, pin::Pin, sync::Arc};
+use std::{borrow::Borrow, fmt::Debug, marker::PhantomData, pin::Pin, sync::Arc};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
@@ -16,6 +16,23 @@ pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct SubscriptionSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> {
     pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
+}
+
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Debug
+    for SubscriptionSR<'a, T, SR>
+where
+    T: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.source.clone_runtime_ref().run_detached(|| {
+            f.debug_struct("SubscriptionSR")
+                .field(
+                    "(value)",
+                    &(&*self.source.as_ref().read_exclusive()).borrow(),
+                )
+                .finish_non_exhaustive()
+        })
+    }
 }
 
 unsafe impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Send
@@ -37,7 +54,6 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop
 
 /// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
-
     /// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
     ///
     /// The subscribable is [`pull`](`Subscribable::pull`)ed once.
@@ -47,6 +63,19 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> 
             arc.as_ref().pull();
             Self { source: arc }
         })
+    }
+
+    /// Cheaply borrows this [`SubscriptionSR`] as [`SignalRef`], which is [`Clone`].
+    pub fn as_ref(&self) -> SignalRef<'_, 'a, T, SR> {
+        SignalRef {
+            source: {
+                let ptr =
+                    Arc::into_raw(unsafe { Pin::into_inner_unchecked(Pin::clone(&self.source)) });
+                unsafe { Arc::decrement_strong_count(ptr) };
+                ptr
+            },
+            _phantom: PhantomData,
+        }
     }
 
     /// Unsubscribes the [`SubscriptionSR`], turning it into a [`SignalSR`] in the process.
@@ -152,14 +181,6 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
         runtime: SR,
     ) -> Self {
         Self::new(merged(select, merge, runtime))
-    }
-}
-
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef>
-    Borrow<SignalRef<'r, 'a, T, SR>> for SubscriptionSR<'a, T, SR>
-{
-    fn borrow(&self) -> &SignalRef<'r, 'a, T, SR> {
-        unsafe { &*((self as *const Self).cast()) }
     }
 }
 

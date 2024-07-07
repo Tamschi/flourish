@@ -13,15 +13,36 @@ pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
 
 /// A largely type-erased signal handle that is all of [`Clone`], [`Send`], [`Sync`] and [`Unpin`].
 ///
-/// You can [`Borrow`] this handle into a reference without indirection that is [`ToOwned`].
-///
 /// To access values, import [`SourcePin`].
 ///
 /// Signals are not evaluated unless they are subscribed-to (or on demand if if not current).  
 /// Uncached signals are instead evaluated on direct demand **only** (but still communicate subscriptions and invalidation).
-#[derive(Clone)]
 pub struct SignalSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> {
     pub(super) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
+}
+
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Clone for SignalSR<'a, T, SR> {
+    fn clone(&self) -> Self {
+        Self {
+            source: self.source.clone(),
+        }
+    }
+}
+
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Debug for SignalSR<'a, T, SR>
+where
+    T: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.source.clone_runtime_ref().run_detached(|| {
+            f.debug_struct("SignalSR")
+                .field(
+                    "(value)",
+                    &(&*self.source.as_ref().read_exclusive()).borrow(),
+                )
+                .finish_non_exhaustive()
+        })
+    }
 }
 
 unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Send for SignalSR<'a, T, SR> {}
@@ -32,6 +53,19 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     pub fn new(source: impl 'a + Subscribable<SR, Value = T>) -> Self {
         SignalSR {
             source: Arc::pin(source),
+        }
+    }
+
+    /// Cheaply borrows this [`SignalSR`] as [`SignalRef`], which is [`Clone`].
+    pub fn as_ref(&self) -> SignalRef<'_, 'a, T, SR> {
+        SignalRef {
+            source: {
+                let ptr =
+                    Arc::into_raw(unsafe { Pin::into_inner_unchecked(Pin::clone(&self.source)) });
+                unsafe { Arc::decrement_strong_count(ptr) };
+                ptr
+            },
+            _phantom: PhantomData,
         }
     }
 
@@ -52,6 +86,8 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         }
     }
 
+    /// First calls [`self.try_subscribe()`](`SignalSR::try_subscribe`) and, iff that fails,
+    /// falls back to constructing a computed (cached) subscription from `make_fn_pin(self)`'s output.
     pub fn subscribe_or_computed<FnPin: 'a + Send + FnMut() -> T>(
         self,
         make_fn_pin: impl FnOnce(Self) -> FnPin,
@@ -233,12 +269,55 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR
     }
 }
 
-/// A free [`SignalSR`] or [`SubscriptionSR`] borrow that can be easily copied.
-#[repr(transparent)]
+/// A very cheap [`SignalSR`] or [`SubscriptionSR`] borrow that's [`Copy`].
+///
+/// Can be cloned into an additional [`SignalSR`] or subscribed to.
 #[derive(Debug)]
 pub struct SignalRef<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> {
     pub(crate) source: *const (dyn 'a + Subscribable<SR, Value = T>),
-    _phantom: PhantomData<(&'r (dyn 'a + Subscribable<SR, Value = T>), SR)>,
+    pub(crate) _phantom: PhantomData<(&'r (dyn 'a + Subscribable<SR, Value = T>), SR)>,
+}
+
+impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> SignalRef<'r, 'a, T, SR> {
+    /// Cheaply creates an additional [`SignalSR`] managing the same [`Subscribable`].
+    pub fn to_signal(&self) -> SignalSR<'a, T, SR> {
+        SignalSR {
+            source: unsafe {
+                Arc::increment_strong_count(self.source);
+                Pin::new_unchecked(Arc::from_raw(self.source))
+            },
+        }
+    }
+
+    /// Creates a computed (cached) [`SubscriptionSR`] based on this [`SignalRef`].
+    ///
+    /// This is a shortcut past `self.to_signal().subscribe_or_computed(make_fn_pin)`.
+    /// (This method may be slightly more efficient.)
+    pub fn subscribe_computed<FnPin: 'a + Send + FnMut() -> T>(
+        &self,
+        make_fn_pin: impl FnOnce(SignalSR<'a, T, SR>) -> FnPin,
+    ) -> SubscriptionSR<'a, T, SR>
+    where
+        T: Sized,
+    {
+        SubscriptionSR::computed_with_runtime(
+            make_fn_pin(self.to_signal()),
+            unsafe { Pin::new_unchecked(&*self.source) }.clone_runtime_ref(),
+        )
+    }
+}
+
+impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Clone
+    for SignalRef<'r, 'a, T, SR>
+{
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Copy
+    for SignalRef<'r, 'a, T, SR>
+{
 }
 
 unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Send
@@ -251,14 +330,6 @@ unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Sync
     for SignalRef<'r, 'a, T, SR>
 {
     // SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
-}
-
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef>
-    Borrow<SignalRef<'r, 'a, T, SR>> for SignalSR<'a, T, SR>
-{
-    fn borrow(&self) -> &SignalRef<'r, 'a, T, SR> {
-        unsafe { &*((self as *const Self).cast()) }
-    }
 }
 
 impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>

@@ -34,6 +34,22 @@ pub mod __ {
     };
 }
 
+/// Shadows each identifier in place with its [`Clone::clone`].
+///
+/// This is useful to create additional handles:
+///
+/// ```
+/// use flourish::{shadow_clone, Subject, Signal, SourcePin as _};
+///
+/// let a = Subject::new(1);
+/// let b = Subject::new(2);
+/// let c = Signal::computed({
+///     shadow_clone!(a, b);
+///     move || a.get() + b.get()
+/// });
+///
+/// drop((a, b, c));
+/// ```
 #[macro_export]
 macro_rules! shadow_clone {
     ($($ident:ident),*$(,)?) => {

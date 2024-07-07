@@ -36,11 +36,11 @@ pub trait Source<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
     where
         Self::Value: Clone;
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>>
     where
         Self::Value: Sync;
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>;
+    fn read_exclusive<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>>;
 
     fn clone_runtime_ref(&self) -> SR
     where
