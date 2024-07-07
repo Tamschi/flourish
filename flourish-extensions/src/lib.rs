@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![warn(unreachable_pub)]
 
 #[allow(async_fn_in_trait)]
 pub mod prelude {

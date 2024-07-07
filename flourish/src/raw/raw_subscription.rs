@@ -23,6 +23,7 @@ pub struct RawSubscription<
 //TODO: Add some associated methods, like not-boxing `read`/`read_exclusive`.
 //TODO: Turn some of these functions into methods.
 
+#[doc(hidden)]
 pub fn new_raw_unsubscribed_subscription<
     T: Send + Clone,
     S: Subscribable<SR, Output = T>,
@@ -33,12 +34,14 @@ pub fn new_raw_unsubscribed_subscription<
     RawSubscription(RawCached::new(source))
 }
 
+#[doc(hidden)]
 pub fn pull_subscription<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>(
     subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
-    subscription.project_ref().0.pull();
+    subscription.project_ref().0.subscribe_inherently();
 }
 
+#[doc(hidden)]
 pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalRuntimeRef>(
     pin: Pin<&'a impl Source<SR, Output = T>>,
 ) -> Pin<&'a impl Source<SR, Output = T>> {

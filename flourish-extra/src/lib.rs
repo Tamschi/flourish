@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![warn(unreachable_pub)]
 
 use std::{
     ops::{AddAssign, Sub},

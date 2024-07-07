@@ -53,17 +53,19 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedM
         }
     }
 
-    pub fn pull<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+    pub fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
         let fn_pin = unsafe {
             self.project_ref()
                 .0
-                .pull_or_init::<NoCallbacks>(|fn_pin, cache| Self::init(fn_pin, cache))
+                .subscribe_inherently::<NoCallbacks>(|fn_pin, cache| Self::init(fn_pin, cache))?
                 .0
                 .map_unchecked(|r| &r.0)
         };
-        self.project_ref()
-            .0
-            .update_dependency_set(move |_, _| fn_pin.lock().unwrap()())
+        Some(
+            self.project_ref()
+                .0
+                .update_dependency_set(move |_, _| fn_pin.lock().unwrap()()),
+        )
     }
 }
 
@@ -136,11 +138,11 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Subscribable<SR>
     for RawComputedUncachedMut<T, F, SR>
 {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
-        Box::new(self.pull())
+    fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
+        self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)
     }
 
-    fn unsubscribe(self: Pin<&Self>) -> bool {
-        self.project_ref().0.unsubscribe()
+    fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
+        self.project_ref().0.unsubscribe_inherently()
     }
 }

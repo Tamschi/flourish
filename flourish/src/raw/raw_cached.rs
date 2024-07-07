@@ -137,20 +137,20 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Raw
         }
     }
 
-    pub(crate) fn pull(self: Pin<&Self>) -> RawCachedGuard<T> {
-        unsafe {
+    pub(crate) fn subscribe_inherently(self: Pin<&Self>) -> Option<RawCachedGuard<T>> {
+        Some(unsafe {
             //TODO: SAFETY COMMENT.
             mem::transmute::<RawCachedGuard<T>, RawCachedGuard<T>>(RawCachedGuard(
                 self.project_ref()
                     .0
-                    .pull_or_init::<E>(|source, cache| Self::init(source, cache))
+                    .subscribe_inherently::<E>(|source, cache| Self::init(source, cache))?
                     .1
                     .project_ref()
                     .0
                     .read()
                     .unwrap(),
             ))
-        }
+        })
     }
 }
 
@@ -262,11 +262,11 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Sou
 impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Subscribable<SR>
     for RawCached<T, S, SR>
 {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
-        Box::new(self.pull())
+    fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
+        self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)
     }
 
-    fn unsubscribe(self: Pin<&Self>) -> bool {
-        self.project_ref().0.unsubscribe()
+    fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
+        self.project_ref().0.unsubscribe_inherently()
     }
 }

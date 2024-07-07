@@ -1,5 +1,6 @@
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
+#![warn(unreachable_pub)]
 #![doc = include_str!("../README.md")]
 
 pub mod raw;

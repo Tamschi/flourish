@@ -11,7 +11,7 @@ pub type Effect<'a> = EffectSR<'a, GlobalSignalRuntime>;
 /// but instead of caching the value and thereby requiring [`Clone`], it executes side-effects.
 ///
 /// Please note that when an update is received, `drop` consumes the previous value *before* `f` creates the next.
-/// *Both* functions are part of the dependency detection scope.
+/// *Both* closures are part of the dependency detection scope.
 ///
 /// The specified `drop` function also runs when the [`EffectSR`] is dropped.
 #[must_use = "Effects are cancelled when dropped."]
@@ -24,6 +24,9 @@ trait DropHandle {}
 impl<T: ?Sized> DropHandle for T {}
 
 impl<'a, SR: SignalRuntimeRef> EffectSR<'a, SR> {
+    /// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on notification and drop.
+    ///
+    /// *Both* closures are part of the dependency detection scope.
     pub fn new<T: 'a + Send>(
         fn_pin: impl 'a + Send + FnMut() -> T,
         drop_fn_pin: impl 'a + Send + FnMut(T),
@@ -33,6 +36,10 @@ impl<'a, SR: SignalRuntimeRef> EffectSR<'a, SR> {
     {
         Self::new_with_runtime(fn_pin, drop_fn_pin, SR::default())
     }
+
+    /// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on notification and drop.
+    ///
+    /// *Both* closures are part of the dependency detection scope.
     pub fn new_with_runtime<T: 'a + Send>(
         fn_pin: impl 'a + Send + FnMut() -> T,
         drop_fn_pin: impl 'a + Send + FnMut(T),

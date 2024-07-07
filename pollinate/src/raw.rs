@@ -140,7 +140,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
         &mut self.eager
     }
 
-    /// # Safety
+    /// # Safety Notes
     ///
     /// `init` is called exactly once with `receiver` before this function returns for the first time for this instance.
     ///
@@ -251,20 +251,26 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
         }
     }
 
-    /// TODO: Naming! `project_or_init_and_subscribe`?
-    ///
     /// Acts as [`Self::project_or_init`], but also marks this [`RawSignal`] indefinitely as subscribed (until dropped or [`.unsubscribe()`](`RawSignal::unsubscribe`) is called). Idempotent.
     ///
-    /// # Safety
+    /// # Logic
     ///
-    /// This function has the same safety requirements as [`Self::project_or_init`].
-    pub fn pull_or_init<E: Callbacks<Eager, Lazy, SR>>(
+    /// Iff this function is called in parallel,
+    /// initialising and newly subscribing thread **may** differ!
+    ///
+    /// # Returns
+    ///
+    /// [`Some`] iff the inherent subscription is new, otherwise [`None`].
+    ///
+    /// # Safety Notes
+    ///
+    /// This function has the same safety assurances as [`Self::project_or_init`].
+    pub fn subscribe_inherently<E: Callbacks<Eager, Lazy, SR>>(
         self: Pin<&Self>,
         init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
-    ) -> (Pin<&Eager>, Pin<&Lazy>) {
+    ) -> Option<(Pin<&Eager>, Pin<&Lazy>)> {
         let projected = self.project_or_init::<E>(init);
-        self.handle.set_subscription(true);
-        projected
+        self.handle.set_subscription(true).then_some(projected)
     }
 
     /// Unsubscribes this [`RawSignal`] (only regarding innate subscription!).
@@ -274,7 +280,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
     /// Whether this instance was previously innately subscribed.
     ///
     /// An innate subscription is a subscription not caused by a dependent subscriber.
-    pub fn unsubscribe(self: Pin<&Self>) -> bool {
+    pub fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
         self.handle.set_subscription(false)
     }
 

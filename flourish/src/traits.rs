@@ -138,8 +138,16 @@ pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Source<SR> 
     ///
     /// If necessary, this instance is initialised first, so that callbacks are active for it.
     ///
-    /// Additionally, the value is computed or refreshed where necessary, up to the fount(s) of the calculation.
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>>;
+    /// # Logic
+    ///
+    /// The implementor **must** ensure dependencies are evaluated and current iff [`Some`] is returned.
+    ///
+    /// Iff this method is called in parallel, initialising and subscribing calls **may** differ!
+    ///
+    /// # Returns
+    ///
+    /// [`Some`] iff the inherent subscription is new, otherwise [`None`].
+    fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>>;
 
     /// Unsubscribes this [`Subscribable`] (only regarding innate subscription!).
     ///
@@ -148,5 +156,5 @@ pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Source<SR> 
     /// Whether this instance was previously innately subscribed.
     ///
     /// An innate subscription is a subscription not caused by a dependent subscriber.
-    fn unsubscribe(self: Pin<&Self>) -> bool;
+    fn unsubscribe_inherently(self: Pin<&Self>) -> bool;
 }

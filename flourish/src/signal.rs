@@ -77,19 +77,12 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
     }
 
     pub fn try_subscribe(mut self) -> Result<SubscriptionSR<'a, T, SR>, Self> {
-        //TODO: This could be more efficient.
-        match Arc::get_mut(unsafe {
-            mem::transmute::<
-                &'_ mut Pin<Arc<dyn 'a + Subscribable<SR, Output = T>>>,
-                &'_ mut Arc<dyn 'a + Subscribable<SR, Output = T>>,
-            >(&mut self.source)
-        }) {
-            Some(_) => {
-                let source = Pin::clone(&self.source);
-                source.as_ref().pull();
-                Ok(SubscriptionSR { source })
-            }
-            None => Err(self),
+        if (|| self.source.as_ref().subscribe_inherently().is_some())() {
+            Ok(SubscriptionSR {
+                source: self.source,
+            })
+        } else {
+            Err(self)
         }
     }
 

@@ -120,20 +120,20 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
         }
     }
 
-    pub fn pull<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
-        unsafe {
+    pub fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
+        Some(unsafe {
             //TODO: SAFETY COMMENT.
             mem::transmute::<RawFoldedGuard<T>, RawFoldedGuard<T>>(RawFoldedGuard(
                 self.project_ref()
                     .0
-                    .pull_or_init::<E>(|fn_pin, cache| Self::init(fn_pin, cache))
+                    .subscribe_inherently::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
                     .0
                      .0
                      .0
                     .read()
                     .unwrap(),
             ))
-        }
+        })
     }
 }
 
@@ -246,11 +246,11 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Source<SR
 impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Subscribable<SR>
     for RawFolded<T, F, SR>
 {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
-        Box::new(self.pull())
+    fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
+        self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)
     }
 
-    fn unsubscribe(self: Pin<&Self>) -> bool {
-        self.project_ref().0.unsubscribe()
+    fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
+        self.project_ref().0.unsubscribe_inherently()
     }
 }

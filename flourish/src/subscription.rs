@@ -54,7 +54,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop
     for SubscriptionSR<'a, T, SR>
 {
     fn drop(&mut self) {
-        self.source.as_ref().unsubscribe();
+        self.source.as_ref().unsubscribe_inherently();
     }
 }
 
@@ -65,7 +65,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> 
     pub fn new<S: 'a + Subscribable<SR, Output = T>>(source: S) -> Self {
         source.clone_runtime_ref().run_detached(|| {
             let arc = Arc::pin(source);
-            arc.as_ref().pull();
+            arc.as_ref().subscribe_inherently();
             Self { source: arc }
         })
     }
