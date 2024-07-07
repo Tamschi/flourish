@@ -41,8 +41,8 @@ impl<
 where
     SR::Symbol: Debug,
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RawProviderReflexive")
+    fn fmt(&self, fn_pin: &mut Formatter<'_>) -> fmt::Result {
+        fn_pin.debug_struct("RawProviderReflexive")
             .field("source", &&self.source)
             .finish()
     }
@@ -65,8 +65,8 @@ struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
 
 impl<T: Debug + ?Sized, H: Debug> Debug for AssertSync<(Mutex<H>, RwLock<T>)> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let debug_tuple = &mut f.debug_tuple("AssertSync");
+    fn fmt(&self, fn_pin: &mut Formatter<'_>) -> fmt::Result {
+        let debug_tuple = &mut fn_pin.debug_tuple("AssertSync");
         {
             let maybe_guard = self.0 .1.try_read();
             debug_tuple.field(
@@ -424,7 +424,7 @@ impl<
         SR: SignalRuntimeRef,
     > crate::Source<SR> for RawProviderReflexive<T, H, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         (*self).touch();

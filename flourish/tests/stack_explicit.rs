@@ -19,7 +19,7 @@ fn use_macros() {
         },
         flourish::GlobalSignalRuntime
     ));
-    let c = ::core::pin::Pin::into_ref(c) as ::core::pin::Pin<&dyn Source<_, Value = _>>;
+    let c = ::core::pin::Pin::into_ref(c) as ::core::pin::Pin<&dyn Source<_, Output = _>>;
     let d = ::core::pin::pin!(flourish::raw::computed(
         || {
             x.push("d");
@@ -27,7 +27,7 @@ fn use_macros() {
         },
         flourish::GlobalSignalRuntime
     ));
-    let d = ::core::pin::Pin::into_ref(d) as ::core::pin::Pin<&dyn Source<_, Value = _>>;
+    let d = ::core::pin::Pin::into_ref(d) as ::core::pin::Pin<&dyn Source<_, Output = _>>;
     let aa = ::core::pin::pin!(flourish::raw::computed_uncached(
         || {
             x.push("aa");
@@ -35,7 +35,7 @@ fn use_macros() {
         },
         flourish::GlobalSignalRuntime
     ));
-    let aa = ::core::pin::Pin::into_ref(aa) as ::core::pin::Pin<&dyn Source<_, Value = _>>;
+    let aa = ::core::pin::Pin::into_ref(aa) as ::core::pin::Pin<&dyn Source<_, Output = _>>;
     v.expect([]);
     x.expect([]);
 

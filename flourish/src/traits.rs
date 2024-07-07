@@ -10,38 +10,61 @@ use pollinate::runtime::SignalRuntimeRef;
 ///
 /// Note that dropping the [`dyn Source<_>`](`Source`) dynamically **transmutes back**.
 pub trait Source<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
-    type Value: ?Sized + Send;
+    /// The type of value presented by the [`Source`].
+    type Output: ?Sized + Send;
 
+    /// Records `self` as dependency without accessing the value.
     fn touch(self: Pin<&Self>);
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    /// Records `self` as dependency and retrieves a copy of the value.
+    ///
+    /// Prefer [`Source::touch`] where possible.
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         self.get_clone()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    /// Records `self` as dependency and retrieves a clone of the value.
+    ///
+    /// Prefer [`Source::get`] where available.
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone;
+        Self::Output: Sync + Clone;
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    /// Records `self` as dependency and retrieves a copy of the value.
+    ///
+    /// Prefer [`Source::get`] where available.
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         self.get_clone_exclusive()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    /// Records `self` as dependency and retrieves a clone of the value.
+    ///
+    /// Prefer [`Source::get_clone`] where available.
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone;
+        Self::Output: Clone;
 
-    fn read<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>>
+    /// Records `self` as dependency and allows borrowing the value.
+    ///
+    /// Prefer a type-associated `.read()` method where available.
+    fn read<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>>
     where
-        Self::Value: Sync;
+        Self::Output: Sync;
 
-    fn read_exclusive<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>>;
+    /// Records `self` as dependency and allows borrowing the value.
+    ///
+    /// Prefer a type-associated `.read()` method where available.  
+    /// Otherwise, prefer a type-associated `.read_exclusive()` method where available.  
+    /// Otherwise, prefer [`Source::read`] where available.
+    fn read_exclusive<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>>;
 
+    /// Clones this [`SourcePin`]'s [`SignalRuntimeRef`].
     fn clone_runtime_ref(&self) -> SR
     where
         SR: Sized;
@@ -49,38 +72,61 @@ pub trait Source<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
 
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
 pub trait SourcePin<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
-    type Value: ?Sized + Send;
+    /// The type of value presented by the [`SourcePin`].
+    type Output: ?Sized + Send;
 
+    /// Records `self` as dependency without accessing the value.
     fn touch(&self);
 
-    fn get(&self) -> Self::Value
+    /// Records `self` as dependency and retrieves a copy of the value.
+    ///
+    /// Prefer [`SourcePin::touch`] where possible.
+    fn get(&self) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         self.get_clone()
     }
 
-    fn get_clone(&self) -> Self::Value
+    /// Records `self` as dependency and retrieves a clone of the value.
+    ///
+    /// Prefer [`SourcePin::get`] where available.
+    fn get_clone(&self) -> Self::Output
     where
-        Self::Value: Sync + Clone;
+        Self::Output: Sync + Clone;
 
-    fn get_exclusive(&self) -> Self::Value
+    /// Records `self` as dependency and retrieves a copy of the value.
+    ///
+    /// Prefer [`SourcePin::get`] where available.
+    fn get_exclusive(&self) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         self.get_clone_exclusive()
     }
 
-    fn get_clone_exclusive(&self) -> Self::Value
+    /// Records `self` as dependency and retrieves a clone of the value.
+    ///
+    /// Prefer [`SourcePin::get_clone`] where available.
+    fn get_clone_exclusive(&self) -> Self::Output
     where
-        Self::Value: Clone;
+        Self::Output: Clone;
 
-    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>>
+    /// Records `self` as dependency and allows borrowing the value.
+    ///
+    /// Prefer a type-associated `.read()` method where available.
+    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
     where
-        Self::Value: 'r + Sync;
+        Self::Output: 'r + Sync;
 
-    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>>;
+    /// Records `self` as dependency and allows borrowing the value.
+    ///
+    /// Prefer a type-associated `.read()` method where available.  
+    /// Otherwise, prefer a type-associated `.read_exclusive()` method where available.  
+    /// Otherwise, prefer [`SourcePin::read`] where available.
+    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>;
 
+    /// Clones this [`SourcePin`]'s [`SignalRuntimeRef`].
     fn clone_runtime_ref(&self) -> SR
     where
         SR: Sized;
@@ -88,7 +134,12 @@ pub trait SourcePin<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
 
 /// **Combinators should implement this.** Allows [`SignalSR`](`crate::SignalSR`) and [`SubscriptionSR`](`crate::SubscriptionSR`) to manage subscriptions through conversions between each other.
 pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Source<SR> {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>>;
+    /// Subscribes this [`Subscribable`] (only regarding innate subscription)!
+    ///
+    /// If necessary, this instance is initialised first, so that callbacks are active for it.
+    ///
+    /// Additionally, the value is computed or refreshed where necessary, up to the fount(s) of the calculation.
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>>;
 
     /// Unsubscribes this [`Subscribable`] (only regarding innate subscription!).
     ///

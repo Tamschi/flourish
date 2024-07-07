@@ -98,21 +98,32 @@ impl<
         SR: SignalRuntimeRef,
     > RawProvider<T, H, SR>
 {
-    pub fn new(initial_value: T, handler: H) -> Self
+    pub fn new(initial_value: T, on_subscribed_status_change_fn_pin: H) -> Self
     where
         T: Sized,
         SR: Default,
     {
-        Self::with_runtime(initial_value, handler, SR::default())
+        Self::with_runtime(
+            initial_value,
+            on_subscribed_status_change_fn_pin,
+            SR::default(),
+        )
     }
 
-    pub fn with_runtime(initial_value: T, handler: H, runtime: SR) -> Self
+    pub fn with_runtime(
+        initial_value: T,
+        on_subscribed_status_change_fn_pin: H,
+        runtime: SR,
+    ) -> Self
     where
         T: Sized,
     {
         Self {
             source: RawSignal::with_runtime(
-                AssertSync((Mutex::new(handler), RwLock::new(initial_value))),
+                AssertSync((
+                    Mutex::new(on_subscribed_status_change_fn_pin),
+                    RwLock::new(initial_value),
+                )),
                 runtime,
             ),
         }
@@ -416,7 +427,7 @@ impl<
 			subscribed: <<SR as SignalRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		),
 	> = {
-		fn handler<
+		fn on_subscribed_status_change_fn_pin<
 			T: ?Sized + Send,
 			H: Send + FnMut( <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 			SR: SignalRuntimeRef,
@@ -424,7 +435,7 @@ impl<
 			eager.0.0.lock().unwrap()(status)
 		}
 
-		Some(handler::<T,H,SR>)
+		Some(on_subscribed_status_change_fn_pin::<T,H,SR>)
 	};
 }
 
@@ -434,48 +445,48 @@ impl<
         SR: SignalRuntimeRef,
     > Source<SR> for RawProvider<T, H, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         (*self).touch();
     }
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         (*self).get()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         (*self).get_clone()
     }
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         (*self).get_exclusive()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         (*self).get_clone_exclusive()
     }
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
     where
-        Self::Value: Sync,
+        Self::Output: Sync,
     {
         Box::new(self.get_ref().read())
     }
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
         Box::new(self.get_ref().read_exclusive())
     }
 

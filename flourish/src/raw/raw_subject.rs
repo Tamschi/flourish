@@ -361,48 +361,48 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
 }
 
 impl<T: Send, SR: SignalRuntimeRef> Source<SR> for RawSubject<T, SR> {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         (*self).touch();
     }
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         (*self).get()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         (*self).get_clone()
     }
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         (*self).get_exclusive()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         (*self).get_clone_exclusive()
     }
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
     where
-        Self::Value: Sync,
+        Self::Output: Sync,
     {
         Box::new(self.get_ref().read())
     }
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
         Box::new(self.get_ref().read_exclusive())
     }
 

@@ -190,34 +190,34 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
 }
 
 impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR> for SubjectSR<T, SR> {
-    type Value = T;
+    type Output = T;
 
     fn touch(&self) {
         self.subject.as_ref().touch()
     }
 
-    fn get_clone(&self) -> Self::Value
+    fn get_clone(&self) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.subject.as_ref().get_clone()
     }
 
-    fn get_clone_exclusive(&self) -> Self::Value
+    fn get_clone_exclusive(&self) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.subject.as_ref().get_clone_exclusive()
     }
 
-    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>>
+    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
     where
-        Self::Value: 'r + Sync,
+        Self::Output: 'r + Sync,
     {
         self.subject.as_ref().read()
     }
 
-    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>> {
+    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
         self.subject.as_ref().read_exclusive()
     }
 

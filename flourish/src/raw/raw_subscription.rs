@@ -16,7 +16,7 @@ pub struct RawSubscription<
     // necessary to add a generic way to subscribe to sources, but it's possible that this
     // should be crate-private.
     T: Send + Clone,
-    S: Subscribable<SR, Value = T>,
+    S: Subscribable<SR, Output = T>,
     SR: SignalRuntimeRef,
 >(#[pin] RawCached<T, S, SR>);
 
@@ -25,7 +25,7 @@ pub struct RawSubscription<
 
 pub fn new_raw_unsubscribed_subscription<
     T: Send + Clone,
-    S: Subscribable<SR, Value = T>,
+    S: Subscribable<SR, Output = T>,
     SR: SignalRuntimeRef,
 >(
     source: S,
@@ -33,63 +33,63 @@ pub fn new_raw_unsubscribed_subscription<
     RawSubscription(RawCached::new(source))
 }
 
-pub fn pull_subscription<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>(
+pub fn pull_subscription<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>(
     subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
     subscription.project_ref().0.pull();
 }
 
 pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalRuntimeRef>(
-    pin: Pin<&'a impl Source<SR, Value = T>>,
-) -> Pin<&'a impl Source<SR, Value = T>> {
+    pin: Pin<&'a impl Source<SR, Output = T>>,
+) -> Pin<&'a impl Source<SR, Output = T>> {
     pin
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> Source<SR>
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Source<SR>
     for RawSubscription<T, S, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         self.project_ref().0.touch();
     }
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         self.project_ref().0.get()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.project_ref().0.get_clone()
     }
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         self.project_ref().0.get_exclusive()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.project_ref().0.get_clone_exclusive()
     }
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
     where
-        Self::Value: Sync,
+        Self::Output: Sync,
     {
         Box::new(self.project_ref().0.read())
     }
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
         Box::new(self.project_ref().0.read_exclusive())
     }
 

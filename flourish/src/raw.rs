@@ -66,15 +66,15 @@ pub fn provider<
     SR: SignalRuntimeRef,
 >(
     initial_value: T,
-    handler: H,
+    on_subscribed_status_change_fn_pin: H,
     runtime: SR,
 ) -> RawProvider<T, H, SR> {
-    RawProvider::with_runtime(initial_value, handler, runtime)
+    RawProvider::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! provider {
-    ($source:expr, $handler:expr$(,)?) => {{
+    ($source:expr, $on_subscribed_status_change_fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -102,15 +102,15 @@ pub use crate::provider_with_runtime;
 //     SR: SignalRuntimeRef,
 // >(
 //     initial_value: T,
-//     handler: H,
+//     on_subscribed_status_change_fn_pin: H,
 //     runtime: SR,
 // ) -> RawProviderReflexive<T, H, SR> {
-//     RawProviderReflexive::with_runtime(initial_value, handler, runtime)
+//     RawProviderReflexive::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
 // }
 // #[macro_export]
 // #[doc(hidden)]
 // macro_rules! provider_reflexive {
-//     ($source:expr, $handler:expr$(,)?) => {{
+//     ($source:expr, $on_subscribed_status_change_fn_pin:expr$(,)?) => {{
 // 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 // 	}};
 // }
@@ -127,14 +127,14 @@ pub use crate::provider_with_runtime;
 // pub use crate::provider_reflexive_with_runtime;
 
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Subscribable<SR, Value = T>,
-) -> impl 'a + Subscribable<SR, Value = T> {
+    source: impl 'a + Subscribable<SR, Output = T>,
+) -> impl 'a + Subscribable<SR, Output = T> {
     RawCached::<T, _, SR>::new(source)
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! cached {
-    ($f:expr$(,)?) => {{
+    ($fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -153,13 +153,13 @@ pub use crate::cached_from_source;
 pub fn computed<'a, T: 'a + Send, F: 'a + Send + FnMut() -> T, SR: 'a + SignalRuntimeRef>(
     f: F,
     runtime: SR,
-) -> impl 'a + Subscribable<SR, Value = T> {
+) -> impl 'a + Subscribable<SR, Output = T> {
     RawComputed::<T, _, SR>::new(f, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! computed {
-    ($f:expr$(,)?) => {{
+    ($fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -183,13 +183,13 @@ pub fn computed_uncached<
 >(
     f: F,
     runtime: SR,
-) -> impl 'a + Subscribable<SR, Value = T> {
+) -> impl 'a + Subscribable<SR, Output = T> {
     RawComputedUncached::<T, _, SR>::new(f, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! computed_uncached {
-    ($f:expr$(,)?) => {{
+    ($fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -213,13 +213,13 @@ pub fn computed_uncached_mut<
 >(
     f: F,
     runtime: SR,
-) -> impl 'a + Subscribable<SR, Value = T> {
+) -> impl 'a + Subscribable<SR, Output = T> {
     RawComputedUncachedMut::<T, _, SR>::new(f, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! computed_uncached_mut {
-    ($f:expr$(,)?) => {{
+    ($fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -239,39 +239,30 @@ pub fn folded<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
     init: T,
     f: impl 'a + Send + FnMut(&mut T) -> Update,
     runtime: SR,
-) -> impl 'a + Subscribable<SR, Value = T> {
+) -> impl 'a + Subscribable<SR, Output = T> {
     RawFolded::new(init, f, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! folded {
-    ($select:expr, $init:expr, $fold:expr$(,)?) => {{
+    ($init:expr, $fold_fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
 pub use crate::folded;
-#[macro_export]
-#[doc(hidden)]
-macro_rules! folded_from_source {
-    ($source:expr, $init:expr, $f:expr$(,)?) => {{
-		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
-	}};
-}
-#[doc(hidden)]
-pub use crate::folded_from_source;
 
 pub fn merged<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
     select: impl 'a + Send + FnMut() -> T,
     merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
     runtime: SR,
-) -> impl 'a + Subscribable<SR, Value = T> {
+) -> impl 'a + Subscribable<SR, Output = T> {
     RawMerged::new(select, merge, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! merged {
-    ($select:expr, $fold:expr$(,)?) => {{
+    ($select_fn_pin:expr, $merge_fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -280,7 +271,7 @@ pub use crate::merged;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! merged_with_runtime {
-    ($select:expr, $merge:expr, $runtime:expr$(,)?) => {{
+    ($select_fn_pin:expr, $merge_fn_pin:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -290,7 +281,7 @@ pub use crate::merged_with_runtime;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! subscription {
-    ($f:expr$(,)?) => {{
+    ($fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
     }};
 }
@@ -299,7 +290,7 @@ pub use crate::subscription;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! subscription_with_runtime {
-    ($f:expr, $runtime:expr$(,)?) => {{
+    ($fn_pin:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
     }};
 }
@@ -317,7 +308,7 @@ pub use crate::subscription_from_source;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! effect {
-    ($f:expr, $drop:expr$(,)?) => {{
+    ($fn_pin:expr, $drop:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
     }};
 }
@@ -326,7 +317,7 @@ pub use crate::effect;
 #[macro_export]
 #[doc(hidden)]
 macro_rules! effect_with_runtime {
-    ($f:expr, $drop:expr, $runtime:expr$(,)?) => {{
+    ($fn_pin:expr, $drop:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
     }};
 }
@@ -344,74 +335,74 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::subject($initial_value, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = provider!($initial_value:expr, $handler:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::provider($initial_value, $handler, $crate::GlobalSignalRuntime));
+	{let $name:ident = provider!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::provider($initial_value, $on_subscribed_status_change_fn_pin, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = provider_with_runtime!($initial_value:expr, $handler:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::provider($initial_value, $handler, $runtime));
+	{let $name:ident = provider_with_runtime!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::provider($initial_value, $on_subscribed_status_change_fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	// {let $name:ident = provider_reflexive!($initial_value:expr, $handler:expr$(,)?);} => {
-	// 	let $name = ::core::pin::pin!($crate::raw::provider_reflexive($initial_value, $handler, $crate::GlobalSignalRuntime));
+	// {let $name:ident = provider_reflexive!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr$(,)?);} => {
+	// 	let $name = ::core::pin::pin!($crate::raw::provider_reflexive($initial_value, $on_subscribed_status_change_fn_pin, $crate::GlobalSignalRuntime));
 	// 	let $name = ::core::pin::Pin::into_ref($name);
 	// };
-	// {let $name:ident = provider_reflexive_with_runtime!($initial_value:expr, $handler:expr, $runtime:expr$(,)?);} => {
-	// 	let $name = ::core::pin::pin!($crate::raw::provider_reflexive($initial_value, $handler, $runtime));
+	// {let $name:ident = provider_reflexive_with_runtime!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr, $runtime:expr$(,)?);} => {
+	// 	let $name = ::core::pin::pin!($crate::raw::provider_reflexive($initial_value, $on_subscribed_status_change_fn_pin, $runtime));
 	// 	let $name = ::core::pin::Pin::into_ref($name);
 	// };
 	{let $name:ident = cached!($source:expr$(,)?);} => {
 		let $name = ::core::pin::pin!($crate::raw::cached($source));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = computed!($f:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed($f, $crate::GlobalSignalRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = computed!($fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed($fn_pin, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = computed_with_runtime!($f:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed($f, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = computed_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed($fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = computed_uncached!($f:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed_uncached($f, $crate::GlobalSignalRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = computed_uncached!($fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed_uncached($fn_pin, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = computed_uncached_with_runtime!($f:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed_uncached($f, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = computed_uncached_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed_uncached($fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = computed_uncached_mut!($f:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($f, $crate::GlobalSignalRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = computed_uncached_mut!($fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($fn_pin, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = computed_uncached_mut_with_runtime!($f:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($f, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = computed_uncached_mut_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = folded!($init:expr, $f:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::folded($init, $f, $crate::GlobalSignalRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = folded!($init:expr, $fold_fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::folded($init, $fold_fn_pin, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = folded_with_runtime!($init:expr, $f:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::folded($init, $f, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = folded_with_runtime!($init:expr, $fold_fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::folded($init, $fold_fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = merged!($select:expr, $merge:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::merged($select, $merge, $crate::GlobalSignalRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = merged!($select_fn_pin:expr, $merge_fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::merged($select_fn_pin, $merge_fn_pin, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = merged_with_runtime!($select:expr, $merge:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::merged($select, $merge, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Value = _>>;
+	{let $name:ident = merged_with_runtime!($select_fn_pin:expr, $merge_fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::merged($select_fn_pin, $merge_fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = subscription!($f:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::raw::computed($f, $crate::GlobalSignalRuntime)));
+	{let $name:ident = subscription!($fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::raw::computed($fn_pin, $crate::GlobalSignalRuntime)));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$crate::__::pull_subscription($name);
 		let $name = $crate::__::pin_into_pin_impl_source($name);
 	};
-	{let $name:ident = subscription_with_runtime!($f:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::raw::computed($f, $runtime)));
+	{let $name:ident = subscription_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::raw::computed($fn_pin, $runtime)));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$crate::__::pull_subscription($name);
 		let $name = $crate::__::pin_into_pin_impl_source($name);
@@ -422,13 +413,13 @@ macro_rules! signals_helper {
 		$crate::__::pull_subscription($name);
 		let $name = $crate::__::pin_into_pin_impl_source($name);
 	};
-	{let $name:ident = effect!($f:expr, $drop:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $crate::GlobalSignalRuntime));
+	{let $name:ident = effect!($fn_pin:expr, $drop:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($fn_pin, $drop, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$name.pull();
 	};
-	{let $name:ident = effect_with_runtime!($f:expr, $drop:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($f, $drop, $runtime));
+	{let $name:ident = effect_with_runtime!($fn_pin:expr, $drop:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_effect($fn_pin, $drop, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$name.pull();
 	};

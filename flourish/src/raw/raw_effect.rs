@@ -26,12 +26,12 @@ pub fn new_raw_unsubscribed_effect<
     D: Send + FnMut(T),
     SR: SignalRuntimeRef,
 >(
-    source: S,
-    drop: D,
+    init_fn_pin: S,
+    drop_fn_pin: D,
     runtime: SR,
 ) -> RawEffect<T, S, D, SR> {
     RawEffect(RawSignal::with_runtime(
-        ForceSyncUnpin((source, drop).into()),
+        ForceSyncUnpin((init_fn_pin, drop_fn_pin).into()),
         runtime,
     ))
 }

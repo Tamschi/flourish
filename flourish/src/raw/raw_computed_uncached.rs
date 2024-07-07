@@ -28,34 +28,41 @@ unsafe impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef + Sync> Sy
 }
 
 impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> RawComputedUncached<T, F, SR> {
-    pub(crate) fn new(f: F, runtime: SR) -> Self {
-        Self(RawSignal::with_runtime(ForceSyncUnpin(f.into()), runtime))
+    pub(crate) fn new(fn_pin: F, runtime: SR) -> Self {
+        Self(RawSignal::with_runtime(
+            ForceSyncUnpin(fn_pin.into()),
+            runtime,
+        ))
     }
 
     fn get(self: Pin<&Self>) -> T {
-        let f = self.touch();
-        self.project_ref().0.update_dependency_set(move |_, _| f())
+        let fn_pin = self.touch();
+        self.project_ref()
+            .0
+            .update_dependency_set(move |_, _| fn_pin())
     }
 
     pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&F> {
         unsafe {
             self.project_ref()
                 .0
-                .project_or_init::<NoCallbacks>(|f, cache| Self::init(f, cache))
+                .project_or_init::<NoCallbacks>(|fn_pin, cache| Self::init(fn_pin, cache))
                 .0
                 .map_unchecked(|r| &r.0)
         }
     }
 
     pub fn pull<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
-        let f = unsafe {
+        let fn_pin = unsafe {
             self.project_ref()
                 .0
-                .pull_or_init::<NoCallbacks>(|f, cache| Self::init(f, cache))
+                .pull_or_init::<NoCallbacks>(|fn_pin, cache| Self::init(fn_pin, cache))
                 .0
                 .map_unchecked(|r| &r.0)
         };
-        self.project_ref().0.update_dependency_set(move |_, _| f())
+        self.project_ref()
+            .0
+            .update_dependency_set(move |_, _| fn_pin())
     }
 }
 
@@ -72,48 +79,48 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> RawComputedUncac
 impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> Source<SR>
     for RawComputedUncached<T, F, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         self.touch();
     }
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         self.get()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.get()
     }
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         self.get()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.get()
     }
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
     where
-        Self::Value: Sync,
+        Self::Output: Sync,
     {
         Box::new(self.get())
     }
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
         Box::new(self.get())
     }
 
@@ -128,7 +135,7 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> Source<SR>
 impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> Subscribable<SR>
     for RawComputedUncached<T, F, SR>
 {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
         Box::new(self.pull())
     }
 

@@ -42,7 +42,7 @@ pub async fn skip_while<'a, T: 'a + Send + Sync + Clone, SR: 'a + SignalRuntimeR
 }
 
 pub async fn skip_while_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
+    source: impl 'a + Source<SR, Output = T>,
     predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {
     let runtime = source.clone_runtime_ref();
@@ -59,7 +59,7 @@ pub async fn skip_while_from_source_cloned<
     T: 'a + Send + Sync + Clone,
     SR: 'a + SignalRuntimeRef,
 >(
-    source: impl 'a + Source<SR, Value = T>,
+    source: impl 'a + Source<SR, Output = T>,
     predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {
     let runtime = source.clone_runtime_ref();
@@ -111,7 +111,7 @@ pub async fn filter<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
 }
 
 pub async fn filter_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = T>,
+    source: impl 'a + Source<SR, Output = T>,
     predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 ) -> SubscriptionSR<'a, T, SR> {
     let runtime = source.clone_runtime_ref();
@@ -161,7 +161,7 @@ pub async fn flatten_some<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntime
 }
 
 pub async fn flatten_some_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Source<SR, Value = Option<T>>,
+    source: impl 'a + Source<SR, Output = Option<T>>,
 ) -> SubscriptionSR<'a, T, SR> {
     let runtime = source.clone_runtime_ref();
     flatten_some(

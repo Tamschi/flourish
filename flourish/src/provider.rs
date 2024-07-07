@@ -13,6 +13,23 @@ use crate::{raw::RawProvider, traits::Source, SourcePin};
 /// Type inference helper alias for [`ProviderSR`] (using [`GlobalSignalRuntime`]).
 pub type Provider<'a, T> = ProviderSR<'a, T, GlobalSignalRuntime>;
 
+/// [`ProviderSR`] functions the same as [`SubjectSR`](`crate::SubjectSR`),
+/// except that it is notified of its own subscribed status changes.
+///
+/// You can use the "`_cyclic`" constructors to easily create self-referential [`ProviderSR`]s:
+///
+/// ````
+/// use flourish::{Provider, WeakProvider};
+///
+/// let _provider = Provider::new_cyclic(None, |this: WeakProvider<_, _>| move |status| {
+///     match status {
+///         true => {
+///             // You can clone `this` here and then defer the calculation!
+///             this.upgrade().unwrap().set(Some(()));
+///         }
+///         false => this.upgrade().unwrap().set(None),
+///     }
+/// });
 pub struct ProviderSR<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> {
     provider: Pin<
         Arc<
@@ -114,23 +131,26 @@ where
     }
 }
 
-/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
     pub fn new(
         initial_value: T,
-        handler: impl 'a
+        on_subscribed_status_change_fn_pin: impl 'a
             + Send
             + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
     ) -> Self
     where
         SR: Default,
     {
-        Self::with_runtime(initial_value, handler, SR::default())
+        Self::with_runtime(
+            initial_value,
+            on_subscribed_status_change_fn_pin,
+            SR::default(),
+        )
     }
 
     pub fn with_runtime(
         initial_value: T,
-        handler: impl 'a
+        on_subscribed_status_change_fn_pin: impl 'a
             + Send
             + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
         runtime: SR,
@@ -141,29 +161,33 @@ impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
         Self {
             provider: Arc::pin(RawProvider::with_runtime(
                 initial_value,
-                Box::new(handler),
+                Box::new(on_subscribed_status_change_fn_pin),
                 runtime,
             )),
         }
     }
 
     pub fn new_cyclic<
-        H: 'a + Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+        HandlerFnPin: 'a + Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
     >(
         initial_value: T,
-        make_handler: impl FnOnce(&WeakProvider<'a, T, SR>) -> H,
+        make_on_subscribed_status_change_fn_pin: impl FnOnce(WeakProvider<'a, T, SR>) -> HandlerFnPin,
     ) -> Self
     where
         SR: Default,
     {
-        Self::new_cyclic_with_runtime(initial_value, make_handler, SR::default())
+        Self::new_cyclic_with_runtime(
+            initial_value,
+            make_on_subscribed_status_change_fn_pin,
+            SR::default(),
+        )
     }
 
     pub fn new_cyclic_with_runtime<
-        H: 'a + Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+        HandlerFnPin: 'a + Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
     >(
         initial_value: T,
-        make_handler: impl FnOnce(&WeakProvider<'a, T, SR>) -> H,
+        make_on_subscribed_status_change_fn_pin: impl FnOnce(WeakProvider<'a, T, SR>) -> HandlerFnPin,
         runtime: SR,
     ) -> Self
     where
@@ -174,7 +198,7 @@ impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
                 Pin::new_unchecked(Arc::new_cyclic(|weak| {
                     RawProvider::with_runtime(
 						initial_value,
-						Box::new(make_handler(mem::transmute::<&Weak<
+						Box::new(make_on_subscribed_status_change_fn_pin(mem::transmute::<Weak<
 							RawProvider<
 								T,
 								Box<
@@ -184,7 +208,7 @@ impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
 								>,
 								SR,
 							>,
-						>,&WeakProvider<'a,T,SR>>(weak))) as Box<_>,
+						>, WeakProvider<'a,T,SR>>(weak.clone()))) as Box<_>,
 						runtime,
 					)
                 }))
@@ -335,34 +359,34 @@ impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
 impl<'a, T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR>
     for ProviderSR<'a, T, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(&self) {
         self.provider.as_ref().touch();
     }
 
-    fn get_clone(&self) -> Self::Value
+    fn get_clone(&self) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.provider.as_ref().get_clone()
     }
 
-    fn get_clone_exclusive(&self) -> Self::Value
+    fn get_clone_exclusive(&self) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.provider.as_ref().get_clone_exclusive()
     }
 
-    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>>
+    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
     where
-        Self::Value: 'r + Sync,
+        Self::Output: 'r + Sync,
     {
         self.provider.as_ref().read()
     }
 
-    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>> {
+    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
         self.provider.as_ref().read_exclusive()
     }
 

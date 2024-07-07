@@ -28,37 +28,42 @@ unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
 }
 
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedMut<T, F, SR> {
-    pub(crate) fn new(f: F, runtime: SR) -> Self {
-        Self(RawSignal::with_runtime(ForceSyncUnpin(f.into()), runtime))
+    pub(crate) fn new(fn_pin: F, runtime: SR) -> Self {
+        Self(RawSignal::with_runtime(
+            ForceSyncUnpin(fn_pin.into()),
+            runtime,
+        ))
     }
 
     fn get(self: Pin<&Self>) -> T {
         let mutex = self.touch();
-        let mut f = mutex.lock().expect("unreachable");
-        self.project_ref().0.update_dependency_set(move |_, _| f())
+        let mut fn_pin = mutex.lock().expect("unreachable");
+        self.project_ref()
+            .0
+            .update_dependency_set(move |_, _| fn_pin())
     }
 
     pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&Mutex<F>> {
         unsafe {
             self.project_ref()
                 .0
-                .project_or_init::<NoCallbacks>(|f, cache| Self::init(f, cache))
+                .project_or_init::<NoCallbacks>(|fn_pin, cache| Self::init(fn_pin, cache))
                 .0
                 .map_unchecked(|r| &r.0)
         }
     }
 
     pub fn pull<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
-        let f = unsafe {
+        let fn_pin = unsafe {
             self.project_ref()
                 .0
-                .pull_or_init::<NoCallbacks>(|f, cache| Self::init(f, cache))
+                .pull_or_init::<NoCallbacks>(|fn_pin, cache| Self::init(fn_pin, cache))
                 .0
                 .map_unchecked(|r| &r.0)
         };
         self.project_ref()
             .0
-            .update_dependency_set(move |_, _| f.lock().unwrap()())
+            .update_dependency_set(move |_, _| fn_pin.lock().unwrap()())
     }
 }
 
@@ -75,48 +80,48 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedM
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
     for RawComputedUncachedMut<T, F, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         self.touch();
     }
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         self.get()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.get()
     }
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         self.get()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.get()
     }
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
     where
-        Self::Value: Sync,
+        Self::Output: Sync,
     {
         Box::new(self.get())
     }
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
         Box::new(self.get())
     }
 
@@ -131,7 +136,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Subscribable<SR>
     for RawComputedUncachedMut<T, F, SR>
 {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
         Box::new(self.pull())
     }
 

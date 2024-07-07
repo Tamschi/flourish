@@ -48,11 +48,10 @@ unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef + S
 {
 }
 
-/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded<T, F, SR> {
-    pub fn new(init: T, f: F, runtime: SR) -> Self {
+    pub fn new(init: T, fn_pin: F, runtime: SR) -> Self {
         Self(RawSignal::with_runtime(
-            (ForceSyncUnpin(init.into()), ForceSyncUnpin(f.into())),
+            (ForceSyncUnpin(init.into()), ForceSyncUnpin(fn_pin.into())),
             runtime,
         ))
     }
@@ -127,7 +126,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
             mem::transmute::<RawFoldedGuard<T>, RawFoldedGuard<T>>(RawFoldedGuard(
                 self.project_ref()
                     .0
-                    .pull_or_init::<E>(|f, cache| Self::init(f, cache))
+                    .pull_or_init::<E>(|fn_pin, cache| Self::init(fn_pin, cache))
                     .0
                      .0
                      .0
@@ -152,11 +151,11 @@ impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>
             state: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
             _: Pin<&()>,
         ) -> Update {
-            let f = unsafe {
+            let fn_pin = unsafe {
                 //SAFETY: This function has exclusive access to `state`.
                 &mut *state.1 .0.get()
             };
-            f(&mut *state.0 .0.write().unwrap())
+            fn_pin(&mut *state.0 .0.write().unwrap())
         }
         Some(eval)
     };
@@ -191,48 +190,48 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
 impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Source<SR>
     for RawFolded<T, F, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         self.touch();
     }
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         self.get()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.get_clone()
     }
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         self.get_exclusive()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.get_clone_exclusive()
     }
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
     where
-        Self::Value: Sync,
+        Self::Output: Sync,
     {
         Box::new(self.read())
     }
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
         Box::new(self.read_exclusive())
     }
 
@@ -247,7 +246,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Source<SR
 impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Subscribable<SR>
     for RawFolded<T, F, SR>
 {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
         Box::new(self.pull())
     }
 

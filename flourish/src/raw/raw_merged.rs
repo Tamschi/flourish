@@ -55,7 +55,6 @@ unsafe impl<
 {
 }
 
-/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<
         T: Send,
         S: Send + FnMut() -> T,
@@ -63,9 +62,9 @@ impl<
         SR: SignalRuntimeRef,
     > RawMerged<T, S, M, SR>
 {
-    pub fn new(select: S, merge: M, runtime: SR) -> Self {
+    pub fn new(select_fn_pin: S, merge_fn_pin: M, runtime: SR) -> Self {
         Self(RawSignal::with_runtime(
-            ForceSyncUnpin((select, merge).into()),
+            ForceSyncUnpin((select_fn_pin, merge_fn_pin).into()),
             runtime,
         ))
     }
@@ -166,13 +165,13 @@ impl<
             state: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
-            let (select, merge) = unsafe {
+            let (select_fn_pin, merge_fn_pin) = unsafe {
                 //SAFETY: This function has exclusive access to `state`.
                 &mut *state.0.get()
             };
             // TODO: Split this up to avoid congestion where possible.
-            let next_value = select();
-            merge(&mut *cache.project_ref().0.write().unwrap(), next_value)
+            let next_value = select_fn_pin();
+            merge_fn_pin(&mut *cache.project_ref().0.write().unwrap(), next_value)
         }
         Some(eval)
     };
@@ -215,48 +214,48 @@ impl<
         SR: SignalRuntimeRef,
     > Source<SR> for RawMerged<T, S, M, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         self.touch();
     }
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         self.get()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.get_clone()
     }
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         self.get_exclusive()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.get_clone_exclusive()
     }
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
     where
-        Self::Value: Sync,
+        Self::Output: Sync,
     {
         Box::new(self.read())
     }
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
         Box::new(self.read_exclusive())
     }
 
@@ -275,7 +274,7 @@ impl<
         SR: SignalRuntimeRef,
     > Subscribable<SR> for RawMerged<T, S, M, SR>
 {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
         Box::new(self.pull())
     }
 

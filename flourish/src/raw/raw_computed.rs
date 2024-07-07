@@ -48,8 +48,11 @@ unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
 }
 
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
-    pub fn new(f: F, runtime: SR) -> Self {
-        Self(RawSignal::with_runtime(ForceSyncUnpin(f.into()), runtime))
+    pub fn new(fn_pin: F, runtime: SR) -> Self {
+        Self(RawSignal::with_runtime(
+            ForceSyncUnpin(fn_pin.into()),
+            runtime,
+        ))
     }
 
     pub fn get(self: Pin<&Self>) -> T
@@ -109,7 +112,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR
         unsafe {
             self.project_ref()
                 .0
-                .project_or_init::<E>(|f, cache| Self::init(f, cache))
+                .project_or_init::<E>(|fn_pin, cache| Self::init(fn_pin, cache))
                 .1
                 .project_ref()
                 .0
@@ -122,7 +125,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR
             mem::transmute::<RawComputedGuard<T>, RawComputedGuard<T>>(RawComputedGuard(
                 self.project_ref()
                     .0
-                    .pull_or_init::<E>(|f, cache| Self::init(f, cache))
+                    .pull_or_init::<E>(|fn_pin, cache| Self::init(fn_pin, cache))
                     .1
                     .project_ref()
                     .0
@@ -141,11 +144,11 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
         fn(eager: Pin<&ForceSyncUnpin<Mutex<F>>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Update,
     > = {
         fn eval<T: Send, F: Send + FnMut() -> T>(
-            f: Pin<&ForceSyncUnpin<Mutex<F>>>,
+            fn_pin: Pin<&ForceSyncUnpin<Mutex<F>>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
             //FIXME: This is externally synchronised already.
-            let new_value = f.project_ref().0.try_lock().expect("unreachable")();
+            let new_value = fn_pin.project_ref().0.try_lock().expect("unreachable")();
             if needs_drop::<T>() || size_of::<T>() > 0 {
                 *cache.project_ref().0.write().unwrap() = new_value;
             } else {
@@ -172,59 +175,59 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 /// Externally synchronised through guarantees on [`pollinate::init`].
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputed<T, F, SR> {
     unsafe fn init<'a>(
-        f: Pin<&'a ForceSyncUnpin<Mutex<F>>>,
+        fn_pin: Pin<&'a ForceSyncUnpin<Mutex<F>>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
     ) -> Token<'a> {
         cache.write(ForceSyncUnpin(
             //FIXME: This is technically already externally synchronised.
-            f.project_ref().0.try_lock().expect("unreachable")().into(),
+            fn_pin.project_ref().0.try_lock().expect("unreachable")().into(),
         ))
     }
 }
 
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR> for RawComputed<T, F, SR> {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         self.touch();
     }
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         self.get()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.get_clone()
     }
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         self.get_exclusive()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.get_clone_exclusive()
     }
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
     where
-        Self::Value: Sync,
+        Self::Output: Sync,
     {
         Box::new(self.read())
     }
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
         Box::new(self.read_exclusive())
     }
 
@@ -239,7 +242,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR> for RawCo
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Subscribable<SR>
     for RawComputed<T, F, SR>
 {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
         Box::new(self.pull())
     }
 

@@ -1,6 +1,10 @@
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
 #![doc = include_str!("../README.md")]
+//!
+//! # Safety Notes
+//!
+//! [`impl FnMut`](`FnMut`) closures that appear in parameters with "`fn_pin`" in their name are guaranteed to be [pinned](`core::pin`) when called.
 
 pub mod raw;
 
@@ -10,7 +14,7 @@ mod subject;
 pub use subject::{Subject, SubjectSR};
 
 mod provider;
-pub use provider::{Provider, ProviderSR};
+pub use provider::{Provider, ProviderSR, WeakProvider};
 
 mod subscription;
 pub use subscription::{Subscription, SubscriptionSR};

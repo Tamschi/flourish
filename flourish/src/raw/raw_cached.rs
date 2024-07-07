@@ -19,7 +19,7 @@ use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct RawCached<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>(
+pub(crate) struct RawCached<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>(
     #[pin] RawSignal<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>,
 );
 
@@ -59,12 +59,12 @@ impl<'a, T: ?Sized> Borrow<T> for RawCachedGuardExclusive<'a, T> {
 }
 
 // TODO: Safety documentation.
-unsafe impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef + Sync> Sync
+unsafe impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef + Sync> Sync
     for RawCached<T, S, SR>
 {
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
     pub fn new(source: S) -> Self {
         let runtime = source.clone_runtime_ref();
         Self(RawSignal::with_runtime(
@@ -155,13 +155,13 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> RawC
 }
 
 enum E {}
-impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>
     Callbacks<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
     const UPDATE: Option<
         fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Update,
     > = {
-        fn eval<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>(
+        fn eval<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>(
             source: Pin<&ForceSyncUnpin<S>>,
             cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
         ) -> Update {
@@ -191,7 +191,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`pollinate::init`].
-impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
     unsafe fn init<'a>(
         source: Pin<&'a ForceSyncUnpin<S>>,
         cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
@@ -203,51 +203,51 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> RawC
     }
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> Source<SR>
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Source<SR>
     for RawCached<T, S, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(self: Pin<&Self>) {
         self.touch();
     }
 
-    fn get(self: Pin<&Self>) -> Self::Value
+    fn get(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Copy,
+        Self::Output: Sync + Copy,
     {
         self.get()
     }
 
-    fn get_clone(self: Pin<&Self>) -> Self::Value
+    fn get_clone(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.get_clone()
     }
 
-    fn get_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Copy,
+        Self::Output: Copy,
     {
         self.get_exclusive()
     }
 
-    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Value
+    fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.get_clone_exclusive()
     }
 
-    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>>
+    fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
     where
-        Self::Value: Sync,
+        Self::Output: Sync,
     {
         Box::new(self.read())
     }
 
-    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Value>> {
+    fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
         Box::new(self.read_exclusive())
     }
 
@@ -259,10 +259,10 @@ impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> Sour
     }
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Value = T>, SR: SignalRuntimeRef> Subscribable<SR>
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Subscribable<SR>
     for RawCached<T, S, SR>
 {
-    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Value>> {
+    fn pull<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
         Box::new(self.pull())
     }
 

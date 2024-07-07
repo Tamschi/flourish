@@ -1,4 +1,10 @@
-use std::{borrow::Borrow, fmt::Debug, marker::PhantomData, pin::Pin, sync::Arc};
+use std::{
+    borrow::Borrow,
+    fmt::{self, Debug, Formatter},
+    marker::PhantomData,
+    pin::Pin,
+    sync::Arc,
+};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
@@ -15,7 +21,7 @@ pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
 /// Can be directly constructed but also converted to and fro.
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct SubscriptionSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> {
-    pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Value = T>>>,
+    pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Output = T>>>,
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Debug
@@ -23,7 +29,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Debug
 where
     T: Debug,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.source.clone_runtime_ref().run_detached(|| {
             f.debug_struct("SubscriptionSR")
                 .field(
@@ -52,12 +58,11 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop
     }
 }
 
-/// See [rust-lang#98931](https://github.com/rust-lang/rust/issues/98931).
 impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
     /// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
     ///
     /// The subscribable is [`pull`](`Subscribable::pull`)ed once.
-    pub fn new<S: 'a + Subscribable<SR, Value = T>>(source: S) -> Self {
+    pub fn new<S: 'a + Subscribable<SR, Output = T>>(source: S) -> Self {
         source.clone_runtime_ref().run_detached(|| {
             let arc = Arc::pin(source);
             arc.as_ref().pull();
@@ -122,28 +127,28 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
     /// A simple cached computation.
     ///
     /// Wraps [`computed`](`computed()`).
-    pub fn computed(f: impl 'a + Send + FnMut() -> T) -> Self
+    pub fn computed(fn_pin: impl 'a + Send + FnMut() -> T) -> Self
     where
         SR: Default,
     {
-        Self::new(computed(f, SR::default()))
+        Self::new(computed(fn_pin, SR::default()))
     }
 
     /// A simple cached computation.
     ///
     /// Wraps [`computed`](`computed()`).
-    pub fn computed_with_runtime(f: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self {
-        Self::new(computed(f, runtime))
+    pub fn computed_with_runtime(fn_pin: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self {
+        Self::new(computed(fn_pin, runtime))
     }
 
     /// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
     ///
     /// Wraps [`folded`](`folded()`).
-    pub fn folded(init: T, f: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
+    pub fn folded(init: T, fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
     where
         SR: Default,
     {
-        Self::new(folded(init, f, SR::default()))
+        Self::new(folded(init, fold_fn_pin, SR::default()))
     }
 
     /// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
@@ -151,70 +156,70 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
     /// Wraps [`folded`](`folded()`).
     pub fn folded_with_runtime(
         init: T,
-        f: impl 'a + Send + FnMut(&mut T) -> Update,
+        fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update,
         runtime: SR,
     ) -> Self {
-        Self::new(folded(init, f, runtime))
+        Self::new(folded(init, fold_fn_pin, runtime))
     }
 
-    /// `select` computes each value, `merge` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+    /// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
     /// Dependencies are detected across both closures.
     ///
     /// Wraps [`merged`](`merged()`).
     pub fn merged(
-        select: impl 'a + Send + FnMut() -> T,
-        merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
+        select_fn_pin: impl 'a + Send + FnMut() -> T,
+        merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
     ) -> Self
     where
         SR: Default,
     {
-        Self::new(merged(select, merge, SR::default()))
+        Self::new(merged(select_fn_pin, merge_fn_pin, SR::default()))
     }
 
-    /// `select` computes each value, `merge` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+    /// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
     /// Dependencies are detected across both closures.
     ///
     /// Wraps [`merged`](`merged()`).
     pub fn merged_with_runtime(
-        select: impl 'a + Send + FnMut() -> T,
-        merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
+        select_fn_pin: impl 'a + Send + FnMut() -> T,
+        merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
         runtime: SR,
     ) -> Self {
-        Self::new(merged(select, merge, runtime))
+        Self::new(merged(select_fn_pin, merge_fn_pin, runtime))
     }
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>
     for SubscriptionSR<'a, T, SR>
 {
-    type Value = T;
+    type Output = T;
 
     fn touch(&self) {
         self.source.as_ref().touch()
     }
 
-    fn get_clone(&self) -> Self::Value
+    fn get_clone(&self) -> Self::Output
     where
-        Self::Value: Sync + Clone,
+        Self::Output: Sync + Clone,
     {
         self.source.as_ref().get_clone()
     }
 
-    fn get_clone_exclusive(&self) -> Self::Value
+    fn get_clone_exclusive(&self) -> Self::Output
     where
-        Self::Value: Clone,
+        Self::Output: Clone,
     {
         self.source.as_ref().get_clone_exclusive()
     }
 
-    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>>
+    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
     where
-        Self::Value: 'r + Sync,
+        Self::Output: 'r + Sync,
     {
         self.source.as_ref().read()
     }
 
-    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Value>> {
+    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
         self.source.as_ref().read_exclusive()
     }
 
@@ -225,5 +230,3 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR
         self.source.as_ref().clone_runtime_ref()
     }
 }
-
-// TODO: `unsubscribe(self)` to convert into `SignalSR`, `to_signal(&self)`.
