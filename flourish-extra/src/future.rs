@@ -13,12 +13,7 @@ use flourish::{
     Update,
 };
 
-//TODO: Investigate: It may be possible to also implement some of this with a potential
-//      `AttachedEffect` (`Effect` that doesn't use `run_detached`), which may not require
-//      `T: Copy` to avoid leaks.
-//      Or not. Rather, it may be much cleaner if `Signal`s could be converted into `Subscriptions` iff exclusive.
-
-pub async fn skip_while<'a, T: 'a + Send + Sync + Clone, SR: 'a + SignalRuntimeRef>(
+pub async fn skip_while<'a, T: 'a + Send + Sync, SR: 'a + SignalRuntimeRef>(
     fn_pin: impl 'a + Send + FnMut() -> T,
     mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
     runtime: SR,

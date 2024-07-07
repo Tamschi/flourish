@@ -131,7 +131,7 @@ impl<
         }
     }
 
-    pub fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
+    fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
         Some(unsafe {
             //TODO: SAFETY COMMENT.
             mem::transmute::<RawMergedGuard<T>, RawMergedGuard<T>>(RawMergedGuard(

@@ -119,12 +119,7 @@ pub fn sparse_tally_from_source<
     )
 }
 
-pub fn eager_tally<
-    'a,
-    V: 'a,
-    T: 'a + Zero + Send + Clone + AddAssign<V>,
-    SR: 'a + SignalRuntimeRef,
->(
+pub fn eager_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalRuntimeRef>(
     fn_pin: impl 'a + Send + FnMut() -> V,
     runtime: SR,
 ) -> SubscriptionSR<'a, T, SR> {
@@ -142,7 +137,7 @@ pub fn eager_tally_from_source<
     SubscriptionSR::new(sparse_tally_from_source(source))
 }
 
-pub fn map<'a, T: 'a + Send + Sync + Copy, U: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
+pub fn map<'a, T: 'a + Send, U: 'a + Send, SR: 'a + SignalRuntimeRef>(
     mut fn_pin: impl 'a + Send + FnMut() -> T,
     mut map_fn_pin: impl 'a + Send + FnMut(T) -> U,
     runtime: SR,
@@ -150,12 +145,7 @@ pub fn map<'a, T: 'a + Send + Sync + Copy, U: 'a + Send + Clone, SR: 'a + Signal
     computed(move || map_fn_pin(fn_pin()), runtime)
 }
 
-pub fn map_from_source<
-    'a,
-    T: 'a + Send + Sync + Copy,
-    U: 'a + Send + Clone,
-    SR: 'a + SignalRuntimeRef,
->(
+pub fn map_from_source<'a, T: 'a + Send + Sync + Copy, U: 'a + Send, SR: 'a + SignalRuntimeRef>(
     source: impl 'a + Source<SR, Output = T>,
     map_fn_pin: impl 'a + Send + FnMut(T) -> U,
 ) -> impl 'a + Subscribable<SR, Output = U> {

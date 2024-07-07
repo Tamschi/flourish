@@ -1,6 +1,7 @@
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
+// #![warn(clippy::single_call_fn)]
 #![doc = include_str!("../README.md")]
 //!
 //! # Safety Notes
@@ -17,6 +18,9 @@ pub use subject::{Subject, SubjectSR};
 mod provider;
 pub use provider::{Provider, ProviderSR, WeakProvider};
 
+mod signal;
+pub use signal::{Signal, SignalRef, SignalSR};
+
 mod subscription;
 pub use subscription::{Subscription, SubscriptionSR};
 
@@ -25,9 +29,6 @@ pub use effect::{Effect, EffectSR};
 
 mod traits;
 pub use traits::SourcePin;
-
-mod signal;
-pub use signal::{Signal, SignalRef, SignalSR};
 
 pub use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 

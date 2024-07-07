@@ -120,7 +120,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
         }
     }
 
-    pub fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
+    fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
         Some(unsafe {
             //TODO: SAFETY COMMENT.
             mem::transmute::<RawFoldedGuard<T>, RawFoldedGuard<T>>(RawFoldedGuard(

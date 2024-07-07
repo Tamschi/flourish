@@ -65,7 +65,7 @@ unsafe impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeR
 }
 
 impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> RawCached<T, S, SR> {
-    pub fn new(source: S) -> Self {
+    pub(crate) fn new(source: S) -> Self {
         let runtime = source.clone_runtime_ref();
         Self(RawSignal::with_runtime(
             ForceSyncUnpin(source.into()),
@@ -73,7 +73,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Raw
         ))
     }
 
-    pub fn get(self: Pin<&Self>) -> T
+    fn get(self: Pin<&Self>) -> T
     where
         T: Sync + Copy,
     {
@@ -86,14 +86,14 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Raw
         }
     }
 
-    pub fn get_clone(self: Pin<&Self>) -> T
+    fn get_clone(self: Pin<&Self>) -> T
     where
         T: Sync + Clone,
     {
         self.read().borrow().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
+    pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
     where
         T: Sync,
     {
@@ -101,12 +101,12 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Raw
         RawCachedGuard(touch.read().unwrap())
     }
 
-    pub fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+    pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
         let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
         RawCachedGuardExclusive(touch.write().unwrap())
     }
 
-    pub fn get_exclusive(self: Pin<&Self>) -> T
+    fn get_exclusive(self: Pin<&Self>) -> T
     where
         T: Copy,
     {
@@ -119,7 +119,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Raw
         }
     }
 
-    pub fn get_clone_exclusive(self: Pin<&Self>) -> T
+    fn get_clone_exclusive(self: Pin<&Self>) -> T
     where
         T: Clone,
     {
