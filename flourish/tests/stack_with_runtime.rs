@@ -8,8 +8,8 @@ fn use_macros() {
 	let x = &Validator::new();
 
 	signals_helper! {
-		let a = announcer_with_runtime!(1, GlobalSignalRuntime);
-		let b = announcer_with_runtime!(2, GlobalSignalRuntime);
+		let a = source_cell_with_runtime!(1, GlobalSignalRuntime);
+		let b = source_cell_with_runtime!(2, GlobalSignalRuntime);
 	}
 	let (b, set_b) =
 		b.as_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));

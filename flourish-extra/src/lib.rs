@@ -4,14 +4,14 @@
 use std::ops::{AddAssign, Sub};
 
 use flourish::{
-	raw::{computed, folded, Subscribable},
+	raw::{folded, Subscribable},
 	SignalRuntimeRef, SubscriptionSR, Update,
 };
 use num_traits::Zero;
 
 pub mod future;
 
-//BLOCKED: `merge`, `filter` and `fold` (as curried operators) wait on <https://github.com/rust-lang/rust/issues/99697>.
+//BLOCKED: `reduce`, `filter` and `fold` (as curried operators) wait on <https://github.com/rust-lang/rust/issues/99697>.
 
 //TODO: These have extraneous bounds. Change to accept closures to remove some `T: Sync + Copy` bounds.
 
@@ -56,12 +56,4 @@ pub fn eager_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + Signa
 	runtime: SR,
 ) -> SubscriptionSR<'a, T, SR> {
 	SubscriptionSR::new(sparse_tally(fn_pin, runtime))
-}
-
-pub fn map<'a, T: 'a + Send, U: 'a + Send, SR: 'a + SignalRuntimeRef>(
-	mut fn_pin: impl 'a + Send + FnMut() -> T,
-	mut map_fn_pin: impl 'a + Send + FnMut(T) -> U,
-	runtime: SR,
-) -> impl 'a + Subscribable<SR, Output = U> {
-	computed(move || map_fn_pin(fn_pin()), runtime)
 }

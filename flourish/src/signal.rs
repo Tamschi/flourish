@@ -9,7 +9,7 @@ use std::{
 use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-	raw::{computed, computed_uncached, computed_uncached_mut, debounced, folded, merged},
+	raw::{computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced},
 	traits::Subscribable,
 	SourcePin, SubscriptionSR,
 };
@@ -62,7 +62,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
 		}
 	}
 
-	/// Cheaply borrows this [`SignalSR`] as [`SignalRef`], which is [`Clone`].
+	/// Cheaply borrows this [`SignalSR`] as [`SignalRef`], which is [`Copy`].
 	pub fn as_ref(&self) -> SignalRef<'_, 'a, T, SR> {
 		SignalRef {
 			source: {
@@ -226,34 +226,34 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
 		Self::new(folded(init, fold_fn_pin, runtime))
 	}
 
-	/// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
 	/// Dependencies are detected across both closures.
 	///
-	/// Wraps [`merged`](`merged()`).
-	pub fn merged(
+	/// Wraps [`reduced`](`reduced()`).
+	pub fn reduced(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
 	) -> Self
 	where
 		T: Sized,
 		SR: Default,
 	{
-		Self::new(merged(select_fn_pin, merge_fn_pin, SR::default()))
+		Self::new(reduced(select_fn_pin, reduce_fn_pin, SR::default()))
 	}
 
-	/// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
 	/// Dependencies are detected across both closures.
 	///
-	/// Wraps [`merged`](`merged()`).
-	pub fn merged_with_runtime(
+	/// Wraps [`reduced`](`reduced()`).
+	pub fn reduced_with_runtime(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
 		runtime: SR,
 	) -> Self
 	where
 		T: Sized,
 	{
-		Self::new(merged(select_fn_pin, merge_fn_pin, runtime))
+		Self::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
 }
 

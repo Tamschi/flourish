@@ -1,4 +1,4 @@
-use flourish::{shadow_clone, Announcer, Signal, SourcePin as _, Subscription};
+use flourish::{shadow_clone, Signal, SignalCell, SourcePin as _, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -7,8 +7,8 @@ fn use_constructors() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
-	let a = Announcer::new(1);
-	let (b, set_b) = Announcer::new(2)
+	let a = SignalCell::new(1);
+	let (b, set_b) = SignalCell::new(2)
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 	let c = Signal::computed({
 		shadow_clone!(a, b);

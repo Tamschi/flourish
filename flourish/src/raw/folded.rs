@@ -19,7 +19,7 @@ use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct RawFolded<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>(
+pub(crate) struct Folded<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>(
 	#[pin] RawSignal<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>,
 );
 
@@ -27,16 +27,16 @@ pub(crate) struct RawFolded<T: Send, F: Send + FnMut(&mut T) -> Update, SR: Sign
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-struct RawFoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct RawFoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+struct FoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct FoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for RawFoldedGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for FoldedGuard<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawFoldedGuardExclusive<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for FoldedGuardExclusive<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -44,11 +44,11 @@ impl<'a, T: ?Sized> Borrow<T> for RawFoldedGuardExclusive<'a, T> {
 
 /// TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef + Sync> Sync
-	for RawFolded<T, F, SR>
+	for Folded<T, F, SR>
 {
 }
 
-impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded<T, F, SR> {
+impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Folded<T, F, SR> {
 	pub(crate) fn new(init: T, fn_pin: F, runtime: SR) -> Self {
 		Self(RawSignal::with_runtime(
 			(ForceSyncUnpin(init.into()), ForceSyncUnpin(fn_pin.into())),
@@ -80,11 +80,11 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
 	where
 		T: Sync,
 	{
-		RawFoldedGuard(self.touch().read().unwrap())
+		FoldedGuard(self.touch().read().unwrap())
 	}
 
 	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
-		RawFoldedGuardExclusive(self.touch().write().unwrap())
+		FoldedGuardExclusive(self.touch().write().unwrap())
 	}
 
 	pub(crate) fn get_exclusive(self: Pin<&Self>) -> T
@@ -123,7 +123,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
 	fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
 		Some(unsafe {
 			//TODO: SAFETY COMMENT.
-			mem::transmute::<RawFoldedGuard<T>, RawFoldedGuard<T>>(RawFoldedGuard(
+			mem::transmute::<FoldedGuard<T>, FoldedGuard<T>>(FoldedGuard(
 				self.project_ref()
 					.0
 					.subscribe_inherently::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
@@ -176,7 +176,7 @@ impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Update, SR: SignalRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded<T, F, SR> {
+impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Folded<T, F, SR> {
 	unsafe fn init<'a>(
 		state: Pin<&'a (ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
 		lazy: Slot<'a, ()>,
@@ -188,7 +188,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
 }
 
 impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Source<SR>
-	for RawFolded<T, F, SR>
+	for Folded<T, F, SR>
 {
 	type Output = T;
 
@@ -244,7 +244,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Source<SR
 }
 
 impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Subscribable<SR>
-	for RawFolded<T, F, SR>
+	for Folded<T, F, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
 		self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)

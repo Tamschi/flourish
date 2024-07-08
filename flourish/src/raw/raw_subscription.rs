@@ -5,7 +5,7 @@ use pin_project::pin_project;
 
 use crate::traits::Subscribable;
 
-use super::{RawCached, Source};
+use super::{Cached, Source};
 
 #[pin_project]
 #[must_use = "Subscriptions are cancelled when dropped."]
@@ -18,7 +18,7 @@ pub struct RawSubscription<
 	T: Send + Clone,
 	S: Subscribable<SR, Output = T>,
 	SR: SignalRuntimeRef,
->(#[pin] RawCached<T, S, SR>);
+>(#[pin] Cached<T, S, SR>);
 
 //TODO: Add some associated methods, like not-boxing `read`/`read_exclusive`.
 //TODO: Turn some of these functions into methods.
@@ -31,7 +31,7 @@ pub fn new_raw_unsubscribed_subscription<
 >(
 	source: S,
 ) -> RawSubscription<T, S, SR> {
-	RawSubscription(RawCached::new(source))
+	RawSubscription(Cached::new(source))
 }
 
 #[doc(hidden)]

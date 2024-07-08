@@ -1,5 +1,5 @@
 use flourish::{
-	raw::computed, Announcer, GlobalSignalRuntime, Signal, SourcePin as _, Subscription,
+	raw::computed, GlobalSignalRuntime, Signal, SignalCell, SourcePin as _, Subscription,
 };
 
 mod _validator;
@@ -10,7 +10,7 @@ fn debounce_test() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
-	let (get, set) = Announcer::new(0)
+	let (get, set) = SignalCell::new(0)
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 	let debounced = Signal::debounced(move || {
 		x.push("d");

@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use flourish::{Announcer, Signal, SourcePin as _, Subscription};
+use flourish::{Signal, SignalCell, SourcePin as _, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -10,11 +10,11 @@ use _validator::Validator;
 fn heap() {
 	let v = &Validator::new();
 
-	let (a, set_a) = Announcer::new(())
+	let (a, set_a) = SignalCell::new(())
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-	let (b, set_b) = Announcer::new(())
+	let (b, set_b) = SignalCell::new(())
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-	let (c, set_c) = Announcer::new(())
+	let (c, set_c) = SignalCell::new(())
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
 	let roundabout = Signal::computed_uncached_mut({
@@ -59,11 +59,11 @@ fn heap() {
 fn stack() {
 	let v = &Validator::new();
 
-	let (a, set_a) = Announcer::new(())
+	let (a, set_a) = SignalCell::new(())
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-	let (b, set_b) = Announcer::new(())
+	let (b, set_b) = SignalCell::new(())
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-	let (c, set_c) = Announcer::new(())
+	let (c, set_c) = SignalCell::new(())
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
 	let roundabout = Signal::computed_uncached({

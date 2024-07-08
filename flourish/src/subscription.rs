@@ -9,7 +9,7 @@ use std::{
 use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-	raw::{computed, folded, merged},
+	raw::{computed, folded, reduced},
 	traits::Subscribable,
 	SignalRef, SignalSR, SourcePin,
 };
@@ -70,7 +70,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> 
 		})
 	}
 
-	/// Cheaply borrows this [`SubscriptionSR`] as [`SignalRef`], which is [`Clone`].
+	/// Cheaply borrows this [`SubscriptionSR`] as [`SignalRef`], which is [`Copy`].
 	pub fn as_ref(&self) -> SignalRef<'_, 'a, T, SR> {
 		SignalRef {
 			source: {
@@ -162,30 +162,30 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
 		Self::new(folded(init, fold_fn_pin, runtime))
 	}
 
-	/// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
 	/// Dependencies are detected across both closures.
 	///
-	/// Wraps [`merged`](`merged()`).
-	pub fn merged(
+	/// Wraps [`reduced`](`reduced()`).
+	pub fn reduced(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
 	) -> Self
 	where
 		SR: Default,
 	{
-		Self::new(merged(select_fn_pin, merge_fn_pin, SR::default()))
+		Self::new(reduced(select_fn_pin, reduce_fn_pin, SR::default()))
 	}
 
-	/// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
 	/// Dependencies are detected across both closures.
 	///
-	/// Wraps [`merged`](`merged()`).
-	pub fn merged_with_runtime(
+	/// Wraps [`reduced`](`reduced()`).
+	pub fn reduced_with_runtime(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
 		runtime: SR,
 	) -> Self {
-		Self::new(merged(select_fn_pin, merge_fn_pin, runtime))
+		Self::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
 }
 

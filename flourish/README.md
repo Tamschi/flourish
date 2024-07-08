@@ -20,9 +20,9 @@ This makes it a suitable replacement for most standard use cases of RxJS-style o
 You can put signals on the heap:
 
 ```rust
-use flourish::{Announcer, Provider, Signal, Update, Subscription, Effect};
+use flourish::{SignalCell, Provider, Signal, Update, Subscription, Effect};
 
-let _ = Announcer::new(());
+let _ = SignalCell::new(());
 let _ = Provider::new((), |_status| ());
 let _ = Provider::new_cyclic((), |_weak| |_status| ());
 
@@ -33,12 +33,12 @@ let _ = Signal::debounced(|| ());
 let _ = Signal::computed_uncached(|| ()); // `Fn` closure. The others take `FnMut`s.
 let _ = Signal::computed_uncached_mut(|| ());
 let _ = Signal::folded((), |_value| Update::Propagate);
-let _ = Signal::merged(|| (), |_value, _next| Update::Propagate);
+let _ = Signal::reduced(|| (), |_value, _next| Update::Propagate);
 
 // The closure type is erased!
 let _ = Subscription::computed(|| ());
 let _ = Subscription::folded((), |_value| Update::Propagate);
-let _ = Subscription::merged(|| (), |_value, _next| Update::Propagate);
+let _ = Subscription::reduced(|| (), |_value, _next| Update::Propagate);
 
 // The closure and value type are erased!
 // Runs `drop` *before* computing the new value.
@@ -51,7 +51,7 @@ You can also put signals on the stack:
 use flourish::{signals_helper, Update};
 
 signals_helper! {
-  let _announcer = announcer!(());
+  let _source_cell = source_cell!(());
   let _provider = provider!((), |_status| ());
 
   // The closure type is erased!
@@ -61,7 +61,7 @@ signals_helper! {
   let _source = computed_uncached!(|| ());
   let _source = computed_uncached_mut!(|| ());
   let _source = folded!((), |_value| Update::Propagate);
-  let _source = merged!(|| (), |_value, _next| Update::Propagate);
+  let _source = reduced!(|| (), |_value, _next| Update::Propagate);
 
   // The closure type is erased!
   let _source = subscription!(|| ());
@@ -78,16 +78,16 @@ Additionally, inside `flourish::raw`, you can find constructor functions for unp
 `flourish` detects and updates dependencies automatically:
 
 ```rust
-use flourish::{shadow_clone, Announcer, Signal, Subscription, SourcePin as _};
+use flourish::{shadow_clone, SignalCell, Signal, Subscription, SourcePin as _};
 
-let a = Announcer::new("a");
-let b = Announcer::new("b");
-let c = Announcer::new("c");
-let d = Announcer::new("d");
-let e = Announcer::new("e");
-let f = Announcer::new("f");
-let g = Announcer::new("g");
-let index = Announcer::new(0);
+let a = SignalCell::new("a");
+let b = SignalCell::new("b");
+let c = SignalCell::new("c");
+let d = SignalCell::new("d");
+let e = SignalCell::new("e");
+let f = SignalCell::new("f");
+let g = SignalCell::new("g");
+let index = SignalCell::new(0);
 
 let signal = Signal::computed({
   shadow_clone!(a, b, c, d, e, f, g, index);
@@ -130,26 +130,26 @@ The default `GlobalSignalRuntime` notifies signals iteratively from earlier to l
 You can use a different [`isoprenoid`] runtime with the included types and macros (but ideally, alias these items for your own use):
 
 ```rust
-use flourish::{signals_helper, GlobalSignalRuntime, SignalSR, Announcer, SubscriptionSR, Update};
+use flourish::{signals_helper, GlobalSignalRuntime, SignalSR, SignalCell, SubscriptionSR, Update};
 
-let _ = Announcer::with_runtime((), GlobalSignalRuntime);
+let _ = SignalCell::with_runtime((), GlobalSignalRuntime);
 
 let _ = SignalSR::computed_with_runtime(|| (), GlobalSignalRuntime);
 let _ = SignalSR::computed_uncached_with_runtime(|| (), GlobalSignalRuntime);
 let _ = SignalSR::computed_uncached_mut_with_runtime(|| (), GlobalSignalRuntime);
 let _ = SignalSR::folded_with_runtime((), |_value| Update::Propagate, GlobalSignalRuntime);
-let _ = SignalSR::merged_with_runtime(|| (), |_value, _next| Update::Propagate, GlobalSignalRuntime);
+let _ = SignalSR::reduced_with_runtime(|| (), |_value, _next| Update::Propagate, GlobalSignalRuntime);
 
 let _ = SubscriptionSR::computed_with_runtime(|| (), GlobalSignalRuntime);
 
 signals_helper! {
-  let _announcer = announcer_with_runtime!((), GlobalSignalRuntime);
+  let _source_cell = source_cell_with_runtime!((), GlobalSignalRuntime);
 
   let _source = computed_with_runtime!(|| (), GlobalSignalRuntime);
   let _source = computed_uncached_with_runtime!(|| (), GlobalSignalRuntime);
   let _source = computed_uncached_mut_with_runtime!(|| (), GlobalSignalRuntime);
   let _source = folded_with_runtime!((), |_value| Update::Propagate, GlobalSignalRuntime);
-  let _source = merged_with_runtime!(|| (), |_value, _next| Update::Propagate, GlobalSignalRuntime);
+  let _source = reduced_with_runtime!(|| (), |_value, _next| Update::Propagate, GlobalSignalRuntime);
 
   let _source = subscription_with_runtime!(|| (), GlobalSignalRuntime);
 
@@ -157,4 +157,4 @@ signals_helper! {
 }
 ```
 
-Runtime have some leeway regarding in which order they invoke the callbacks. A different runtime may also choose to merge propagation from distinct updates.
+Runtimes have some leeway regarding in which order they invoke the callbacks. A different runtime may also choose to combine propagation from distinct updates, reducing the amount of callback runs.

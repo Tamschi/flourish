@@ -13,7 +13,7 @@ use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct RawComputedUncachedMut<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
+pub(crate) struct ComputedUncachedMut<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
 	#[pin] RawSignal<ForceSyncUnpin<Mutex<F>>, (), SR>,
 );
 
@@ -23,11 +23,11 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
 /// TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
-	for RawComputedUncachedMut<T, F, SR>
+	for ComputedUncachedMut<T, F, SR>
 {
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedMut<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> ComputedUncachedMut<T, F, SR> {
 	pub(crate) fn new(fn_pin: F, runtime: SR) -> Self {
 		Self(RawSignal::with_runtime(
 			ForceSyncUnpin(fn_pin.into()),
@@ -73,14 +73,14 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedM
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedMut<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> ComputedUncachedMut<T, F, SR> {
 	unsafe fn init<'a>(_: Pin<&'a ForceSyncUnpin<Mutex<F>>>, lazy: Slot<'a, ()>) -> Token<'a> {
 		lazy.write(())
 	}
 }
 
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
-	for RawComputedUncachedMut<T, F, SR>
+	for ComputedUncachedMut<T, F, SR>
 {
 	type Output = T;
 
@@ -136,7 +136,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
 }
 
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Subscribable<SR>
-	for RawComputedUncachedMut<T, F, SR>
+	for ComputedUncachedMut<T, F, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
 		self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)

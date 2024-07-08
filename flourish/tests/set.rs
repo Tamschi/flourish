@@ -1,4 +1,4 @@
-use flourish::{shadow_clone, Announcer, Effect, SourcePin, Subscription};
+use flourish::{shadow_clone, Effect, SignalCell, SourcePin, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -6,8 +6,8 @@ use _validator::Validator;
 fn set() {
 	let v = &Validator::new();
 
-	let a = Announcer::new("a");
-	let b = Announcer::new("b");
+	let a = SignalCell::new("a");
+	let b = SignalCell::new("b");
 	let _sub_a = Subscription::computed({
 		shadow_clone!(a);
 		move || v.push(("_sub_a", a.get()))

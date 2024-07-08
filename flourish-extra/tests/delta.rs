@@ -1,5 +1,5 @@
 use flourish::{
-	shadow_clone, Announcer, GlobalSignalRuntime, Signal, SourcePin as _, Subscription,
+	shadow_clone, GlobalSignalRuntime, Signal, SignalCell, SourcePin as _, Subscription,
 };
 
 mod _validator;
@@ -10,7 +10,7 @@ use flourish_extra::delta;
 fn delta_test() {
 	let v = &Validator::new();
 
-	let (get, set) = Announcer::new(1)
+	let (get, set) = SignalCell::new(1)
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 	let delta = Signal::new(delta(get, GlobalSignalRuntime));
 	let sub = Subscription::computed({

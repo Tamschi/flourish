@@ -1,4 +1,4 @@
-use flourish::{Announcer, Effect, SourcePin};
+use flourish::{Effect, SignalCell, SourcePin};
 mod _validator;
 use _validator::Validator;
 
@@ -6,7 +6,7 @@ use _validator::Validator;
 fn heap() {
 	let v = &Validator::new();
 
-	let (a, set_a) = Announcer::new(())
+	let (a, set_a) = SignalCell::new(())
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
 	let e = Effect::new(

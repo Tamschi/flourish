@@ -19,7 +19,7 @@ use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct RawMerged<
+pub(crate) struct Reduced<
 	T: Send,
 	S: Send + FnMut() -> T,
 	M: Send + FnMut(&mut T, T) -> Update,
@@ -30,16 +30,16 @@ pub(crate) struct RawMerged<
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-struct RawMergedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct RawMergedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+struct ReducedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct ReducedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for RawMergedGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for ReducedGuard<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawMergedGuardExclusive<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for ReducedGuardExclusive<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -51,7 +51,7 @@ unsafe impl<
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Update,
 		SR: SignalRuntimeRef + Sync,
-	> Sync for RawMerged<T, S, M, SR>
+	> Sync for Reduced<T, S, M, SR>
 {
 }
 
@@ -60,11 +60,11 @@ impl<
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Update,
 		SR: SignalRuntimeRef,
-	> RawMerged<T, S, M, SR>
+	> Reduced<T, S, M, SR>
 {
-	pub(crate) fn new(select_fn_pin: S, merge_fn_pin: M, runtime: SR) -> Self {
+	pub(crate) fn new(select_fn_pin: S, reduce_fn_pin: M, runtime: SR) -> Self {
 		Self(RawSignal::with_runtime(
-			ForceSyncUnpin((select_fn_pin, merge_fn_pin).into()),
+			ForceSyncUnpin((select_fn_pin, reduce_fn_pin).into()),
 			runtime,
 		))
 	}
@@ -93,11 +93,11 @@ impl<
 	where
 		T: Sync,
 	{
-		RawMergedGuard(self.touch().read().unwrap())
+		ReducedGuard(self.touch().read().unwrap())
 	}
 
 	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
-		RawMergedGuardExclusive(self.touch().write().unwrap())
+		ReducedGuardExclusive(self.touch().write().unwrap())
 	}
 
 	fn get_exclusive(self: Pin<&Self>) -> T
@@ -134,7 +134,7 @@ impl<
 	fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
 		Some(unsafe {
 			//TODO: SAFETY COMMENT.
-			mem::transmute::<RawMergedGuard<T>, RawMergedGuard<T>>(RawMergedGuard(
+			mem::transmute::<ReducedGuard<T>, ReducedGuard<T>>(ReducedGuard(
 				self.project_ref()
 					.0
 					.subscribe_inherently::<E>(|f, cache| Self::init(f, cache))?
@@ -165,13 +165,13 @@ impl<
 			state: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
 			cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
 		) -> Update {
-			let (select_fn_pin, merge_fn_pin) = unsafe {
+			let (select_fn_pin, reduce_fn_pin) = unsafe {
 				//SAFETY: This function has exclusive access to `state`.
 				&mut *state.0.get()
 			};
 			// TODO: Split this up to avoid congestion where possible.
 			let next_value = select_fn_pin();
-			merge_fn_pin(&mut *cache.project_ref().0.write().unwrap(), next_value)
+			reduce_fn_pin(&mut *cache.project_ref().0.write().unwrap(), next_value)
 		}
 		Some(eval)
 	};
@@ -197,7 +197,7 @@ impl<
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Update,
 		SR: SignalRuntimeRef,
-	> RawMerged<T, S, M, SR>
+	> Reduced<T, S, M, SR>
 {
 	unsafe fn init<'a>(
 		state: Pin<&'a ForceSyncUnpin<UnsafeCell<(S, M)>>>,
@@ -212,7 +212,7 @@ impl<
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Update,
 		SR: SignalRuntimeRef,
-	> Source<SR> for RawMerged<T, S, M, SR>
+	> Source<SR> for Reduced<T, S, M, SR>
 {
 	type Output = T;
 
@@ -272,7 +272,7 @@ impl<
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Update,
 		SR: SignalRuntimeRef,
-	> Subscribable<SR> for RawMerged<T, S, M, SR>
+	> Subscribable<SR> for Reduced<T, S, M, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
 		self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)

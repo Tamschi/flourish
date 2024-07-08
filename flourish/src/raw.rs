@@ -2,20 +2,20 @@ use isoprenoid::runtime::{CallbackTableTypes, SignalRuntimeRef, Update};
 
 pub use crate::traits::{Source, Subscribable};
 
-mod raw_cached;
-pub(crate) use raw_cached::RawCached;
+mod cached;
+pub(crate) use cached::Cached;
 
-mod raw_computed;
-pub(crate) use raw_computed::RawComputed;
+mod computed;
+pub(crate) use computed::Computed;
 
-mod raw_computed_uncached;
-pub(crate) use raw_computed_uncached::RawComputedUncached;
+mod computed_uncached;
+pub(crate) use computed_uncached::ComputedUncached;
 
-mod raw_computed_uncached_mut;
-pub(crate) use raw_computed_uncached_mut::RawComputedUncachedMut;
+mod computed_uncached_mut;
+pub(crate) use computed_uncached_mut::ComputedUncachedMut;
 
-mod raw_announcer;
-pub(crate) use raw_announcer::RawAnnouncer;
+mod source_cell;
+pub(crate) use source_cell::SourceCell;
 
 mod raw_provider;
 pub(crate) use raw_provider::RawProvider;
@@ -23,11 +23,11 @@ pub(crate) use raw_provider::RawProvider;
 // mod raw_provider_reflexive;
 // pub(crate) use raw_provider_reflexive::RawProviderReflexive;
 
-mod raw_folded;
-pub(crate) use raw_folded::RawFolded;
+mod folded;
+pub(crate) use folded::Folded;
 
-mod raw_merged;
-pub(crate) use raw_merged::RawMerged;
+mod reduced;
+pub(crate) use reduced::Reduced;
 
 pub(crate) mod raw_subscription;
 
@@ -36,30 +36,30 @@ pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 
 //TODO: Can these individual macros still communicate their eventual return type?
 
-pub fn announcer<T: Send, SR: SignalRuntimeRef>(
+pub fn source_cell<T: Send, SR: SignalRuntimeRef>(
 	initial_value: T,
 	runtime: SR,
-) -> RawAnnouncer<T, SR> {
-	RawAnnouncer::with_runtime(initial_value, runtime)
+) -> SourceCell<T, SR> {
+	SourceCell::with_runtime(initial_value, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
-macro_rules! announcer {
+macro_rules! source_cell {
     ($source:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::announcer;
+pub use crate::source_cell;
 #[macro_export]
 #[doc(hidden)]
-macro_rules! announcer_with_runtime {
+macro_rules! source_cell_with_runtime {
     ($source:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::announcer_with_runtime;
+pub use crate::source_cell_with_runtime;
 
 pub fn provider<
 	T: Send,
@@ -130,7 +130,7 @@ pub use crate::provider_with_runtime;
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
 	source: impl 'a + Subscribable<SR, Output = T>,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-	RawCached::<T, _, SR>::new(source)
+	Cached::<T, _, SR>::new(source)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -155,7 +155,7 @@ pub fn computed<'a, T: 'a + Send, F: 'a + Send + FnMut() -> T, SR: 'a + SignalRu
 	fn_pin: F,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-	RawComputed::<T, _, SR>::new(fn_pin, runtime)
+	Computed::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -185,7 +185,7 @@ pub fn debounced<
 	fn_pin: F,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-	RawMerged::<T, _, _, SR>::new(
+	Reduced::<T, _, _, SR>::new(
 		fn_pin,
 		|value, new_value| {
 			if *value != new_value {
@@ -226,7 +226,7 @@ pub fn computed_uncached<
 	fn_pin: F,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-	RawComputedUncached::<T, _, SR>::new(fn_pin, runtime)
+	ComputedUncached::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -256,7 +256,7 @@ pub fn computed_uncached_mut<
 	fn_pin: F,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-	RawComputedUncachedMut::<T, _, SR>::new(fn_pin, runtime)
+	ComputedUncachedMut::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -282,7 +282,7 @@ pub fn folded<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
 	fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-	RawFolded::new(init, fold_fn_pin, runtime)
+	Folded::new(init, fold_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -294,31 +294,31 @@ macro_rules! folded {
 #[doc(hidden)]
 pub use crate::folded;
 
-pub fn merged<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
+pub fn reduced<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
 	select_fn_pin: impl 'a + Send + FnMut() -> T,
-	merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+	reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-	RawMerged::new(select_fn_pin, merge_fn_pin, runtime)
+	Reduced::new(select_fn_pin, reduce_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
-macro_rules! merged {
-    ($select_fn_pin:expr, $merge_fn_pin:expr$(,)?) => {{
+macro_rules! reduced {
+    ($select_fn_pin:expr, $reduce_fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::merged;
+pub use crate::reduced;
 #[macro_export]
 #[doc(hidden)]
-macro_rules! merged_with_runtime {
-    ($select_fn_pin:expr, $merge_fn_pin:expr, $runtime:expr$(,)?) => {{
+macro_rules! reduced_with_runtime {
+    ($select_fn_pin:expr, $reduce_fn_pin:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::merged_with_runtime;
+pub use crate::reduced_with_runtime;
 
 #[macro_export]
 #[doc(hidden)]
@@ -369,12 +369,12 @@ pub use crate::effect_with_runtime;
 /// A helper to bind macros on the stack.
 #[macro_export]
 macro_rules! signals_helper {
-	{let $name:ident = announcer!($initial_value:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::announcer($initial_value, $crate::GlobalSignalRuntime));
+	{let $name:ident = source_cell!($initial_value:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::source_cell($initial_value, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = announcer_with_runtime!($initial_value:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::announcer($initial_value, $runtime));
+	{let $name:ident = source_cell_with_runtime!($initial_value:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::source_cell($initial_value, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = provider!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr$(,)?);} => {
@@ -433,12 +433,12 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::folded($init, $fold_fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = merged!($select_fn_pin:expr, $merge_fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::merged($select_fn_pin, $merge_fn_pin, $crate::GlobalSignalRuntime));
+	{let $name:ident = reduced!($select_fn_pin:expr, $reduce_fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::reduced($select_fn_pin, $reduce_fn_pin, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = merged_with_runtime!($select_fn_pin:expr, $merge_fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::merged($select_fn_pin, $merge_fn_pin, $runtime));
+	{let $name:ident = reduced_with_runtime!($select_fn_pin:expr, $reduce_fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::reduced($select_fn_pin, $reduce_fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
 	{let $name:ident = subscription!($fn_pin:expr$(,)?);} => {
@@ -475,8 +475,8 @@ macro_rules! signals_helper {
 		// The compiler still squiggles the entire macro, unfortunately.
 		::core::compile_error!(::core::concat!(
 			"Unrecognised macro name or wrong argument count (for) `", ::core::stringify!($macro), "`. The following macros are supported:\n",
-			"announcer[_with_runtime]!(1/2), provider[_with_runtime]!(2/3), cached!(1), debounced[_with_runtime]!(1/2), "
-			"computed[_uncached[_mut]][_with_runtime]!(1/2), folded[_with_runtime]!(2/3), merged[_with_runtime]!(2/3), "
+			"source_cell[_with_runtime]!(1/2), provider[_with_runtime]!(2/3), cached!(1), debounced[_with_runtime]!(1/2), ",
+			"computed[_uncached[_mut]][_with_runtime]!(1/2), folded[_with_runtime]!(2/3), reduced[_with_runtime]!(2/3), ",
 			"subscription[_with_runtime]!(1/2), subscription_from_source!(1), effect[_with_runtime]!(2/3)"
 		));
 	};
