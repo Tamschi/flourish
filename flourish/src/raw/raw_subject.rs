@@ -19,7 +19,7 @@ use super::Source;
 #[pin_project]
 pub struct RawSubject<T: ?Sized + Send, SR: SignalRuntimeRef> {
     #[pin]
-    source: RawSignal<AssertSync<RwLock<T>>, (), SR>,
+    signal: RawSignal<AssertSync<RwLock<T>>, (), SR>,
 }
 
 impl<T: ?Sized + Send + Debug, SR: SignalRuntimeRef + Debug> Debug for RawSubject<T, SR>
@@ -28,7 +28,7 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("RawSubject")
-            .field("source", &&self.source)
+            .field("signal", &&self.signal)
             .finish()
     }
 }
@@ -81,7 +81,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         T: Sized,
     {
         Self {
-            source: RawSignal::with_runtime(AssertSync(RwLock::new(initial_value)), runtime),
+            signal: RawSignal::with_runtime(AssertSync(RwLock::new(initial_value)), runtime),
         }
     }
 
@@ -119,7 +119,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
     }
 
     pub fn get_mut<'a>(&'a mut self) -> &mut T {
-        self.source.eager_mut().0.get_mut().unwrap()
+        self.signal.eager_mut().0.get_mut().unwrap()
     }
 
     pub fn get_exclusive(&self) -> T
@@ -145,7 +145,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
     pub(crate) fn touch(&self) -> &RwLock<T> {
         unsafe {
             // SAFETY: Doesn't defer memory access.
-            &*(&Pin::new_unchecked(&self.source)
+            &*(&Pin::new_unchecked(&self.signal)
                 .project_or_init::<NoCallbacks>(|_, slot| slot.write(()))
                 .0
                  .0 as *const _)
@@ -162,10 +162,10 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
             self.update(|value| *value = new_value);
         } else {
             // The write is unobservable, so just skip locking.
-            self.source
+            self.signal
                 .clone_runtime_ref()
                 .run_detached(|| self.touch());
-            self.project_ref().source.update(|_, _| ());
+            self.project_ref().signal.update(|_, _| ());
         }
     }
 
@@ -175,11 +175,11 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         SR: Sync,
         SR::Symbol: Sync,
     {
-        self.source
+        self.signal
             .clone_runtime_ref()
             .run_detached(|| self.touch());
         self.project_ref()
-            .source
+            .signal
             .update(|value, _| update(&mut value.0.write().unwrap()))
     }
 
@@ -193,10 +193,10 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
             self.update_async(|value| *value = new_value).await;
         } else {
             // The write is unobservable, so just skip locking.
-            self.source
+            self.signal
                 .clone_runtime_ref()
                 .run_detached(|| self.touch());
-            self.project_ref().source.update_async(|_, _| ()).await;
+            self.project_ref().signal.update_async(|_, _| ()).await;
         }
     }
 
@@ -206,11 +206,11 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         SR: Sync,
         SR::Symbol: Sync,
     {
-        self.source
+        self.signal
             .clone_runtime_ref()
             .run_detached(|| self.touch());
         self.project_ref()
-            .source
+            .signal
             .update_async(|value, _| update(&mut value.0.write().unwrap()))
             .await
     }
@@ -223,15 +223,15 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
             self.update_blocking(|value| *value = new_value)
         } else {
             // The write is unobservable, so just skip locking.
-            self.source.update_blocking(|_, _| ())
+            self.signal.update_blocking(|_, _| ())
         }
     }
 
     pub fn update_blocking(&self, update: impl FnOnce(&mut T)) {
-        self.source
+        self.signal
             .clone_runtime_ref()
             .run_detached(|| self.touch());
-        self.source
+        self.signal
             .update_blocking(|value, _| update(&mut value.0.write().unwrap()))
     }
 
@@ -410,6 +410,6 @@ impl<T: Send, SR: SignalRuntimeRef> Source<SR> for RawSubject<T, SR> {
     where
         SR: Sized,
     {
-        self.source.clone_runtime_ref()
+        self.signal.clone_runtime_ref()
     }
 }
