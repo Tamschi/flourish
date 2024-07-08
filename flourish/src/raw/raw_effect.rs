@@ -1,7 +1,7 @@
 use std::{borrow::BorrowMut, pin::Pin, sync::Mutex};
 
 use pin_project::pin_project;
-use pollinate::{
+use isoprenoid::{
     raw::{Callbacks, RawSignal},
     runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
@@ -61,7 +61,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
         fn(
             eager: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
             lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
-        ) -> pollinate::runtime::Update,
+        ) -> isoprenoid::runtime::Update,
     > = {
         fn eval<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T)>(
             source: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
@@ -91,7 +91,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
 /// # Safety
 ///
 /// These are the only functions that access `cache`.
-/// Externally synchronised through guarantees on [`pollinate::init`].
+/// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
 impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
     RawEffect<T, S, D, SR>
 {

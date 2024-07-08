@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use pollinate::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update};
+use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
     raw::RawProvider,

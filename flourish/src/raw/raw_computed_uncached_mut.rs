@@ -1,7 +1,7 @@
 use std::{borrow::Borrow, pin::Pin, sync::Mutex};
 
 use pin_project::pin_project;
-use pollinate::{
+use isoprenoid::{
     raw::{NoCallbacks, RawSignal},
     runtime::SignalRuntimeRef,
     slot::{Slot, Token},
@@ -72,7 +72,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedM
 /// # Safety
 ///
 /// These are the only functions that access `cache`.
-/// Externally synchronised through guarantees on [`pollinate::init`].
+/// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> RawComputedUncachedMut<T, F, SR> {
     unsafe fn init<'a>(_: Pin<&'a ForceSyncUnpin<Mutex<F>>>, lazy: Slot<'a, ()>) -> Token<'a> {
         lazy.write(())

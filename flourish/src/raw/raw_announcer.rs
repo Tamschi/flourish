@@ -7,7 +7,7 @@ use std::{
 };
 
 use pin_project::pin_project;
-use pollinate::{
+use isoprenoid::{
     raw::{NoCallbacks, RawSignal},
     runtime::{SignalRuntimeRef, Update},
 };

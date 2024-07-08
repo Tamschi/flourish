@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, pin::Pin};
 
-use pollinate::runtime::SignalRuntimeRef;
+use isoprenoid::runtime::SignalRuntimeRef;
 
 /// **Combinators should implement this.** Interface for "raw" (stack-pinnable) signals that have an accessible value.
 ///

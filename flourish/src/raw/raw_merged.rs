@@ -7,7 +7,7 @@ use std::{
 };
 
 use pin_project::pin_project;
-use pollinate::{
+use isoprenoid::{
     raw::{Callbacks, RawSignal},
     runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
     slot::{Slot, Token},
@@ -191,7 +191,7 @@ impl<
 /// # Safety
 ///
 /// These are the only functions that access `cache`.
-/// Externally synchronised through guarantees on [`pollinate::init`].
+/// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
 impl<
         T: Send,
         S: Send + FnMut() -> T,

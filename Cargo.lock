@@ -97,8 +97,8 @@ checksum = "9fc0510504f03c51ada170672ac806f1f105a88aa97a5281117e1ddc3368e51a"
 name = "flourish"
 version = "0.0.0"
 dependencies = [
+ "isoprenoid",
  "pin-project",
- "pollinate",
 ]
 
 [[package]]
@@ -135,6 +135,16 @@ dependencies = [
  "fastrand",
  "futures-core",
  "pin-project-lite",
+]
+
+[[package]]
+name = "isoprenoid"
+version = "0.0.0"
+dependencies = [
+ "async-lock",
+ "futures-lite",
+ "parking_lot",
+ "scopeguard",
 ]
 
 [[package]]
@@ -216,16 +226,6 @@ name = "pin-project-lite"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bda66fc9667c18cb2758a2ac84d1167245054bcf85d5d1aaa6923f45801bdd02"
-
-[[package]]
-name = "pollinate"
-version = "0.0.0"
-dependencies = [
- "async-lock",
- "futures-lite",
- "parking_lot",
- "scopeguard",
-]
 
 [[package]]
 name = "proc-macro2"

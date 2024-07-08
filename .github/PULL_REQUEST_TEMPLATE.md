@@ -1,6 +1,6 @@
 <!-- markdownlint-disable first-line-heading -->
 
-Thank you for your contribution to flourish-pollinate!
+Thank you for your contribution to flourish-isoprenoid!
 
 Before submitting this pull request, please make sure:
 

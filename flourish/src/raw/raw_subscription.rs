@@ -1,7 +1,7 @@
 use std::{borrow::Borrow, pin::Pin};
 
 use pin_project::pin_project;
-use pollinate::runtime::SignalRuntimeRef;
+use isoprenoid::runtime::SignalRuntimeRef;
 
 use crate::traits::Subscribable;
 

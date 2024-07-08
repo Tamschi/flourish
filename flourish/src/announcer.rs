@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, fmt::Debug, pin::Pin, sync::Arc};
 
-use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
+use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
     raw::RawAnnouncer,

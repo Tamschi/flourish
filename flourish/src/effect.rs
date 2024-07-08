@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, pin::Pin};
 
-use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
+use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
 use crate::raw::new_raw_unsubscribed_effect;
 

@@ -8,4 +8,4 @@ edition = "2021"
 
 [dependencies]
 pin-project = "1.1.5"
-pollinate = { path = "../pollinate" }
+isoprenoid = { path = "../isoprenoid" }

@@ -1,6 +1,6 @@
-use pollinate::runtime::CallbackTableTypes;
-use pollinate::runtime::SignalRuntimeRef;
-use pollinate::runtime::Update;
+use isoprenoid::runtime::CallbackTableTypes;
+use isoprenoid::runtime::SignalRuntimeRef;
+use isoprenoid::runtime::Update;
 
 pub use crate::traits::{Source, Subscribable};
 

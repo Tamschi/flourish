@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
+use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
     raw::{computed, computed_uncached, computed_uncached_mut, debounced, folded, merged},

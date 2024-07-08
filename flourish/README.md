@@ -127,7 +127,7 @@ The default `GlobalSignalRuntime` notifies signals iteratively from earlier to l
 
 ## Using a different runtime
 
-You can use a different [`pollinate`] runtime with the included types and macros (but ideally, alias these items for your own use):
+You can use a different [`isoprenoid`] runtime with the included types and macros (but ideally, alias these items for your own use):
 
 ```rust
 use flourish::{signals_helper, GlobalSignalRuntime, SignalSR, Announcer, SubscriptionSR, Update};

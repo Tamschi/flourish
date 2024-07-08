@@ -30,7 +30,7 @@ pub use effect::{Effect, EffectSR};
 mod traits;
 pub use traits::SourcePin;
 
-pub use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
+pub use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 #[doc(hidden = "macro-only")]
 pub mod __ {

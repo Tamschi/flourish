@@ -7,7 +7,7 @@ use std::{
 };
 
 use pin_project::pin_project;
-use pollinate::{
+use isoprenoid::{
     raw::{Callbacks, RawSignal},
     runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
 };
@@ -414,7 +414,7 @@ impl<
         fn(
             eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>,
             lazy: Pin<&()>,
-        ) -> pollinate::runtime::Update,
+        ) -> isoprenoid::runtime::Update,
     > = None;
 
     const ON_SUBSCRIBED_CHANGE: Option<
