@@ -1,6 +1,6 @@
 use std::{
 	borrow::Borrow,
-	mem::{self, size_of},
+	mem,
 	ops::Deref,
 	pin::Pin,
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -13,7 +13,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::{traits::Subscribable, utils::conjure_zst};
+use crate::traits::Subscribable;
 
 use super::Source;
 
@@ -77,13 +77,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cac
 	where
 		T: Sync + Copy,
 	{
-		if size_of::<T>() == 0 {
-			// The read is unobservable, so just skip locking.
-			self.touch();
-			unsafe { conjure_zst() }
-		} else {
-			*self.read().borrow()
-		}
+		*self.read().borrow()
 	}
 
 	fn get_clone(self: Pin<&Self>) -> T
@@ -110,13 +104,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cac
 	where
 		T: Copy,
 	{
-		if size_of::<T>() == 0 {
-			// The read is unobservable, so just skip locking.
-			self.touch();
-			unsafe { conjure_zst() }
-		} else {
-			self.get_clone_exclusive()
-		}
+		self.get_clone_exclusive()
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
@@ -167,11 +155,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>
 		) -> Update {
 			//FIXME: This can be split up to avoid congestion where not necessary.
 			let new_value = source.project_ref().0.get_clone_exclusive();
-			if size_of::<T>() > 0 {
-				*cache.project_ref().0.write().unwrap() = new_value;
-			} else {
-				// The write is unobservable, so just skip locking.
-			}
+			*cache.project_ref().0.write().unwrap() = new_value;
 			Update::Propagate
 		}
 		Some(eval)

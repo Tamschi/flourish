@@ -4,6 +4,10 @@
 // #![warn(clippy::single_call_fn)]
 #![doc = include_str!("../README.md")]
 //!
+//! # Threading Notes
+//!
+//! Please note that *none* of the function in this library are guaranteed to produce *any* memory barriers!
+//!
 //! # Safety Notes
 //!
 //! [`impl FnMut`](`FnMut`) closures that appear in parameters with "`fn_pin`" in their name are guaranteed to be [pinned](`core::pin`) when called.
@@ -64,7 +68,3 @@ macro_rules! shadow_clone {
 		let ($($ident),*) = ($(::std::clone::Clone::clone(&$ident)),*);
 	};
 }
-
-mod utils;
-
-//TODO: Consistent formatting setup (with tabs).

@@ -1,7 +1,7 @@
 use std::{
 	borrow::Borrow,
 	cell::UnsafeCell,
-	mem::{self, size_of},
+	mem,
 	pin::Pin,
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -13,7 +13,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::{traits::Subscribable, utils::conjure_zst};
+use crate::traits::Subscribable;
 
 use super::Source;
 
@@ -73,13 +73,7 @@ impl<
 	where
 		T: Sync + Copy,
 	{
-		if size_of::<T>() == 0 {
-			// The read is unobservable, so just skip locking.
-			self.touch();
-			unsafe { conjure_zst() }
-		} else {
-			*self.read().borrow()
-		}
+		*self.read().borrow()
 	}
 
 	fn get_clone(self: Pin<&Self>) -> T
@@ -104,13 +98,7 @@ impl<
 	where
 		T: Copy,
 	{
-		if size_of::<T>() == 0 {
-			// The read is unobservable, so just skip locking.
-			self.touch();
-			unsafe { conjure_zst() }
-		} else {
-			self.get_clone_exclusive()
-		}
+		self.get_clone_exclusive()
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T

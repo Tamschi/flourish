@@ -1,7 +1,7 @@
 use std::{
 	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
-	mem::{self, size_of},
+	mem,
 	pin::Pin,
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -11,8 +11,6 @@ use isoprenoid::{
 	runtime::{SignalRuntimeRef, Update},
 };
 use pin_project::pin_project;
-
-use crate::utils::conjure_zst;
 
 use super::{Source, Subscribable};
 
@@ -89,13 +87,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 	where
 		T: Sync + Copy,
 	{
-		if size_of::<T>() == 0 {
-			// The read is unobservable, so just skip locking.
-			self.touch();
-			unsafe { conjure_zst() }
-		} else {
-			*self.read().borrow()
-		}
+		*self.read().borrow()
 	}
 
 	pub fn get_clone(&self) -> T
@@ -126,13 +118,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 	where
 		T: Copy,
 	{
-		if size_of::<T>() == 0 {
-			// The read is unobservable, so just skip locking.
-			self.touch();
-			unsafe { conjure_zst() }
-		} else {
-			self.get_clone_exclusive()
-		}
+		self.get_clone_exclusive()
 	}
 
 	pub fn get_clone_exclusive(&self) -> T
@@ -158,30 +144,14 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		if size_of::<T>() > 0 {
-			self.update(|value| {
-				if *value != new_value {
-					*value = new_value;
-					Update::Propagate
-				} else {
-					Update::Halt
-				}
-			});
-		} else {
-			// The write is unobservable, so just skip locking.
-			self.signal
-				.clone_runtime_ref()
-				.run_detached(|| self.touch());
-			self.project_ref().signal.update(move |_, _| {
-				//SAFETY: `T`'s size is 0.
-				//        That means it has no identity, not even by address.
-				if new_value != new_value {
-					Update::Propagate
-				} else {
-					Update::Halt
-				}
-			});
-		}
+		self.update(|value| {
+			if *value != new_value {
+				*value = new_value;
+				Update::Propagate
+			} else {
+				Update::Halt
+			}
+		});
 	}
 
 	pub fn replace(self: Pin<&Self>, new_value: T)
@@ -190,21 +160,10 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		if size_of::<T>() > 0 {
-			self.update(|value| {
-				*value = new_value;
-				Update::Propagate
-			});
-		} else {
-			// The write is unobservable, so just skip locking.
-			self.signal
-				.clone_runtime_ref()
-				.run_detached(|| self.touch());
-			self.project_ref().signal.update(|_, _| {
-				drop(new_value);
-				Update::Propagate
-			});
-		}
+		self.update(|value| {
+			*value = new_value;
+			Update::Propagate
+		});
 	}
 
 	pub fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update)
@@ -227,33 +186,14 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		if size_of::<T>() > 0 {
-			self.update_async(|value| {
-				if *value != new_value {
-					(Ok(mem::replace(value, new_value)), Update::Propagate)
-				} else {
-					(Err(new_value), Update::Halt)
-				}
-			})
-			.await
-		} else {
-			// The write is unobservable, so just skip locking.
-			self.signal
-				.clone_runtime_ref()
-				.run_detached(|| self.touch());
-			self.project_ref()
-				.signal
-				.update_async(|_, _| {
-					//SAFETY: `T`'s size is 0.
-					//        That means it has no identity, not even by address.
-					if new_value != new_value {
-						(Ok(new_value), Update::Propagate)
-					} else {
-						(Err(new_value), Update::Halt)
-					}
-				})
-				.await
-		}
+		self.update_async(|value| {
+			if *value != new_value {
+				(Ok(mem::replace(value, new_value)), Update::Propagate)
+			} else {
+				(Err(new_value), Update::Halt)
+			}
+		})
+		.await
 	}
 
 	pub async fn replace_async(self: Pin<&Self>, new_value: T) -> T
@@ -262,19 +202,8 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		if size_of::<T>() > 0 {
-			self.update_async(|value| (mem::replace(value, new_value), Update::Propagate))
-				.await
-		} else {
-			// The write is unobservable, so just skip locking.
-			self.signal
-				.clone_runtime_ref()
-				.run_detached(|| self.touch());
-			self.project_ref()
-				.signal
-				.update_async(|_, _| (new_value, Update::Propagate))
-				.await
-		}
+		self.update_async(|value| (mem::replace(value, new_value), Update::Propagate))
+			.await
 	}
 
 	pub async fn update_async<U: Send>(
@@ -299,39 +228,20 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 	where
 		T: Sized + PartialEq,
 	{
-		if size_of::<T>() > 0 {
-			self.update_blocking(|value| {
-				if *value != new_value {
-					(Ok(mem::replace(value, new_value)), Update::Propagate)
-				} else {
-					(Err(new_value), Update::Halt)
-				}
-			})
-		} else {
-			// The write is unobservable, so just skip locking.
-			self.signal.update_blocking(|_, _| {
-				//SAFETY: `T`'s size is 0.
-				//        That means it has no identity, not even by address.
-				if new_value != new_value {
-					(Ok(new_value), Update::Propagate)
-				} else {
-					(Err(new_value), Update::Halt)
-				}
-			})
-		}
+		self.update_blocking(|value| {
+			if *value != new_value {
+				(Ok(mem::replace(value, new_value)), Update::Propagate)
+			} else {
+				(Err(new_value), Update::Halt)
+			}
+		})
 	}
 
 	pub fn replace_blocking(&self, new_value: T) -> T
 	where
 		T: Sized,
 	{
-		if size_of::<T>() > 0 {
-			self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
-		} else {
-			// The write is unobservable, so just skip locking.
-			self.signal
-				.update_blocking(|_, _| (new_value, Update::Propagate))
-		}
+		self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
 	}
 
 	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {

@@ -1,6 +1,6 @@
 use std::{
 	borrow::Borrow,
-	mem::{self, size_of},
+	mem,
 	pin::Pin,
 	sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -12,7 +12,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::{traits::Subscribable, utils::conjure_zst};
+use crate::traits::Subscribable;
 
 use super::Source;
 
@@ -59,13 +59,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
 	where
 		T: Sync + Copy,
 	{
-		if size_of::<T>() == 0 {
-			// The read is unobservable, so just skip locking.
-			self.touch();
-			unsafe { conjure_zst() }
-		} else {
-			*self.read().borrow()
-		}
+		*self.read().borrow()
 	}
 
 	pub(crate) fn get_clone(self: Pin<&Self>) -> T
@@ -92,13 +86,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
 	where
 		T: Copy,
 	{
-		if size_of::<T>() == 0 {
-			// The read is unobservable, so just skip locking.
-			self.touch();
-			unsafe { conjure_zst() }
-		} else {
-			self.get_clone_exclusive()
-		}
+		self.get_clone_exclusive()
 	}
 
 	pub(crate) fn get_clone_exclusive(self: Pin<&Self>) -> T
@@ -149,11 +137,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 		) -> Update {
 			//FIXME: This is externally synchronised already.
 			let new_value = fn_pin.project_ref().0.try_lock().expect("unreachable")();
-			if size_of::<T>() > 0 {
-				*cache.project_ref().0.write().unwrap() = new_value;
-			} else {
-				// The write is unobservable, so just skip locking.
-			}
+			*cache.project_ref().0.write().unwrap() = new_value;
 			Update::Propagate
 		}
 		Some(eval)
