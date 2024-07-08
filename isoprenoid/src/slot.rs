@@ -11,23 +11,23 @@ pub struct Slot<'a, T>(&'a mut MaybeUninit<T>, PhantomData<&'a mut &'a mut ()>);
 pub struct Token<'a>(PhantomData<&'a mut &'a mut ()>);
 
 impl<'a, T> Slot<'a, T> {
-    pub(crate) fn new(target: &'a mut MaybeUninit<T>) -> Self {
-        Self(target, PhantomData)
-    }
+	pub(crate) fn new(target: &'a mut MaybeUninit<T>) -> Self {
+		Self(target, PhantomData)
+	}
 
-    /// Writes `value` while consuming the [`Slot`], yielding a [`Token`].
-    pub fn write(self, value: T) -> Token<'a> {
-        self.0.write(value);
-        Token(PhantomData)
-    }
+	/// Writes `value` while consuming the [`Slot`], yielding a [`Token`].
+	pub fn write(self, value: T) -> Token<'a> {
+		self.0.write(value);
+		Token(PhantomData)
+	}
 
-    /// Provides exclusive access to the underlying [`MaybeUninit`].
-    pub unsafe fn get_uninit(&mut self) -> &mut MaybeUninit<T> {
-        &mut *self.0
-    }
+	/// Provides exclusive access to the underlying [`MaybeUninit`].
+	pub unsafe fn get_uninit(&mut self) -> &mut MaybeUninit<T> {
+		&mut *self.0
+	}
 
-    /// Creates a [`Token`] from this [`Slot`].
-    pub unsafe fn assume_init(self) -> Token<'a> {
-        Token(PhantomData)
-    }
+	/// Creates a [`Token`] from this [`Slot`].
+	pub unsafe fn assume_init(self) -> Token<'a> {
+		Token(PhantomData)
+	}
 }

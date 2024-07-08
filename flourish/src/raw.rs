@@ -39,10 +39,10 @@ pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 //TODO: Can these individual macros still communicate their eventual return type?
 
 pub fn announcer<T: Send, SR: SignalRuntimeRef>(
-    initial_value: T,
-    runtime: SR,
+	initial_value: T,
+	runtime: SR,
 ) -> RawAnnouncer<T, SR> {
-    RawAnnouncer::with_runtime(initial_value, runtime)
+	RawAnnouncer::with_runtime(initial_value, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -64,15 +64,15 @@ macro_rules! announcer_with_runtime {
 pub use crate::announcer_with_runtime;
 
 pub fn provider<
-    T: Send,
-    H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
-    SR: SignalRuntimeRef,
+	T: Send,
+	H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+	SR: SignalRuntimeRef,
 >(
-    initial_value: T,
-    on_subscribed_status_change_fn_pin: H,
-    runtime: SR,
+	initial_value: T,
+	on_subscribed_status_change_fn_pin: H,
+	runtime: SR,
 ) -> RawProvider<T, H, SR> {
-    RawProvider::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
+	RawProvider::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -130,9 +130,9 @@ pub use crate::provider_with_runtime;
 // pub use crate::provider_reflexive_with_runtime;
 
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
-    source: impl 'a + Subscribable<SR, Output = T>,
+	source: impl 'a + Subscribable<SR, Output = T>,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawCached::<T, _, SR>::new(source)
+	RawCached::<T, _, SR>::new(source)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -154,10 +154,10 @@ macro_rules! cached_from_source {
 pub use crate::cached_from_source;
 
 pub fn computed<'a, T: 'a + Send, F: 'a + Send + FnMut() -> T, SR: 'a + SignalRuntimeRef>(
-    fn_pin: F,
-    runtime: SR,
+	fn_pin: F,
+	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawComputed::<T, _, SR>::new(fn_pin, runtime)
+	RawComputed::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -179,26 +179,26 @@ macro_rules! computed_with_runtime {
 pub use crate::computed_with_runtime;
 
 pub fn debounced<
-    'a,
-    T: 'a + Send + PartialEq,
-    F: 'a + Send + FnMut() -> T,
-    SR: 'a + SignalRuntimeRef,
+	'a,
+	T: 'a + Send + PartialEq,
+	F: 'a + Send + FnMut() -> T,
+	SR: 'a + SignalRuntimeRef,
 >(
-    fn_pin: F,
-    runtime: SR,
+	fn_pin: F,
+	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawMerged::<T, _, _, SR>::new(
-        fn_pin,
-        |value, new_value| {
-            if *value != new_value {
-                *value = new_value;
-                Update::Propagate
-            } else {
-                Update::Halt
-            }
-        },
-        runtime,
-    )
+	RawMerged::<T, _, _, SR>::new(
+		fn_pin,
+		|value, new_value| {
+			if *value != new_value {
+				*value = new_value;
+				Update::Propagate
+			} else {
+				Update::Halt
+			}
+		},
+		runtime,
+	)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -220,15 +220,15 @@ macro_rules! debounced_with_runtime {
 pub use crate::debounced_with_runtime;
 
 pub fn computed_uncached<
-    'a,
-    T: 'a + Send,
-    F: 'a + Send + Sync + Fn() -> T,
-    SR: 'a + SignalRuntimeRef,
+	'a,
+	T: 'a + Send,
+	F: 'a + Send + Sync + Fn() -> T,
+	SR: 'a + SignalRuntimeRef,
 >(
-    fn_pin: F,
-    runtime: SR,
+	fn_pin: F,
+	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawComputedUncached::<T, _, SR>::new(fn_pin, runtime)
+	RawComputedUncached::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -250,15 +250,15 @@ macro_rules! computed_uncached_with_runtime {
 pub use crate::computed_uncached_with_runtime;
 
 pub fn computed_uncached_mut<
-    'a,
-    T: 'a + Send,
-    F: 'a + Send + FnMut() -> T,
-    SR: 'a + SignalRuntimeRef,
+	'a,
+	T: 'a + Send,
+	F: 'a + Send + FnMut() -> T,
+	SR: 'a + SignalRuntimeRef,
 >(
-    fn_pin: F,
-    runtime: SR,
+	fn_pin: F,
+	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawComputedUncachedMut::<T, _, SR>::new(fn_pin, runtime)
+	RawComputedUncachedMut::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -280,11 +280,11 @@ macro_rules! computed_uncached_mut_with_runtime {
 pub use crate::computed_uncached_mut_with_runtime;
 
 pub fn folded<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
-    init: T,
-    fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update,
-    runtime: SR,
+	init: T,
+	fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update,
+	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawFolded::new(init, fold_fn_pin, runtime)
+	RawFolded::new(init, fold_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -297,11 +297,11 @@ macro_rules! folded {
 pub use crate::folded;
 
 pub fn merged<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
-    select_fn_pin: impl 'a + Send + FnMut() -> T,
-    merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
-    runtime: SR,
+	select_fn_pin: impl 'a + Send + FnMut() -> T,
+	merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawMerged::new(select_fn_pin, merge_fn_pin, runtime)
+	RawMerged::new(select_fn_pin, merge_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]

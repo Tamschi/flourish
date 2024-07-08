@@ -1,17 +1,17 @@
 use std::{
-    borrow::Borrow,
-    fmt::{self, Debug, Formatter},
-    marker::PhantomData,
-    pin::Pin,
-    sync::Arc,
+	borrow::Borrow,
+	fmt::{self, Debug, Formatter},
+	marker::PhantomData,
+	pin::Pin,
+	sync::Arc,
 };
 
 use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-    raw::{computed, folded, merged},
-    traits::Subscribable,
-    SignalRef, SignalSR, SourcePin,
+	raw::{computed, folded, merged},
+	traits::Subscribable,
+	SignalRef, SignalSR, SourcePin,
 };
 
 /// Type inference helper alias for [`SubscriptionSR`] (using [`GlobalSignalRuntime`]).
@@ -21,88 +21,88 @@ pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
 /// Can be directly constructed but also converted to and fro.
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct SubscriptionSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> {
-    pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Output = T>>>,
+	pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Output = T>>>,
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Debug
-    for SubscriptionSR<'a, T, SR>
+	for SubscriptionSR<'a, T, SR>
 where
-    T: Debug,
+	T: Debug,
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.source.clone_runtime_ref().run_detached(|| {
-            f.debug_struct("SubscriptionSR")
-                .field(
-                    "(value)",
-                    &(&*self.source.as_ref().read_exclusive()).borrow(),
-                )
-                .finish_non_exhaustive()
-        })
-    }
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		self.source.clone_runtime_ref().run_detached(|| {
+			f.debug_struct("SubscriptionSR")
+				.field(
+					"(value)",
+					&(&*self.source.as_ref().read_exclusive()).borrow(),
+				)
+				.finish_non_exhaustive()
+		})
+	}
 }
 
 unsafe impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Send
-    for SubscriptionSR<'a, T, SR>
+	for SubscriptionSR<'a, T, SR>
 {
 }
 unsafe impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Sync
-    for SubscriptionSR<'a, T, SR>
+	for SubscriptionSR<'a, T, SR>
 {
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop
-    for SubscriptionSR<'a, T, SR>
+	for SubscriptionSR<'a, T, SR>
 {
-    fn drop(&mut self) {
-        self.source.as_ref().unsubscribe_inherently();
-    }
+	fn drop(&mut self) {
+		self.source.as_ref().unsubscribe_inherently();
+	}
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
-    /// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
-    ///
-    /// The subscribable is [`pull`](`Subscribable::pull`)ed once.
-    pub fn new<S: 'a + Subscribable<SR, Output = T>>(source: S) -> Self {
-        source.clone_runtime_ref().run_detached(|| {
-            let arc = Arc::pin(source);
-            arc.as_ref().subscribe_inherently();
-            Self { source: arc }
-        })
-    }
+	/// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
+	///
+	/// The subscribable is [`pull`](`Subscribable::pull`)ed once.
+	pub fn new<S: 'a + Subscribable<SR, Output = T>>(source: S) -> Self {
+		source.clone_runtime_ref().run_detached(|| {
+			let arc = Arc::pin(source);
+			arc.as_ref().subscribe_inherently();
+			Self { source: arc }
+		})
+	}
 
-    /// Cheaply borrows this [`SubscriptionSR`] as [`SignalRef`], which is [`Clone`].
-    pub fn as_ref(&self) -> SignalRef<'_, 'a, T, SR> {
-        SignalRef {
-            source: {
-                let ptr =
-                    Arc::into_raw(unsafe { Pin::into_inner_unchecked(Pin::clone(&self.source)) });
-                unsafe { Arc::decrement_strong_count(ptr) };
-                ptr
-            },
-            _phantom: PhantomData,
-        }
-    }
+	/// Cheaply borrows this [`SubscriptionSR`] as [`SignalRef`], which is [`Clone`].
+	pub fn as_ref(&self) -> SignalRef<'_, 'a, T, SR> {
+		SignalRef {
+			source: {
+				let ptr =
+					Arc::into_raw(unsafe { Pin::into_inner_unchecked(Pin::clone(&self.source)) });
+				unsafe { Arc::decrement_strong_count(ptr) };
+				ptr
+			},
+			_phantom: PhantomData,
+		}
+	}
 
-    /// Unsubscribes the [`SubscriptionSR`], turning it into a [`SignalSR`] in the process.
-    ///
-    /// The underlying [`Source`](`crate::raw::Source`) may remain effectively subscribed due to subscribed dependencies.
-    #[must_use = "Use `drop(self)` instead of converting first. The effect is the same."]
-    pub fn unsubscribe(self) -> SignalSR<'a, T, SR> {
-        //FIXME: This could avoid refcounting up and down and the associated memory barriers.
-        SignalSR {
-            source: Pin::clone(&self.source),
-        }
-    } // Implicit drop(self) unsubscribes.
+	/// Unsubscribes the [`SubscriptionSR`], turning it into a [`SignalSR`] in the process.
+	///
+	/// The underlying [`Source`](`crate::raw::Source`) may remain effectively subscribed due to subscribed dependencies.
+	#[must_use = "Use `drop(self)` instead of converting first. The effect is the same."]
+	pub fn unsubscribe(self) -> SignalSR<'a, T, SR> {
+		//FIXME: This could avoid refcounting up and down and the associated memory barriers.
+		SignalSR {
+			source: Pin::clone(&self.source),
+		}
+	} // Implicit drop(self) unsubscribes.
 
-    /// Cheaply clones this handle into a [`SignalSR`].
-    ///
-    /// Only one handle can own the inherent subscription of the managed [`Subscribable`].
-    #[must_use = "Pure function."]
-    pub fn to_signal(self) -> SignalSR<'a, T, SR> {
-        SignalSR {
-            source: Pin::clone(&self.source),
-        }
-    }
+	/// Cheaply clones this handle into a [`SignalSR`].
+	///
+	/// Only one handle can own the inherent subscription of the managed [`Subscribable`].
+	#[must_use = "Pure function."]
+	pub fn to_signal(self) -> SignalSR<'a, T, SR> {
+		SignalSR {
+			source: Pin::clone(&self.source),
+		}
+	}
 }
 
 /// Secondary constructors.
@@ -124,109 +124,109 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> 
 ///     .expect("contextually infallible");
 /// ```
 impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
-    /// A simple cached computation.
-    ///
-    /// Wraps [`computed`](`computed()`).
-    pub fn computed(fn_pin: impl 'a + Send + FnMut() -> T) -> Self
-    where
-        SR: Default,
-    {
-        Self::new(computed(fn_pin, SR::default()))
-    }
+	/// A simple cached computation.
+	///
+	/// Wraps [`computed`](`computed()`).
+	pub fn computed(fn_pin: impl 'a + Send + FnMut() -> T) -> Self
+	where
+		SR: Default,
+	{
+		Self::new(computed(fn_pin, SR::default()))
+	}
 
-    /// A simple cached computation.
-    ///
-    /// Wraps [`computed`](`computed()`).
-    pub fn computed_with_runtime(fn_pin: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self {
-        Self::new(computed(fn_pin, runtime))
-    }
+	/// A simple cached computation.
+	///
+	/// Wraps [`computed`](`computed()`).
+	pub fn computed_with_runtime(fn_pin: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self {
+		Self::new(computed(fn_pin, runtime))
+	}
 
-    /// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
-    ///
-    /// Wraps [`folded`](`folded()`).
-    pub fn folded(init: T, fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
-    where
-        SR: Default,
-    {
-        Self::new(folded(init, fold_fn_pin, SR::default()))
-    }
+	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+	///
+	/// Wraps [`folded`](`folded()`).
+	pub fn folded(init: T, fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
+	where
+		SR: Default,
+	{
+		Self::new(folded(init, fold_fn_pin, SR::default()))
+	}
 
-    /// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
-    ///
-    /// Wraps [`folded`](`folded()`).
-    pub fn folded_with_runtime(
-        init: T,
-        fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update,
-        runtime: SR,
-    ) -> Self {
-        Self::new(folded(init, fold_fn_pin, runtime))
-    }
+	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+	///
+	/// Wraps [`folded`](`folded()`).
+	pub fn folded_with_runtime(
+		init: T,
+		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update,
+		runtime: SR,
+	) -> Self {
+		Self::new(folded(init, fold_fn_pin, runtime))
+	}
 
-    /// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
-    /// Dependencies are detected across both closures.
-    ///
-    /// Wraps [`merged`](`merged()`).
-    pub fn merged(
-        select_fn_pin: impl 'a + Send + FnMut() -> T,
-        merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
-    ) -> Self
-    where
-        SR: Default,
-    {
-        Self::new(merged(select_fn_pin, merge_fn_pin, SR::default()))
-    }
+	/// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// Dependencies are detected across both closures.
+	///
+	/// Wraps [`merged`](`merged()`).
+	pub fn merged(
+		select_fn_pin: impl 'a + Send + FnMut() -> T,
+		merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+	) -> Self
+	where
+		SR: Default,
+	{
+		Self::new(merged(select_fn_pin, merge_fn_pin, SR::default()))
+	}
 
-    /// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
-    /// Dependencies are detected across both closures.
-    ///
-    /// Wraps [`merged`](`merged()`).
-    pub fn merged_with_runtime(
-        select_fn_pin: impl 'a + Send + FnMut() -> T,
-        merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
-        runtime: SR,
-    ) -> Self {
-        Self::new(merged(select_fn_pin, merge_fn_pin, runtime))
-    }
+	/// `select_fn_pin` computes each value, `merge_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// Dependencies are detected across both closures.
+	///
+	/// Wraps [`merged`](`merged()`).
+	pub fn merged_with_runtime(
+		select_fn_pin: impl 'a + Send + FnMut() -> T,
+		merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+		runtime: SR,
+	) -> Self {
+		Self::new(merged(select_fn_pin, merge_fn_pin, runtime))
+	}
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>
-    for SubscriptionSR<'a, T, SR>
+	for SubscriptionSR<'a, T, SR>
 {
-    type Output = T;
+	type Output = T;
 
-    fn touch(&self) {
-        self.source.as_ref().touch()
-    }
+	fn touch(&self) {
+		self.source.as_ref().touch()
+	}
 
-    fn get_clone(&self) -> Self::Output
-    where
-        Self::Output: Sync + Clone,
-    {
-        self.source.as_ref().get_clone()
-    }
+	fn get_clone(&self) -> Self::Output
+	where
+		Self::Output: Sync + Clone,
+	{
+		self.source.as_ref().get_clone()
+	}
 
-    fn get_clone_exclusive(&self) -> Self::Output
-    where
-        Self::Output: Clone,
-    {
-        self.source.as_ref().get_clone_exclusive()
-    }
+	fn get_clone_exclusive(&self) -> Self::Output
+	where
+		Self::Output: Clone,
+	{
+		self.source.as_ref().get_clone_exclusive()
+	}
 
-    fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
-    where
-        Self::Output: 'r + Sync,
-    {
-        self.source.as_ref().read()
-    }
+	fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
+	where
+		Self::Output: 'r + Sync,
+	{
+		self.source.as_ref().read()
+	}
 
-    fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
-        self.source.as_ref().read_exclusive()
-    }
+	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
+		self.source.as_ref().read_exclusive()
+	}
 
-    fn clone_runtime_ref(&self) -> SR
-    where
-        SR: Sized,
-    {
-        self.source.as_ref().clone_runtime_ref()
-    }
+	fn clone_runtime_ref(&self) -> SR
+	where
+		SR: Sized,
+	{
+		self.source.as_ref().clone_runtime_ref()
+	}
 }
