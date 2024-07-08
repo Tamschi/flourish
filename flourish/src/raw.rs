@@ -1,6 +1,4 @@
-use isoprenoid::runtime::CallbackTableTypes;
-use isoprenoid::runtime::SignalRuntimeRef;
-use isoprenoid::runtime::Update;
+use isoprenoid::runtime::{CallbackTableTypes, SignalRuntimeRef, Update};
 
 pub use crate::traits::{Source, Subscribable};
 
