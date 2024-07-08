@@ -21,7 +21,6 @@ use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use scopeguard::{guard, ScopeGuard};
 use stale_queue::{SensorNotification, StaleQueue};
 
-mod deferred_queue;
 mod stale_queue;
 
 /// Trait for handles that let signals refer to a specific runtime (instance).
