@@ -1,6 +1,7 @@
 use std::{
 	borrow::Borrow,
 	fmt::Debug,
+	marker::PhantomData,
 	mem,
 	pin::Pin,
 	sync::{Arc, Weak},
@@ -11,7 +12,7 @@ use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntime
 use crate::{
 	raw::RawProvider,
 	traits::{Source, Subscribable},
-	SignalSR, SourcePin,
+	SignalRef, SignalSR, SourcePin,
 };
 
 /// Type inference helper alias for [`ProviderSR`] (using [`GlobalSignalRuntime`]).
@@ -125,7 +126,8 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> Clone for ProviderSR<
 	}
 }
 
-impl<'a, T: ?Sized + Debug + Send, SR: SignalRuntimeRef + Debug> Debug for ProviderSR<'a, T, SR>
+impl<'a, T: 'a + ?Sized + Debug + Send, SR: 'a + SignalRuntimeRef + Debug> Debug
+	for ProviderSR<'a, T, SR>
 where
 	SR::Symbol: Debug,
 {
@@ -135,7 +137,7 @@ where
 	}
 }
 
-impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
+impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 	pub fn new(
 		initial_value: T,
 		on_subscribed_status_change_fn_pin: impl 'a
@@ -217,6 +219,19 @@ impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
 					)
 				}))
 			},
+		}
+	}
+
+	/// Cheaply borrows this [`Provider`] as [`SignalRef`], which is [`Copy`].
+	pub fn as_ref(&self) -> SignalRef<'_, 'a, T, SR> {
+		SignalRef {
+			source: {
+				let ptr =
+					Arc::into_raw(unsafe { Pin::into_inner_unchecked(Pin::clone(&self.provider)) });
+				unsafe { Arc::decrement_strong_count(ptr) };
+				ptr
+			},
+			_phantom: PhantomData,
 		}
 	}
 
@@ -324,7 +339,7 @@ impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
 	}
 }
 
-impl<'a, T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR>
+impl<'a, T: 'a + Send + Sized + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>
 	for ProviderSR<'a, T, SR>
 {
 	type Output = T;

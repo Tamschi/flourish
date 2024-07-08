@@ -1,6 +1,6 @@
 use std::{
 	borrow::Borrow,
-	mem::{self, needs_drop, size_of},
+	mem::{self, size_of},
 	ops::Deref,
 	pin::Pin,
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -80,7 +80,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cac
 		if size_of::<T>() == 0 {
 			// The read is unobservable, so just skip locking.
 			self.touch();
-			conjure_zst()
+			unsafe { conjure_zst() }
 		} else {
 			*self.read().borrow()
 		}
@@ -113,7 +113,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cac
 		if size_of::<T>() == 0 {
 			// The read is unobservable, so just skip locking.
 			self.touch();
-			conjure_zst()
+			unsafe { conjure_zst() }
 		} else {
 			self.get_clone_exclusive()
 		}
@@ -167,7 +167,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>
 		) -> Update {
 			//FIXME: This can be split up to avoid congestion where not necessary.
 			let new_value = source.project_ref().0.get_clone_exclusive();
-			if needs_drop::<T>() || size_of::<T>() > 0 {
+			if size_of::<T>() > 0 {
 				*cache.project_ref().0.write().unwrap() = new_value;
 			} else {
 				// The write is unobservable, so just skip locking.

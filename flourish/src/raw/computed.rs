@@ -1,6 +1,6 @@
 use std::{
 	borrow::Borrow,
-	mem::{self, needs_drop, size_of},
+	mem::{self, size_of},
 	pin::Pin,
 	sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -62,7 +62,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
 		if size_of::<T>() == 0 {
 			// The read is unobservable, so just skip locking.
 			self.touch();
-			conjure_zst()
+			unsafe { conjure_zst() }
 		} else {
 			*self.read().borrow()
 		}
@@ -95,7 +95,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
 		if size_of::<T>() == 0 {
 			// The read is unobservable, so just skip locking.
 			self.touch();
-			conjure_zst()
+			unsafe { conjure_zst() }
 		} else {
 			self.get_clone_exclusive()
 		}
@@ -149,7 +149,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 		) -> Update {
 			//FIXME: This is externally synchronised already.
 			let new_value = fn_pin.project_ref().0.try_lock().expect("unreachable")();
-			if needs_drop::<T>() || size_of::<T>() > 0 {
+			if size_of::<T>() > 0 {
 				*cache.project_ref().0.write().unwrap() = new_value;
 			} else {
 				// The write is unobservable, so just skip locking.

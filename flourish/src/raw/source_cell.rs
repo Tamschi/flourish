@@ -1,7 +1,7 @@
 use std::{
 	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
-	mem::{self, needs_drop, size_of},
+	mem::{self, size_of},
 	pin::Pin,
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -92,7 +92,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		if size_of::<T>() == 0 {
 			// The read is unobservable, so just skip locking.
 			self.touch();
-			conjure_zst()
+			unsafe { conjure_zst() }
 		} else {
 			*self.read().borrow()
 		}
@@ -129,7 +129,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		if size_of::<T>() == 0 {
 			// The read is unobservable, so just skip locking.
 			self.touch();
-			conjure_zst()
+			unsafe { conjure_zst() }
 		} else {
 			self.get_clone_exclusive()
 		}
@@ -158,7 +158,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		if needs_drop::<T>() || size_of::<T>() > 0 {
+		if size_of::<T>() > 0 {
 			self.update(|value| {
 				if *value != new_value {
 					*value = new_value;
@@ -172,9 +172,10 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 			self.signal
 				.clone_runtime_ref()
 				.run_detached(|| self.touch());
-			self.project_ref().signal.update(|_, _| unsafe {
-				//SAFETY: `T` creation and destruction are unobservable and its size is 0.
-				if mem::transmute_copy::<(), T>(&()) != mem::transmute_copy::<(), T>(&()) {
+			self.project_ref().signal.update(move |_, _| {
+				//SAFETY: `T`'s size is 0.
+				//        That means it has no identity, not even by address.
+				if new_value != new_value {
 					Update::Propagate
 				} else {
 					Update::Halt
@@ -189,7 +190,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		if needs_drop::<T>() || size_of::<T>() > 0 {
+		if size_of::<T>() > 0 {
 			self.update(|value| {
 				*value = new_value;
 				Update::Propagate
@@ -199,7 +200,10 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 			self.signal
 				.clone_runtime_ref()
 				.run_detached(|| self.touch());
-			self.project_ref().signal.update(|_, _| Update::Propagate);
+			self.project_ref().signal.update(|_, _| {
+				drop(new_value);
+				Update::Propagate
+			});
 		}
 	}
 
@@ -239,12 +243,13 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 				.run_detached(|| self.touch());
 			self.project_ref()
 				.signal
-				.update_async(|_, _| unsafe {
-					//SAFETY: `T` creation and destruction are unobservable and its size is 0.
-					if mem::transmute_copy::<(), T>(&()) != mem::transmute_copy::<(), T>(&()) {
-						(Ok(mem::transmute_copy::<(), T>(&())), Update::Propagate)
+				.update_async(|_, _| {
+					//SAFETY: `T`'s size is 0.
+					//        That means it has no identity, not even by address.
+					if new_value != new_value {
+						(Ok(new_value), Update::Propagate)
 					} else {
-						(Err(mem::transmute_copy::<(), T>(&())), Update::Halt)
+						(Err(new_value), Update::Halt)
 					}
 				})
 				.await
@@ -294,7 +299,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 	where
 		T: Sized + PartialEq,
 	{
-		if needs_drop::<T>() || size_of::<T>() > 0 {
+		if size_of::<T>() > 0 {
 			self.update_blocking(|value| {
 				if *value != new_value {
 					(Ok(mem::replace(value, new_value)), Update::Propagate)
@@ -304,12 +309,13 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 			})
 		} else {
 			// The write is unobservable, so just skip locking.
-			self.signal.update_blocking(|_, _| unsafe {
-				//SAFETY: `T` creation and destruction are unobservable and its size is 0.
-				if mem::transmute_copy::<(), T>(&()) != mem::transmute_copy::<(), T>(&()) {
-					(Ok(mem::transmute_copy::<(), T>(&())), Update::Propagate)
+			self.signal.update_blocking(|_, _| {
+				//SAFETY: `T`'s size is 0.
+				//        That means it has no identity, not even by address.
+				if new_value != new_value {
+					(Ok(new_value), Update::Propagate)
 				} else {
-					(Err(mem::transmute_copy::<(), T>(&())), Update::Halt)
+					(Err(new_value), Update::Halt)
 				}
 			})
 		}

@@ -1,11 +1,11 @@
-use std::{borrow::Borrow, fmt::Debug, pin::Pin, sync::Arc};
+use std::{borrow::Borrow, fmt::Debug, marker::PhantomData, pin::Pin, sync::Arc};
 
 use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
 	raw::SourceCell,
 	traits::{Source, Subscribable},
-	SignalSR, SourcePin,
+	SignalRef, SignalSR, SourcePin,
 };
 
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalRuntime`]).
@@ -41,6 +41,24 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 	{
 		Self {
 			source_cell: Arc::pin(SourceCell::with_runtime(initial_value, runtime)),
+		}
+	}
+
+	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
+	pub fn as_ref<'a>(&self) -> SignalRef<'_, 'a, T, SR>
+	where
+		T: 'a,
+		SR: 'a,
+	{
+		SignalRef {
+			source: {
+				let ptr = Arc::into_raw(unsafe {
+					Pin::into_inner_unchecked(Pin::clone(&self.source_cell))
+				});
+				unsafe { Arc::decrement_strong_count(ptr) };
+				ptr
+			},
+			_phantom: PhantomData,
 		}
 	}
 

@@ -63,7 +63,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Folded<T,
 		if size_of::<T>() == 0 {
 			// The read is unobservable, so just skip locking.
 			self.touch();
-			conjure_zst()
+			unsafe { conjure_zst() }
 		} else {
 			*self.read().borrow()
 		}
@@ -94,7 +94,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Folded<T,
 		if size_of::<T>() == 0 {
 			// The read is unobservable, so just skip locking.
 			self.touch();
-			conjure_zst()
+			unsafe { conjure_zst() }
 		} else {
 			self.get_clone_exclusive()
 		}
