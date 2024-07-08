@@ -151,10 +151,10 @@ macro_rules! cached_from_source {
 pub use crate::cached_from_source;
 
 pub fn computed<'a, T: 'a + Send, F: 'a + Send + FnMut() -> T, SR: 'a + SignalRuntimeRef>(
-    f: F,
+    fn_pin: F,
     runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawComputed::<T, _, SR>::new(f, runtime)
+    RawComputed::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -181,10 +181,10 @@ pub fn computed_uncached<
     F: 'a + Send + Sync + Fn() -> T,
     SR: 'a + SignalRuntimeRef,
 >(
-    f: F,
+    fn_pin: F,
     runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawComputedUncached::<T, _, SR>::new(f, runtime)
+    RawComputedUncached::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -211,10 +211,10 @@ pub fn computed_uncached_mut<
     F: 'a + Send + FnMut() -> T,
     SR: 'a + SignalRuntimeRef,
 >(
-    f: F,
+    fn_pin: F,
     runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawComputedUncachedMut::<T, _, SR>::new(f, runtime)
+    RawComputedUncachedMut::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -237,10 +237,10 @@ pub use crate::computed_uncached_mut_with_runtime;
 
 pub fn folded<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
     init: T,
-    f: impl 'a + Send + FnMut(&mut T) -> Update,
+    fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update,
     runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawFolded::new(init, f, runtime)
+    RawFolded::new(init, fold_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -253,11 +253,11 @@ macro_rules! folded {
 pub use crate::folded;
 
 pub fn merged<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
-    select: impl 'a + Send + FnMut() -> T,
-    merge: impl 'a + Send + FnMut(&mut T, T) -> Update,
+    select_fn_pin: impl 'a + Send + FnMut() -> T,
+    merge_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
     runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
-    RawMerged::new(select, merge, runtime)
+    RawMerged::new(select_fn_pin, merge_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
