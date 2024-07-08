@@ -8,7 +8,7 @@ fn stack() {
 
     {
         signals_helper! {
-            let a = subject!(());
+            let a = announcer!(());
         }
         {
             signals_helper! {

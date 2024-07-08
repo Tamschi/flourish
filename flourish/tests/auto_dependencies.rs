@@ -1,4 +1,4 @@
-use flourish::{shadow_clone, Signal, SourcePin as _, Subject, Subscription};
+use flourish::{shadow_clone, Signal, SourcePin as _, Announcer, Subscription};
 
 mod _validator;
 use _validator::Validator;
@@ -7,14 +7,14 @@ use _validator::Validator;
 fn auto_dependencies() {
     let v = &Validator::new();
 
-    let a = Subject::new("a");
-    let b = Subject::new("b");
-    let c = Subject::new("c");
-    let d = Subject::new("d");
-    let e = Subject::new("e");
-    let f = Subject::new("f");
-    let g = Subject::new("g");
-    let index = Subject::new(0);
+    let a = Announcer::new("a");
+    let b = Announcer::new("b");
+    let c = Announcer::new("c");
+    let d = Announcer::new("d");
+    let e = Announcer::new("e");
+    let f = Announcer::new("f");
+    let g = Announcer::new("g");
+    let index = Announcer::new(0);
 
     let signal = Signal::computed({
         shadow_clone!(a, b, c, d, e, f, g, index);

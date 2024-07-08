@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use flourish::{Signal, SourcePin as _, Subject, Subscription};
+use flourish::{Signal, SourcePin as _, Announcer, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -10,11 +10,11 @@ use _validator::Validator;
 fn heap() {
     let v = &Validator::new();
 
-    let (a, set_a) = Subject::new(())
+    let (a, set_a) = Announcer::new(())
         .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-    let (b, set_b) = Subject::new(())
+    let (b, set_b) = Announcer::new(())
         .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-    let (c, set_c) = Subject::new(())
+    let (c, set_c) = Announcer::new(())
         .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
     let roundabout = Signal::computed_uncached_mut({
@@ -59,11 +59,11 @@ fn heap() {
 fn stack() {
     let v = &Validator::new();
 
-    let (a, set_a) = Subject::new(())
+    let (a, set_a) = Announcer::new(())
         .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-    let (b, set_b) = Subject::new(())
+    let (b, set_b) = Announcer::new(())
         .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-    let (c, set_c) = Subject::new(())
+    let (c, set_c) = Announcer::new(())
         .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
     let roundabout = Signal::computed_uncached({

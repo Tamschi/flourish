@@ -1,4 +1,4 @@
-use flourish::{Effect, SourcePin, Subject};
+use flourish::{Effect, SourcePin, Announcer};
 mod _validator;
 use _validator::Validator;
 
@@ -6,7 +6,7 @@ use _validator::Validator;
 fn heap() {
     let v = &Validator::new();
 
-    let (a, set_a) = Subject::new(())
+    let (a, set_a) = Announcer::new(())
         .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
     let e = Effect::new(

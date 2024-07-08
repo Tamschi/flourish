@@ -16,8 +16,8 @@ pub(crate) use raw_computed_uncached::RawComputedUncached;
 mod raw_computed_uncached_mut;
 pub(crate) use raw_computed_uncached_mut::RawComputedUncachedMut;
 
-mod raw_subject;
-pub(crate) use raw_subject::RawSubject;
+mod raw_announcer;
+pub(crate) use raw_announcer::RawAnnouncer;
 
 mod raw_provider;
 pub(crate) use raw_provider::RawProvider;
@@ -38,27 +38,27 @@ pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 
 //TODO: Can these individual macros still communicate their eventual return type?
 
-pub fn subject<T: Send, SR: SignalRuntimeRef>(initial_value: T, runtime: SR) -> RawSubject<T, SR> {
-    RawSubject::with_runtime(initial_value, runtime)
+pub fn announcer<T: Send, SR: SignalRuntimeRef>(initial_value: T, runtime: SR) -> RawAnnouncer<T, SR> {
+    RawAnnouncer::with_runtime(initial_value, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
-macro_rules! subject {
+macro_rules! announcer {
     ($source:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::subject;
+pub use crate::announcer;
 #[macro_export]
 #[doc(hidden)]
-macro_rules! subject_with_runtime {
+macro_rules! announcer_with_runtime {
     ($source:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::subject_with_runtime;
+pub use crate::announcer_with_runtime;
 
 pub fn provider<
     T: Send,
@@ -327,12 +327,12 @@ pub use crate::effect_with_runtime;
 /// A helper to bind macros on the stack.
 #[macro_export]
 macro_rules! signals_helper {
-	{let $name:ident = subject!($initial_value:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::subject($initial_value, $crate::GlobalSignalRuntime));
+	{let $name:ident = announcer!($initial_value:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::announcer($initial_value, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = subject_with_runtime!($initial_value:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::subject($initial_value, $runtime));
+	{let $name:ident = announcer_with_runtime!($initial_value:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::announcer($initial_value, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = provider!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr$(,)?);} => {
@@ -429,7 +429,7 @@ macro_rules! signals_helper {
 		// The compiler still squiggles the entire macro, unfortunately.
 		::core::compile_error!(::core::concat!(
 			"Unrecognised macro name or wrong argument count (for) `", ::core::stringify!($macro), "`. The following macros are supported:\n",
-			"subject[_with_runtime]!(1/2), provider[_with_runtime]!(2/3), cached!(1), computed[_uncached[_mut]][_with_runtime]!(1/2), ",
+			"announcer[_with_runtime]!(1/2), provider[_with_runtime]!(2/3), cached!(1), computed[_uncached[_mut]][_with_runtime]!(1/2), ",
 			"folded[_with_runtime]!(2/3), merged[_with_runtime]!(2/3), subscription[_with_runtime]!(1/2), ",
 			"subscription_from_source!(1), effect[_with_runtime]!(2/3)"
 		));

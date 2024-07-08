@@ -17,7 +17,7 @@ use crate::{
 /// Type inference helper alias for [`ProviderSR`] (using [`GlobalSignalRuntime`]).
 pub type Provider<'a, T> = ProviderSR<'a, T, GlobalSignalRuntime>;
 
-/// [`ProviderSR`] functions the same as [`SubjectSR`](`crate::SubjectSR`),
+/// [`ProviderSR`] functions the same as [`AnnouncerSR`](`crate::AnnouncerSR`),
 /// except that it is notified of its own subscribed status changes.
 ///
 /// You can use the "`_cyclic`" constructors to easily create self-referential [`ProviderSR`]s:

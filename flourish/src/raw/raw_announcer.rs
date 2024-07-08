@@ -17,24 +17,24 @@ use crate::utils::conjure_zst;
 use super::{Source, Subscribable};
 
 #[pin_project]
-pub struct RawSubject<T: ?Sized + Send, SR: SignalRuntimeRef> {
+pub struct RawAnnouncer<T: ?Sized + Send, SR: SignalRuntimeRef> {
     #[pin]
     signal: RawSignal<AssertSync<RwLock<T>>, (), SR>,
 }
 
-impl<T: ?Sized + Send + Debug, SR: SignalRuntimeRef + Debug> Debug for RawSubject<T, SR>
+impl<T: ?Sized + Send + Debug, SR: SignalRuntimeRef + Debug> Debug for RawAnnouncer<T, SR>
 where
     SR::Symbol: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RawSubject")
+        f.debug_struct("RawAnnouncer")
             .field("signal", &&self.signal)
             .finish()
     }
 }
 
 /// TODO: Safety.
-unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for RawSubject<T, SR> {}
+unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for RawAnnouncer<T, SR> {}
 
 struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
@@ -52,22 +52,22 @@ impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
     }
 }
 
-struct RawSubjectGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct RawSubjectGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+struct RawAnnouncerGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct RawAnnouncerGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawAnnouncerGuard<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawSubjectGuardExclusive<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for RawAnnouncerGuardExclusive<'a, T> {
     fn borrow(&self) -> &T {
         self.0.borrow()
     }
 }
 
-impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
+impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawAnnouncer<T, SR> {
     pub fn new(initial_value: T) -> Self
     where
         T: Sized,
@@ -110,12 +110,12 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         T: Sync,
     {
         let this = &self;
-        RawSubjectGuard(this.touch().read().unwrap())
+        RawAnnouncerGuard(this.touch().read().unwrap())
     }
 
     pub fn read_exclusive<'a>(&'a self) -> impl 'a + Borrow<T> {
         let this = &self;
-        RawSubjectGuardExclusive(this.touch().write().unwrap())
+        RawAnnouncerGuardExclusive(this.touch().write().unwrap())
     }
 
     pub fn get_mut<'a>(&'a mut self) -> &mut T {
@@ -358,7 +358,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
     }
 }
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for RawSubject<T, SR> {
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for RawAnnouncer<T, SR> {
     type Output = T;
 
     fn touch(self: Pin<&Self>) {
@@ -412,7 +412,7 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for RawSubject<T, SR> {
     }
 }
 
-impl<T: Send, SR: SignalRuntimeRef> Subscribable<SR> for RawSubject<T, SR> {
+impl<T: Send, SR: SignalRuntimeRef> Subscribable<SR> for RawAnnouncer<T, SR> {
     fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
         //FIXME: This is inefficient.
         if self

@@ -12,8 +12,8 @@ pub mod raw;
 
 //TODO: Inter-runtime signals (i.e. takes two signal runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
-mod subject;
-pub use subject::{Subject, SubjectSR};
+mod announcer;
+pub use announcer::{Announcer, AnnouncerSR};
 
 mod provider;
 pub use provider::{Provider, ProviderSR, WeakProvider};
@@ -45,10 +45,10 @@ pub mod __ {
 /// This is useful to create additional handles:
 ///
 /// ```
-/// use flourish::{shadow_clone, Subject, Signal, SourcePin as _};
+/// use flourish::{shadow_clone, Announcer, Signal, SourcePin as _};
 ///
-/// let a = Subject::new(1);
-/// let b = Subject::new(2);
+/// let a = Announcer::new(1);
+/// let b = Announcer::new(2);
 /// let c = Signal::computed({
 ///     shadow_clone!(a, b);
 ///     move || a.get() + b.get()

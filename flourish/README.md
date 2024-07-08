@@ -20,9 +20,9 @@ This makes it a suitable replacement for most standard use cases of RxJS-style o
 You can put signals on the heap:
 
 ```rust
-use flourish::{Subject, Provider, Signal, Update, Subscription, Effect};
+use flourish::{Announcer, Provider, Signal, Update, Subscription, Effect};
 
-let _ = Subject::new(());
+let _ = Announcer::new(());
 let _ = Provider::new((), |_status| ());
 let _ = Provider::new_cyclic((), |_weak| |_status| ());
 
@@ -50,7 +50,7 @@ You can also put signals on the stack:
 use flourish::{signals_helper, Update};
 
 signals_helper! {
-  let _subject = subject!(());
+  let _announcer = announcer!(());
   let _provider = provider!((), |_status| ());
 
   // The closure type is erased!
@@ -76,16 +76,16 @@ Additionally, inside `flourish::raw`, you can find constructor functions for unp
 `flourish` detects and updates dependencies automatically:
 
 ```rust
-use flourish::{shadow_clone, Subject, Signal, Subscription, SourcePin as _};
+use flourish::{shadow_clone, Announcer, Signal, Subscription, SourcePin as _};
 
-let a = Subject::new("a");
-let b = Subject::new("b");
-let c = Subject::new("c");
-let d = Subject::new("d");
-let e = Subject::new("e");
-let f = Subject::new("f");
-let g = Subject::new("g");
-let index = Subject::new(0);
+let a = Announcer::new("a");
+let b = Announcer::new("b");
+let c = Announcer::new("c");
+let d = Announcer::new("d");
+let e = Announcer::new("e");
+let f = Announcer::new("f");
+let g = Announcer::new("g");
+let index = Announcer::new(0);
 
 let signal = Signal::computed({
   shadow_clone!(a, b, c, d, e, f, g, index);
@@ -128,9 +128,9 @@ The default `GlobalSignalRuntime` notifies signals iteratively from earlier to l
 You can use a different [`pollinate`] runtime with the included types and macros (but ideally, alias these items for your own use):
 
 ```rust
-use flourish::{signals_helper, GlobalSignalRuntime, SignalSR, Subject, SubscriptionSR, Update};
+use flourish::{signals_helper, GlobalSignalRuntime, SignalSR, Announcer, SubscriptionSR, Update};
 
-let _ = Subject::with_runtime((), GlobalSignalRuntime);
+let _ = Announcer::with_runtime((), GlobalSignalRuntime);
 
 let _ = SignalSR::computed_with_runtime(|| (), GlobalSignalRuntime);
 let _ = SignalSR::computed_uncached_with_runtime(|| (), GlobalSignalRuntime);
@@ -141,7 +141,7 @@ let _ = SignalSR::merged_with_runtime(|| (), |_value, _next| Update::Propagate, 
 let _ = SubscriptionSR::computed_with_runtime(|| (), GlobalSignalRuntime);
 
 signals_helper! {
-  let _subject = subject_with_runtime!((), GlobalSignalRuntime);
+  let _announcer = announcer_with_runtime!((), GlobalSignalRuntime);
 
   let _source = computed_with_runtime!(|| (), GlobalSignalRuntime);
   let _source = computed_uncached_with_runtime!(|| (), GlobalSignalRuntime);
