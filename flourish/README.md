@@ -29,6 +29,7 @@ let _ = Provider::new_cyclic((), |_weak| |_status| ());
 // The closure type is erased!
 // Not evaluated unless subscribed.
 let _ = Signal::computed(|| ());
+let _ = Signal::debounced(|| ());
 let _ = Signal::computed_uncached(|| ()); // `Fn` closure. The others take `FnMut`s.
 let _ = Signal::computed_uncached_mut(|| ());
 let _ = Signal::folded((), |_value| Update::Propagate);
@@ -56,6 +57,7 @@ signals_helper! {
   // The closure type is erased!
   // Not evaluated unless subscribed.
   let _source = computed!(|| ());
+  let _source = debounced!(|| ());
   let _source = computed_uncached!(|| ());
   let _source = computed_uncached_mut!(|| ());
   let _source = folded!((), |_value| Update::Propagate);
