@@ -115,7 +115,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
     /// # Safety
     ///
     /// `f` **must** be dropped or consumed before the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.
-    fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce());
+    fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce() -> Update);
 
     /// **Iff polled**, submits `f` to run exclusively for `id` outside of recording dependencies.
     ///
@@ -130,7 +130,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
     ///
     /// `f` **must not** be dropped or consumed after the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.  
     /// `f` **must not** run after the [`Future`] returned by this function is dropped.
-    fn update_async<T: Send, F: Send + FnOnce() -> T>(
+    fn update_async<T: Send, F: Send + FnOnce() -> (T, Update)>(
         &self,
         id: Self::Symbol,
         f: F,
@@ -152,7 +152,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
     /// # Safety
     ///
     /// `f` **must** be consumed before this method returns.
-    fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce());
+    fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (T, Update)) -> T;
 
     /// Recursively marks dependencies of `id` as stale.
     ///
@@ -190,7 +190,7 @@ struct ASignalRuntime_ {
     context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
     callbacks: BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
     ///FIXME: This is not-at-all a fair queue.
-    update_queue: RefCell<VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce()>)>>,
+    update_queue: RefCell<VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce() -> Update>)>>,
 }
 
 impl ASignalRuntime_ {
@@ -264,8 +264,10 @@ impl ASignalRuntime {
         while let Some((id, next)) = (|| borrow.update_queue.borrow_mut().pop_front())() {
             debug_assert!(borrow.callbacks.contains_key(&id));
             drop(borrow);
-            next();
-            self.propagate_from(id);
+            match next() {
+                Update::Propagate => self.propagate_from(id),
+                Update::Halt => (),
+            }
             borrow = lock.borrow();
         }
     }
@@ -370,7 +372,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
         result
     }
 
-    fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
+    fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce() -> Update) {
         let lock = self.critical_mutex.lock();
         let borrow = (*lock).borrow();
 
@@ -386,7 +388,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
         self.process_updates_if_ready();
     }
 
-    async fn update_async<T: Send, F: Send + FnOnce() -> T>(
+    async fn update_async<T: Send, F: Send + FnOnce() -> (T, Update)>(
         &self,
         id: Self::Symbol,
         f: F,
@@ -414,18 +416,23 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
                 let arc = ScopeGuard::into_inner(guard);
                 let mut f_guard = arc.lock().expect("unreachable");
                 if let (Some(once), Some(f)) = (weak.upgrade(), f_guard.borrow_mut().take()) {
-                    once.set_blocking(Some(Ok(f())).into())
+                    let (t, update) = f();
+                    once.set_blocking(Some(Ok(t)).into())
                         .map_err(|_| ())
                         .expect("unreachable");
+                    update
+                } else {
+                    Update::Halt
                 }
             }
         });
 
         self.update_or_enqueue(id, unsafe {
             //SAFETY: This function never handles `F` or `T` after `_f_guard` drops.
-            mem::transmute::<Box<dyn '_ + Send + FnOnce()>, Box<dyn 'static + Send + FnOnce()>>(
-                update,
-            )
+            mem::transmute::<
+                Box<dyn '_ + Send + FnOnce() -> Update>,
+                Box<dyn 'static + Send + FnOnce() -> Update>,
+            >(update)
         });
 
         let t = match identity(once)
@@ -453,6 +460,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
             });
             move || {
                 drop(guard);
+                Update::Halt
             }
         });
 
@@ -461,11 +469,15 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
         Ok(t)
     }
 
-    fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
+    fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (T, Update)) -> T {
         // This is indirected because the nested function's text size may be relatively large.
         //BLOCKED: Avoid the heap allocation once the `Allocator` API is stabilised.
 
-        fn update_blocking(this: &ASignalRuntime, id: ASymbol, f: Box<dyn '_ + FnOnce()>) {
+        fn update_blocking<T>(
+            this: &ASignalRuntime,
+            id: ASymbol,
+            f: Box<dyn '_ + FnOnce() -> (T, Update)>,
+        ) -> T {
             let lock = this.critical_mutex.lock();
             let borrow = (*lock).borrow();
 
@@ -474,12 +486,16 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
             }
 
             if !(borrow.context_stack.is_empty() && borrow.stale_queue.peek().is_none()) {
-                panic!("Called `update_blocking` (via `set_blocking`?) while propagating another update. This would deadlock with a better queue.");
+                panic!("Called `update_blocking` (via `change_blocking` or `replace_blocking`?) while propagating another update. This would deadlock with a better queue.");
             }
 
-            f();
+            let (t, update) = f();
             drop(borrow);
-            this.propagate_from(id);
+            match update {
+                Update::Propagate => this.propagate_from(id),
+                Update::Halt => (),
+            }
+            t
         }
         update_blocking(self, id, Box::new(f))
     }
@@ -676,11 +692,11 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
         (&GLOBAL_SIGNAL_RUNTIME).set_subscription(id.0, enabled)
     }
 
-    fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce()) {
+    fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce() -> Update) {
         (&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue(id.0, f)
     }
 
-    async fn update_async<T: Send, F: Send + FnOnce() -> T>(
+    async fn update_async<T: Send, F: Send + FnOnce() -> (T, Update)>(
         &self,
         id: Self::Symbol,
         f: F,
@@ -688,7 +704,7 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
         (&GLOBAL_SIGNAL_RUNTIME).update_async(id.0, f).await
     }
 
-    fn update_blocking(&self, id: Self::Symbol, f: impl FnOnce()) {
+    fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (T, Update)) -> T {
         (&GLOBAL_SIGNAL_RUNTIME).update_blocking(id.0, f)
     }
 
@@ -734,8 +750,8 @@ pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
     ///
     /// # Logic
     ///
-	/// The runtime **must** consider transitive subscriptions.  
-	/// The runtime **must** consider a signal's own inherent subscription.  
+    /// The runtime **must** consider transitive subscriptions.  
+    /// The runtime **must** consider a signal's own inherent subscription.  
     /// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
     pub on_subscribed_change: Option<unsafe fn(*const T, status: CTT::SubscribedStatus)>,
 }
@@ -815,6 +831,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
 /// A return value used by [`update`](`CallbackTable::update`)/[`UPDATE`](`crate::raw::Callbacks::UPDATE`) callbacks
 /// to indicate whether to flag dependent signals as stale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[must_use = "The runtime should propagate notifications to dependents only when requested."]
 pub enum Update {
     /// Mark at least directly dependent signals, and possibly refresh them.
     Propagate,

@@ -8,7 +8,8 @@ fn use_constructors() {
     let x = &Validator::new();
 
     let a = Subject::new(1);
-    let (b, set_b) = Subject::new(2).into_get_set_blocking();
+    let (b, set_b) = Subject::new(2)
+        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     let c = Signal::computed({
         shadow_clone!(a, b);
         move || {
@@ -44,16 +45,16 @@ fn use_constructors() {
     v.expect([2]);
     x.expect(["c", "d", "sub_aa", "aa"]);
 
-    a.set_blocking(0);
+    a.replace_blocking(0);
     v.expect([0]);
     x.expect(["c", "d", "sub_aa", "aa"]);
 
     drop(sub_aa);
 
     // These evaluate *no* closures!
-    a.set_blocking(2);
+    a.replace_blocking(2);
     set_b(3);
-    a.set_blocking(5);
+    a.replace_blocking(5);
     v.expect([]);
     x.expect([]);
 
@@ -71,7 +72,7 @@ fn use_constructors() {
     v.expect([2]);
     x.expect(["_sub_d", "d"]);
 
-    a.set_blocking(4);
+    a.replace_blocking(4);
     v.expect([7, 1]);
     x.expect(["c", "d", "_sub_c", "_sub_d"]);
 }

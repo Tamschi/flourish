@@ -63,16 +63,16 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
     /// # Panics
     ///
     /// **May** panic iff called *not* between `self.project_or_init(…)` and `self.stop_and(…)`.
-    fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce()) {
+    fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce() -> Update) {
         self.runtime.update_or_enqueue(self.id, f);
     }
 
-    async fn update_async<T: Send, F: Send + FnOnce() -> T>(&self, f: F) -> Result<T, F> {
+    async fn update_async<T: Send, F: Send + FnOnce() -> (T, Update)>(&self, f: F) -> Result<T, F> {
         self.runtime.update_async(self.id, f).await
     }
 
-    fn update_blocking(&self, f: impl FnOnce()) {
-        self.runtime.update_blocking(self.id, f);
+    fn update_blocking<T>(&self, f: impl FnOnce() -> (T, Update)) -> T {
+        self.runtime.update_blocking(self.id, f)
     }
 
     fn refresh(&self) {
@@ -291,43 +291,47 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
     /// # Panics
     ///
     /// **May** panic iff called *not* between `self.start(…)` and `self.stop(…)`.
-    pub fn update<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&Lazy>)>(self: Pin<&Self>, f: F)
-    where
+    pub fn update(
+        self: Pin<&Self>,
+        f: impl 'static + Send + FnOnce(Pin<&Eager>, Pin<&Lazy>) -> Update,
+    ) where
         SR::Symbol: Sync,
     {
         let this = Pin::clone(&self);
-        let update: Box<dyn Send + FnOnce()> = Box::new(move || unsafe {
+        let update: Box<dyn Send + FnOnce() -> Update> = Box::new(move || unsafe {
             f(
                 this.map_unchecked(|this| &this.eager),
                 this.map_unchecked(|this| (&*this.lazy.get()).get().expect("unreachable")),
             )
         });
-        let update: Box<dyn 'static + Send + FnOnce()> = unsafe { mem::transmute(update) };
+        let update: Box<dyn 'static + Send + FnOnce() -> Update> =
+            unsafe { mem::transmute(update) };
         self.handle.update_or_enqueue(update);
     }
 
-    pub async fn update_async<F: 'static + Send + FnOnce(Pin<&Eager>, Pin<&Lazy>)>(
+    pub async fn update_async<T: Send>(
         self: Pin<&Self>,
-        f: F,
-    ) {
+        f: impl Send + FnOnce(Pin<&Eager>, Pin<&Lazy>) -> (T, Update),
+    ) -> T {
         let this = Pin::clone(&self);
-        let update: Box<dyn Send + FnOnce()> = Box::new(move || unsafe {
+        let update: Box<dyn Send + FnOnce() -> (T, Update)> = Box::new(move || unsafe {
             f(
                 this.map_unchecked(|this| &this.eager),
                 this.map_unchecked(|this| (&*this.lazy.get()).get().expect("unreachable")),
             )
         });
-        let update: Box<dyn 'static + Send + FnOnce()> = unsafe { mem::transmute(update) };
+        let update: Box<dyn 'static + Send + FnOnce() -> (T, Update)> =
+            unsafe { mem::transmute(update) };
         self.handle
             .update_async(update)
             .await
             .map_err(|_| ())
-            .expect("Cancelling the update in a way this here would be reached would require calling `.stop()`, which isn't possible here because that requires an exclusive/`mut` reference.");
+            .expect("Cancelling the update in a way this here would be reached would require calling `.stop()`, which isn't possible here because that requires an exclusive/`mut` reference.")
     }
 
-    pub fn update_blocking<F: FnOnce(&Eager, &OnceLock<Lazy>)>(&self, f: F) {
+    pub fn update_blocking<T>(&self, f: impl FnOnce(&Eager, &OnceLock<Lazy>) -> (T, Update)) -> T {
         self.handle
-            .update_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }));
+            .update_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }))
     }
 
     pub fn update_dependency_set<T, F: FnOnce(Pin<&Eager>, Pin<&Lazy>) -> T>(
@@ -392,11 +396,11 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
     const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update>;
 
     /// A subscription change notification callback.
-	///
-	/// # Logic
-	///
-	/// The runtime **must** consider transitive subscriptions.  
-	/// The runtime **must** consider a signal's own inherent subscription.  
+    ///
+    /// # Logic
+    ///
+    /// The runtime **must** consider transitive subscriptions.  
+    /// The runtime **must** consider a signal's own inherent subscription.  
     /// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
     ///
     /// # Safety

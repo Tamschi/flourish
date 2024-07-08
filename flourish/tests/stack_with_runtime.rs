@@ -11,7 +11,8 @@ fn use_macros() {
         let a = subject_with_runtime!(1, GlobalSignalRuntime);
         let b = subject_with_runtime!(2, GlobalSignalRuntime);
     }
-    let (b, set_b) = b.get_set_blocking();
+    let (b, set_b) =
+        b.to_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     signals_helper! {
         let c = computed_with_runtime!(|| {
             x.push("c");
@@ -40,15 +41,15 @@ fn use_macros() {
         v.expect([2]);
         x.expect(["c", "d", "sub_aa", "aa"]);
 
-        a.set_blocking(0);
+        a.replace_blocking(0);
         v.expect([0]);
         x.expect(["c", "d", "sub_aa", "aa"]);
     } // drop sub
 
     // These evaluate *no* closures!
-    a.set_blocking(2);
+    a.replace_blocking(2);
     set_b(3);
-    a.set_blocking(5);
+    a.replace_blocking(5);
     v.expect([]);
     x.expect([]);
 
@@ -59,7 +60,7 @@ fn use_macros() {
     v.expect([8, 2]);
     x.expect(["sub_c", "c", "sub_d", "d"]);
 
-    a.set_blocking(4);
+    a.replace_blocking(4);
     v.expect([7, 1]);
     x.expect(["c", "d", "sub_c", "sub_d"]);
 }

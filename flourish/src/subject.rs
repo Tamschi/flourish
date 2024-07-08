@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, fmt::Debug, pin::Pin, sync::Arc};
 
-use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
+use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
     raw::RawSubject,
@@ -42,7 +42,7 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         }
     }
 
-	/// Cheaply creates a [`SignalSR`] handle to the managed subject.
+    /// Cheaply creates a [`SignalSR`] handle to the managed subject.
     pub fn to_signal<'a>(&self) -> SignalSR<'a, T, SR>
     where
         T: 'a,
@@ -64,16 +64,25 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         self.subject.read_exclusive()
     }
 
-    pub fn set(&self, new_value: T)
+    pub fn change(&self, new_value: T)
+    where
+        T: 'static + Send + PartialEq,
+        SR: Sync,
+        SR::Symbol: Sync,
+    {
+        self.subject.as_ref().change(new_value)
+    }
+
+    pub fn replace(&self, new_value: T)
     where
         T: 'static + Send,
         SR: Sync,
         SR::Symbol: Sync,
     {
-        self.subject.as_ref().set(new_value)
+        self.subject.as_ref().replace(new_value)
     }
 
-    pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T))
+    pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
     where
         SR: Sync,
         SR::Symbol: Sync,
@@ -81,126 +90,68 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
         self.subject.as_ref().update(update)
     }
 
-    pub fn set_blocking(&self, new_value: T) {
-        self.subject.set_blocking(new_value)
+    pub async fn change_async(&self, new_value: T) -> Result<T, T>
+    where
+        T: Send + PartialEq,
+        SR: Sync,
+        SR::Symbol: Sync,
+    {
+        self.subject.as_ref().change_async(new_value).await
     }
 
-    pub fn update_blocking(&self, update: impl FnOnce(&mut T)) {
+    pub async fn replace_async(&self, new_value: T) -> T
+    where
+        T: Send,
+        SR: Sync,
+        SR::Symbol: Sync,
+    {
+        self.subject.as_ref().replace_async(new_value).await
+    }
+
+    pub async fn update_async<U: Send>(
+        &self,
+        update: impl Send + FnOnce(&mut T) -> (U, Update),
+    ) -> U
+    where
+        SR: Sync,
+        SR::Symbol: Sync,
+    {
+        self.subject.as_ref().update_async(update).await
+    }
+
+    pub fn change_blocking(&self, new_value: T) -> Result<T, T>
+    where
+        T: PartialEq,
+    {
+        self.subject.change_blocking(new_value)
+    }
+
+    pub fn replace_blocking(&self, new_value: T) -> T {
+        self.subject.replace_blocking(new_value)
+    }
+
+    pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
         self.subject.update_blocking(update)
     }
 
-    pub fn into_get_set_blocking<'a>(self) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
+    pub fn into_source_sender<'a, S>(self, into_sender: impl FnOnce(Self) -> S) -> (SignalSR<'a, T, SR>, S)
     where
-        Self: 'a,
-        T: Sync + Send + Copy,
+        T: 'a + Sized,
+        SR: 'a,
     {
-        self.into_get_clone_set_blocking()
+        (self.to_signal(), into_sender(self))
     }
 
-    pub fn into_get_set<'a>(
+    pub fn into_mapped_source_sender<'a, S, R>(
         self,
-    ) -> (
-        impl 'a + Clone + Send + Sync + Unpin + Fn() -> T,
-        impl 'a + Clone + Send + Sync + Unpin + Fn(T),
-    )
+        map_source: impl FnOnce(SignalSR<'a, T, SR>) -> R,
+        into_sender: impl FnOnce(Self) -> S,
+    ) -> (R, S)
     where
-        Self: 'a,
-        T: 'static + Sync + Send + Copy,
-        SR: Send + Sync,
-        SR::Symbol: Send + Sync,
+        T: 'a + Sized,
+        SR: 'a,
     {
-        self.into_get_clone_set()
-    }
-
-    pub fn into_get_clone_set_blocking<'a>(
-        self,
-    ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
-    where
-        Self: 'a,
-        T: Sync + Send + Clone,
-    {
-        let this = self.clone();
-        (
-            move || self.get_clone(),
-            move |new_value| this.set_blocking(new_value),
-        )
-    }
-
-    pub fn into_get_clone_set<'a>(
-        self,
-    ) -> (
-        impl 'a + Clone + Send + Sync + Unpin + Fn() -> T,
-        impl 'a + Clone + Send + Sync + Unpin + Fn(T),
-    )
-    where
-        Self: 'a,
-        T: 'static + Sync + Send + Clone,
-        SR: Send + Sync,
-        SR::Symbol: Send + Sync,
-    {
-        let this = self.clone();
-        (
-            move || self.get_clone(),
-            move |new_value| this.set(new_value),
-        )
-    }
-
-    pub fn into_get_exclusive_set_blocking<'a>(
-        self,
-    ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
-    where
-        Self: 'a,
-        T: Copy,
-    {
-        self.into_get_clone_exclusive_set_blocking()
-    }
-
-    pub fn into_get_exclusive_set<'a>(
-        self,
-    ) -> (
-        impl 'a + Clone + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Send + Sync + Fn(T),
-    )
-    where
-        Self: 'a,
-        T: 'static + Send + Copy,
-        SR: Send + Sync,
-        SR::Symbol: Send + Sync,
-    {
-        self.into_get_clone_exclusive_set()
-    }
-
-    pub fn into_get_clone_exclusive_set_blocking<'a>(
-        self,
-    ) -> (impl 'a + Clone + Fn() -> T, impl 'a + Clone + Fn(T))
-    where
-        Self: 'a,
-        T: Clone,
-    {
-        let this = self.clone();
-        (
-            move || self.get_clone_exclusive(),
-            move |new_value| this.set_blocking(new_value),
-        )
-    }
-
-    pub fn into_get_clone_exclusive_set<'a>(
-        self,
-    ) -> (
-        impl 'a + Clone + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Send + Sync + Fn(T),
-    )
-    where
-        Self: 'a,
-        T: 'static + Send + Clone,
-        SR: Send + Sync,
-        SR::Symbol: Send + Sync,
-    {
-        let this = self.clone();
-        (
-            move || self.get_clone_exclusive(),
-            move |new_value| this.set(new_value),
-        )
+        (map_source(self.to_signal()), into_sender(self))
     }
 }
 

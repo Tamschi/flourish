@@ -103,18 +103,18 @@ let signal = Signal::computed({
 
 let subscription = Subscription::computed(|| signal.touch()); // ""
 
-// Note: `set` may be deferred (but is safe to use in callbacks)!
-//        Use `set_blocking` and `set_async` as needed.
-a.set("a"); b.set("b"); // nothing
-index.set(1); // "a"
-a.set("aa"); // "aa"
-b.set("bb"); // nothing
-index.set(2); // "bb"
-a.set("a"); // nothing
-b.set("b"); // "b"
+// Note: `change` and `replace` may be deferred (but are safe to use in callbacks)!
+//        Use the `…_blocking` and `…_async` variants as needed.
+a.replace("a"); b.replace("b"); // nothing
+index.change(1); // "a" ("change" methods don't replace or propagate if the value is equal)
+a.change("aa"); // "aa"
+b.change("bb"); // nothing
+index.change(2); // "bb"
+a.change("a"); // nothing
+b.change("b"); // "b"
 
 drop(subscription);
-index.set(3); // nothing
+index.change(3); // nothing
 ```
 
 `Signal`s are fully lazy, so they only update while subscribed or to refresh their value if dirty.

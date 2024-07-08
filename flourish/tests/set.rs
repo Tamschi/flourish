@@ -19,13 +19,13 @@ fn set() {
     let _effect = Effect::new(
         {
             shadow_clone!(a, b);
-            move || b.set(a.get())
+            move || b.replace(a.get())
         },
         drop,
     );
     v.expect([("_sub_a", "a"), ("_sub_b", "b"), ("_sub_b", "a")]);
 
-    a.set_blocking("aa");
+    a.replace_blocking("aa");
 
     v.expect([("_sub_a", "aa"), ("_sub_b", "aa")]);
 }

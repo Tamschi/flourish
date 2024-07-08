@@ -8,7 +8,8 @@ use _validator::Validator;
 fn concise() {
     let v = &Validator::new();
 
-    let (get, set) = Subject::new(0).into_get_set_blocking();
+    let (get, set) = Subject::new(0)
+        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     let debounced = Signal::new(pipe((
         computed(get, GlobalSignalRuntime),
         debounce_from_source,

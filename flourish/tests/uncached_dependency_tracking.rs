@@ -10,9 +10,12 @@ use _validator::Validator;
 fn heap() {
     let v = &Validator::new();
 
-    let (a, set_a) = Subject::new(()).into_get_set_blocking();
-    let (b, set_b) = Subject::new(()).into_get_set_blocking();
-    let (c, set_c) = Subject::new(()).into_get_set_blocking();
+    let (a, set_a) = Subject::new(())
+        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+    let (b, set_b) = Subject::new(())
+        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+    let (c, set_c) = Subject::new(())
+        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
     let roundabout = Signal::computed_uncached_mut({
         let mut angle = 0;
@@ -56,9 +59,12 @@ fn heap() {
 fn stack() {
     let v = &Validator::new();
 
-    let (a, set_a) = Subject::new(()).into_get_set_blocking();
-    let (b, set_b) = Subject::new(()).into_get_set_blocking();
-    let (c, set_c) = Subject::new(()).into_get_set_blocking();
+    let (a, set_a) = Subject::new(())
+        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+    let (b, set_b) = Subject::new(())
+        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+    let (c, set_c) = Subject::new(())
+        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
     let roundabout = Signal::computed_uncached({
         let angle = Mutex::new(0);

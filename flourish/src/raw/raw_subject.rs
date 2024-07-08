@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
-    mem::{needs_drop, size_of},
+    mem::{self, needs_drop, size_of},
     pin::Pin,
     sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -9,7 +9,7 @@ use std::{
 use pin_project::pin_project;
 use pollinate::{
     raw::{NoCallbacks, RawSignal},
-    runtime::SignalRuntimeRef,
+    runtime::{SignalRuntimeRef, Update},
 };
 
 use crate::utils::conjure_zst;
@@ -34,7 +34,7 @@ where
 }
 
 /// TODO: Safety.
-unsafe impl<T: Send, SR: SignalRuntimeRef + Sync> Sync for RawSubject<T, SR> {}
+unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for RawSubject<T, SR> {}
 
 struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
@@ -152,24 +152,58 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
         }
     }
 
-    pub fn set(self: Pin<&Self>, new_value: T)
+    pub fn change(self: Pin<&Self>, new_value: T)
+    where
+        T: 'static + Send + Sized + PartialEq,
+        SR: Sync,
+        SR::Symbol: Sync,
+    {
+        if needs_drop::<T>() || size_of::<T>() > 0 {
+            self.update(|value| {
+                if *value != new_value {
+                    *value = new_value;
+                    Update::Propagate
+                } else {
+                    Update::Halt
+                }
+            });
+        } else {
+            // The write is unobservable, so just skip locking.
+            self.signal
+                .clone_runtime_ref()
+                .run_detached(|| self.touch());
+            self.project_ref().signal.update(|_, _| unsafe {
+                //SAFETY: `T` creation and destruction are unobservable and its size is 0.
+                if mem::transmute_copy::<(), T>(&()) != mem::transmute_copy::<(), T>(&()) {
+                    Update::Propagate
+                } else {
+                    Update::Halt
+                }
+            });
+        }
+    }
+
+    pub fn replace(self: Pin<&Self>, new_value: T)
     where
         T: 'static + Send + Sized,
         SR: Sync,
         SR::Symbol: Sync,
     {
         if needs_drop::<T>() || size_of::<T>() > 0 {
-            self.update(|value| *value = new_value);
+            self.update(|value| {
+                *value = new_value;
+                Update::Propagate
+            });
         } else {
             // The write is unobservable, so just skip locking.
             self.signal
                 .clone_runtime_ref()
                 .run_detached(|| self.touch());
-            self.project_ref().signal.update(|_, _| ());
+            self.project_ref().signal.update(|_, _| Update::Propagate);
         }
     }
 
-    pub fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T))
+    pub fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update)
     where
         T: Send,
         SR: Sync,
@@ -183,24 +217,65 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
             .update(|value, _| update(&mut value.0.write().unwrap()))
     }
 
-    pub async fn set_async(self: Pin<&Self>, new_value: T)
+    pub async fn change_async(self: Pin<&Self>, new_value: T) -> Result<T, T>
     where
-        T: 'static + Send + Sized,
+        T: Send + Sized + PartialEq,
         SR: Sync,
         SR::Symbol: Sync,
     {
-        if needs_drop::<T>() || size_of::<T>() > 0 {
-            self.update_async(|value| *value = new_value).await;
+        if size_of::<T>() > 0 {
+            self.update_async(|value| {
+                if *value != new_value {
+                    (Ok(mem::replace(value, new_value)), Update::Propagate)
+                } else {
+                    (Err(new_value), Update::Halt)
+                }
+            })
+            .await
         } else {
             // The write is unobservable, so just skip locking.
             self.signal
                 .clone_runtime_ref()
                 .run_detached(|| self.touch());
-            self.project_ref().signal.update_async(|_, _| ()).await;
+            self.project_ref()
+                .signal
+                .update_async(|_, _| unsafe {
+                    //SAFETY: `T` creation and destruction are unobservable and its size is 0.
+                    if mem::transmute_copy::<(), T>(&()) != mem::transmute_copy::<(), T>(&()) {
+                        (Ok(mem::transmute_copy::<(), T>(&())), Update::Propagate)
+                    } else {
+                        (Err(mem::transmute_copy::<(), T>(&())), Update::Halt)
+                    }
+                })
+                .await
         }
     }
 
-    pub async fn update_async(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T))
+    pub async fn replace_async(self: Pin<&Self>, new_value: T) -> T
+    where
+        T: Send + Sized,
+        SR: Sync,
+        SR::Symbol: Sync,
+    {
+        if size_of::<T>() > 0 {
+            self.update_async(|value| (mem::replace(value, new_value), Update::Propagate))
+                .await
+        } else {
+            // The write is unobservable, so just skip locking.
+            self.signal
+                .clone_runtime_ref()
+                .run_detached(|| self.touch());
+            self.project_ref()
+                .signal
+                .update_async(|_, _| (new_value, Update::Propagate))
+                .await
+        }
+    }
+
+    pub async fn update_async<U: Send>(
+        self: Pin<&Self>,
+        update: impl Send + FnOnce(&mut T) -> (U, Update),
+    ) -> U
     where
         T: Send,
         SR: Sync,
@@ -215,19 +290,45 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
             .await
     }
 
-    pub fn set_blocking(&self, new_value: T)
+    pub fn change_blocking(&self, new_value: T) -> Result<T, T>
     where
-        T: Sized,
+        T: Sized + PartialEq,
     {
         if needs_drop::<T>() || size_of::<T>() > 0 {
-            self.update_blocking(|value| *value = new_value)
+            self.update_blocking(|value| {
+                if *value != new_value {
+                    (Ok(mem::replace(value, new_value)), Update::Propagate)
+                } else {
+                    (Err(new_value), Update::Halt)
+                }
+            })
         } else {
             // The write is unobservable, so just skip locking.
-            self.signal.update_blocking(|_, _| ())
+            self.signal.update_blocking(|_, _| unsafe {
+                //SAFETY: `T` creation and destruction are unobservable and its size is 0.
+                if mem::transmute_copy::<(), T>(&()) != mem::transmute_copy::<(), T>(&()) {
+                    (Ok(mem::transmute_copy::<(), T>(&())), Update::Propagate)
+                } else {
+                    (Err(mem::transmute_copy::<(), T>(&())), Update::Halt)
+                }
+            })
         }
     }
 
-    pub fn update_blocking(&self, update: impl FnOnce(&mut T)) {
+    pub fn replace_blocking(&self, new_value: T) -> T
+    where
+        T: Sized,
+    {
+        if size_of::<T>() > 0 {
+            self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
+        } else {
+            // The write is unobservable, so just skip locking.
+            self.signal
+                .update_blocking(|_, _| (new_value, Update::Propagate))
+        }
+    }
+
+    pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
         self.signal
             .clone_runtime_ref()
             .run_detached(|| self.touch());
@@ -235,132 +336,29 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawSubject<T, SR> {
             .update_blocking(|value, _| update(&mut value.0.write().unwrap()))
     }
 
-    pub fn get_set_blocking<'a>(
+    pub fn to_source_sender<'a, S>(
         self: Pin<&'a Self>,
-    ) -> (
-        impl 'a + Clone + Copy + Unpin + Fn() -> T,
-        impl 'a + Clone + Copy + Unpin + Fn(T),
-    )
+        into_sender: impl FnOnce(Pin<&'a Self>) -> S,
+    ) -> (Pin<&'a impl Source<SR, Output = T>>, S)
     where
-        T: Sync + Send + Copy,
+        T: Sized,
     {
-        self.get_clone_set_blocking()
+        (self, into_sender(self))
     }
 
-    pub fn get_set<'a>(
+    pub fn to_mapped_source_sender<'a, S, R>(
         self: Pin<&'a Self>,
-    ) -> (
-        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn(T),
-    )
+        map_source: impl FnOnce(Pin<&'a dyn Source<SR, Output = T>>) -> R,
+        into_sender: impl FnOnce(Pin<&'a Self>) -> S,
+    ) -> (R, S)
     where
-        T: 'static + Sync + Send + Copy,
-        SR: Sync,
-        SR::Symbol: Sync,
+        T: Sized,
     {
-        self.get_clone_set()
-    }
-
-    pub fn get_clone_set_blocking<'a>(
-        self: Pin<&'a Self>,
-    ) -> (
-        impl 'a + Clone + Copy + Unpin + Fn() -> T,
-        impl 'a + Clone + Copy + Unpin + Fn(T),
-    )
-    where
-        T: Sync + Send + Clone,
-    {
-        let this = self.clone();
-        (
-            move || self.get_clone(),
-            move |new_value| this.set_blocking(new_value),
-        )
-    }
-
-    pub fn get_clone_set<'a>(
-        self: Pin<&'a Self>,
-    ) -> (
-        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn(T),
-    )
-    where
-        T: 'static + Sync + Send + Clone,
-        SR: Sync,
-        SR::Symbol: Sync,
-    {
-        let this = self.clone();
-        (
-            move || self.get_clone(),
-            move |new_value| this.set(new_value),
-        )
-    }
-
-    pub fn into_get_exclusive_set_blocking<'a>(
-        self: Pin<&'a Self>,
-    ) -> (
-        impl 'a + Clone + Copy + Unpin + Fn() -> T,
-        impl 'a + Clone + Copy + Unpin + Fn(T),
-    )
-    where
-        Self: 'a,
-        T: Send + Copy,
-    {
-        self.into_get_clone_exclusive_set_blocking()
-    }
-
-    pub fn into_get_exclusive_set<'a>(
-        self: Pin<&'a Self>,
-    ) -> (
-        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn(T),
-    )
-    where
-        Self: 'a,
-        T: 'static + Send + Copy,
-        SR: Sync,
-        SR::Symbol: Sync,
-    {
-        self.into_get_clone_exclusive_set()
-    }
-
-    pub fn into_get_clone_exclusive_set_blocking<'a>(
-        self: Pin<&'a Self>,
-    ) -> (
-        impl 'a + Clone + Copy + Unpin + Fn() -> T,
-        impl 'a + Clone + Copy + Unpin + Fn(T),
-    )
-    where
-        Self: 'a,
-        T: Send + Clone,
-    {
-        let this = self.clone();
-        (
-            move || self.get_clone_exclusive(),
-            move |new_value| this.set_blocking(new_value),
-        )
-    }
-
-    pub fn into_get_clone_exclusive_set<'a>(
-        self: Pin<&'a Self>,
-    ) -> (
-        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn() -> T,
-        impl 'a + Clone + Copy + Unpin + Send + Sync + Fn(T),
-    )
-    where
-        Self: 'a,
-        T: 'static + Send + Clone,
-        SR: Sync,
-        SR::Symbol: Sync,
-    {
-        let this = self.clone();
-        (
-            move || self.get_clone_exclusive(),
-            move |new_value| this.set(new_value),
-        )
+        (map_source(self), into_sender(self))
     }
 }
 
-impl<T: Send, SR: SignalRuntimeRef> Source<SR> for RawSubject<T, SR> {
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for RawSubject<T, SR> {
     type Output = T;
 
     fn touch(self: Pin<&Self>) {
@@ -416,7 +414,7 @@ impl<T: Send, SR: SignalRuntimeRef> Source<SR> for RawSubject<T, SR> {
 
 impl<T: Send, SR: SignalRuntimeRef> Subscribable<SR> for RawSubject<T, SR> {
     fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
-		//FIXME: This is inefficient.
+        //FIXME: This is inefficient.
         if self
             .project_ref()
             .signal
