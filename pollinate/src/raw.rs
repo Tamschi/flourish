@@ -392,6 +392,12 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
     const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update>;
 
     /// A subscription change notification callback.
+	///
+	/// # Logic
+	///
+	/// The runtime **must** consider transitive subscriptions.  
+	/// The runtime **must** consider a signal's own inherent subscription.  
+    /// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
     ///
     /// # Safety
     ///

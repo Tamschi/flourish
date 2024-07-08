@@ -735,7 +735,9 @@ pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
     ///
     /// # Logic
     ///
-    /// The runtime **must** run this function only while not recording dependencies (but may start a nested recording in response to the callback).
+	/// The runtime **must** consider transitive subscriptions.  
+	/// The runtime **must** consider a signal's own inherent subscription.  
+    /// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
     pub on_subscribed_change: Option<unsafe fn(*const T, status: CTT::SubscribedStatus)>,
 }
 
