@@ -10,7 +10,7 @@ use std::{
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-    raw::{computed, computed_uncached, computed_uncached_mut, folded, merged},
+    raw::{computed, computed_uncached, computed_uncached_mut, debounced, folded, merged},
     traits::Subscribable,
     SourcePin, SubscriptionSR,
 };
@@ -123,6 +123,31 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         T: Sized,
     {
         Self::new(computed(fn_pin, runtime))
+    }
+
+    /// A simple cached computation.
+    ///
+    /// Doesn't update its cache or propagate iff the new result is equal.
+    ///
+    /// Wraps [`debounced`](`debounced()`).
+    pub fn debounced(fn_pin: impl 'a + Send + FnMut() -> T) -> Self
+    where
+        T: Sized + PartialEq,
+        SR: Default,
+    {
+        Self::new(debounced(fn_pin, SR::default()))
+    }
+
+    /// A simple cached computation.
+    ///
+    /// Doesn't update its cache or propagate iff the new result is equal.
+    ///
+    /// Wraps [`debounced`](`debounced()`).
+    pub fn debounced_with_runtime(fn_pin: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
+    where
+        T: Sized + PartialEq,
+    {
+        Self::new(debounced(fn_pin, runtime))
     }
 
     /// A simple **uncached** computation.

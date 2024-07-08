@@ -12,7 +12,7 @@ fn delta_test() {
     let v = &Validator::new();
 
     let (get, set) = Announcer::new(1)
-        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        .into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     let delta = Signal::new(delta_from_source(computed_uncached(
         get,
         GlobalSignalRuntime,

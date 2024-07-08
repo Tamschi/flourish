@@ -12,7 +12,7 @@ fn use_macros() {
     let b = ::core::pin::pin!(flourish::raw::announcer(2, flourish::GlobalSignalRuntime));
     let b = ::core::pin::Pin::into_ref(b);
     let (b, set_b) =
-        b.to_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        b.as_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     let c = ::core::pin::pin!(flourish::raw::computed(
         || {
             x.push("c");

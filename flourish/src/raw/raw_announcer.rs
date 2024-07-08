@@ -336,25 +336,25 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> RawAnnouncer<T, SR> {
             .update_blocking(|value, _| update(&mut value.0.write().unwrap()))
     }
 
-    pub fn to_source_sender<'a, S>(
+    pub fn as_source_and_setter<'a, S>(
         self: Pin<&'a Self>,
-        into_sender: impl FnOnce(Pin<&'a Self>) -> S,
+        as_setter: impl FnOnce(Pin<&'a Self>) -> S,
     ) -> (Pin<&'a impl Source<SR, Output = T>>, S)
     where
         T: Sized,
     {
-        (self, into_sender(self))
+        (self, as_setter(self))
     }
 
-    pub fn to_mapped_source_sender<'a, S, R>(
+    pub fn as_getter_and_setter<'a, S, R>(
         self: Pin<&'a Self>,
-        map_source: impl FnOnce(Pin<&'a dyn Source<SR, Output = T>>) -> R,
-        into_sender: impl FnOnce(Pin<&'a Self>) -> S,
+        source_as_getter: impl FnOnce(Pin<&'a dyn Source<SR, Output = T>>) -> R,
+        as_setter: impl FnOnce(Pin<&'a Self>) -> S,
     ) -> (R, S)
     where
         T: Sized,
     {
-        (map_source(self), into_sender(self))
+        (source_as_getter(self), as_setter(self))
     }
 }
 

@@ -18,38 +18,6 @@ pub mod future;
 
 //TODO: These have extraneous bounds. Change to accept closures to remove some `T: Sync + Copy` bounds.
 
-pub fn debounce<'a, T: 'a + Send + PartialEq, SR: 'a + SignalRuntimeRef>(
-    fn_pin: impl 'a + Send + FnMut() -> T,
-    runtime: SR,
-) -> impl 'a + Subscribable<SR, Output = T> {
-    merged(
-        fn_pin,
-        |current, next| {
-            if current != &next {
-                *current = next;
-                Update::Propagate
-            } else {
-                Update::Halt
-            }
-        },
-        runtime,
-    )
-}
-
-pub fn debounce_from_source<
-    'a,
-    T: 'a + Send + Sync + Copy + PartialEq,
-    SR: 'a + SignalRuntimeRef,
->(
-    source: impl 'a + Source<SR, Output = T>,
-) -> impl 'a + Subscribable<SR, Output = T> {
-    let runtime = source.clone_runtime_ref();
-    debounce(
-        move || unsafe { Pin::new_unchecked(&source) }.get(),
-        runtime,
-    )
-}
-
 pub fn delta<'a, V: 'a + Send, T: 'a + Send + Zero, SR: 'a + SignalRuntimeRef>(
     mut fn_pin: impl 'a + Send + FnMut() -> V,
     runtime: SR,

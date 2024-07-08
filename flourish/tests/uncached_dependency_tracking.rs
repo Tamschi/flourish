@@ -11,11 +11,11 @@ fn heap() {
     let v = &Validator::new();
 
     let (a, set_a) = Announcer::new(())
-        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        .into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     let (b, set_b) = Announcer::new(())
-        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        .into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     let (c, set_c) = Announcer::new(())
-        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        .into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
     let roundabout = Signal::computed_uncached_mut({
         let mut angle = 0;
@@ -60,11 +60,11 @@ fn stack() {
     let v = &Validator::new();
 
     let (a, set_a) = Announcer::new(())
-        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        .into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     let (b, set_b) = Announcer::new(())
-        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        .into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     let (c, set_c) = Announcer::new(())
-        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        .into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
     let roundabout = Signal::computed_uncached({
         let angle = Mutex::new(0);

@@ -8,7 +8,7 @@ pub mod prelude {
     use ext_trait::extension;
     use flourish::{SignalRuntimeRef, SignalSR, SubscriptionSR};
     use flourish_extra::{
-        debounce, delta,
+        delta,
         future::{filter, flatten_some, skip_while},
         sparse_tally,
     };
@@ -18,21 +18,6 @@ pub mod prelude {
 
     #[extension(pub trait SignalExt)]
     impl<'a, T: 'a + Send + ?Sized, SR: 'a + SignalRuntimeRef> SignalSR<'a, T, SR> {
-        fn debounce(fn_pin: impl 'a + Send + FnMut() -> T) -> Self
-        where
-            T: Sync + Copy + PartialEq,
-            SR: Default,
-        {
-            Self::debounce_with_runtime(fn_pin, SR::default())
-        }
-
-        fn debounce_with_runtime(fn_pin: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
-        where
-            T: Sync + Copy + PartialEq,
-        {
-            Self::new(debounce(fn_pin, runtime))
-        }
-
         fn delta<V: 'a + Send>(fn_pin: impl 'a + Send + FnMut() -> V) -> SignalSR<'a, T, SR>
         where
             T: Zero,

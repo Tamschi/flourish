@@ -308,19 +308,19 @@ impl<'a, T: Send, SR: SignalRuntimeRef> ProviderSR<'a, T, SR> {
         self.provider.update_blocking(update)
     }
 
-    pub fn into_source_sender<S>(
+    pub fn into_signal_and_setter<S>(
         self,
-        into_sender: impl FnOnce(Self) -> S,
+        into_setter: impl FnOnce(Self) -> S,
     ) -> (SignalSR<'a, T, SR>, S) {
-        (self.to_signal(), into_sender(self))
+        (self.to_signal(), into_setter(self))
     }
 
-    pub fn into_mapped_source_sender<S, R>(
+    pub fn into_getter_and_setter<S, R>(
         self,
-        map_source: impl FnOnce(SignalSR<'a, T, SR>) -> R,
-        into_sender: impl FnOnce(Self) -> S,
+        signal_into_getter: impl FnOnce(SignalSR<'a, T, SR>) -> R,
+        into_setter: impl FnOnce(Self) -> S,
     ) -> (R, S) {
-        (map_source(self.to_signal()), into_sender(self))
+        (signal_into_getter(self.to_signal()), into_setter(self))
     }
 }
 

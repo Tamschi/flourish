@@ -9,7 +9,7 @@ fn use_constructors() {
 
     let a = Announcer::new(1);
     let (b, set_b) = Announcer::new(2)
-        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        .into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     let c = Signal::computed({
         shadow_clone!(a, b);
         move || {

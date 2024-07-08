@@ -134,24 +134,27 @@ impl<T: Send, SR: SignalRuntimeRef> AnnouncerSR<T, SR> {
         self.announcer.update_blocking(update)
     }
 
-    pub fn into_source_sender<'a, S>(self, into_sender: impl FnOnce(Self) -> S) -> (SignalSR<'a, T, SR>, S)
+    pub fn into_signal_and_setter<'a, S>(
+        self,
+        into_setter: impl FnOnce(Self) -> S,
+    ) -> (SignalSR<'a, T, SR>, S)
     where
         T: 'a + Sized,
         SR: 'a,
     {
-        (self.to_signal(), into_sender(self))
+        (self.to_signal(), into_setter(self))
     }
 
-    pub fn into_mapped_source_sender<'a, S, R>(
+    pub fn into_getter_and_setter<'a, S, R>(
         self,
-        map_source: impl FnOnce(SignalSR<'a, T, SR>) -> R,
-        into_sender: impl FnOnce(Self) -> S,
+        signal_into_getter: impl FnOnce(SignalSR<'a, T, SR>) -> R,
+        into_setter: impl FnOnce(Self) -> S,
     ) -> (R, S)
     where
         T: 'a + Sized,
         SR: 'a,
     {
-        (map_source(self.to_signal()), into_sender(self))
+        (signal_into_getter(self.to_signal()), into_setter(self))
     }
 }
 

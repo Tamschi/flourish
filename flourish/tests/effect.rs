@@ -7,7 +7,7 @@ fn heap() {
     let v = &Validator::new();
 
     let (a, set_a) = Announcer::new(())
-        .into_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        .into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
 
     let e = Effect::new(
         move || {

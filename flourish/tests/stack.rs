@@ -12,7 +12,7 @@ fn use_macros() {
         let b = announcer!(2);
     }
     let (b, set_b) =
-        b.to_mapped_source_sender(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+        b.as_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
     signals_helper! {
         let c = computed!(|| {
             x.push("c");
