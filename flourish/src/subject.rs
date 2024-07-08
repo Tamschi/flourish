@@ -2,7 +2,11 @@ use std::{borrow::Borrow, fmt::Debug, pin::Pin, sync::Arc};
 
 use pollinate::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::{raw::RawSubject, traits::Source, SourcePin};
+use crate::{
+    raw::RawSubject,
+    traits::{Source, Subscribable},
+    SignalSR, SourcePin,
+};
 
 /// Type inference helper alias for [`SubjectSR`] (using [`GlobalSignalRuntime`]).
 pub type Subject<T> = SubjectSR<T, GlobalSignalRuntime>;
@@ -35,6 +39,17 @@ impl<T: Send, SR: SignalRuntimeRef> SubjectSR<T, SR> {
     {
         Self {
             subject: Arc::pin(RawSubject::with_runtime(initial_value, runtime)),
+        }
+    }
+
+	/// Cheaply creates a [`SignalSR`] handle to the managed subject.
+    pub fn to_signal<'a>(&self) -> SignalSR<'a, T, SR>
+    where
+        T: 'a,
+        SR: 'a,
+    {
+        SignalSR {
+            source: Pin::clone(&self.subject) as Pin<Arc<dyn Subscribable<SR, Output = T>>>,
         }
     }
 

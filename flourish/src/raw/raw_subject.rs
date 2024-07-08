@@ -14,7 +14,7 @@ use pollinate::{
 
 use crate::utils::conjure_zst;
 
-use super::Source;
+use super::{Source, Subscribable};
 
 #[pin_project]
 pub struct RawSubject<T: ?Sized + Send, SR: SignalRuntimeRef> {
@@ -411,5 +411,25 @@ impl<T: Send, SR: SignalRuntimeRef> Source<SR> for RawSubject<T, SR> {
         SR: Sized,
     {
         self.signal.clone_runtime_ref()
+    }
+}
+
+impl<T: Send, SR: SignalRuntimeRef> Subscribable<SR> for RawSubject<T, SR> {
+    fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
+		//FIXME: This is inefficient.
+        if self
+            .project_ref()
+            .signal
+            .subscribe_inherently::<NoCallbacks>(|_, slot| slot.write(()))
+            .is_some()
+        {
+            Some(self.read_exclusive())
+        } else {
+            None
+        }
+    }
+
+    fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
+        self.project_ref().signal.unsubscribe_inherently()
     }
 }
