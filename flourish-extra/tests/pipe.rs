@@ -1,4 +1,6 @@
-use flourish::{raw::computed, GlobalSignalRuntime, Signal, SourcePin as _, Announcer, Subscription};
+use flourish::{
+    raw::computed, Announcer, GlobalSignalRuntime, Signal, SourcePin as _, Subscription,
+};
 use flourish_extra::{debounce_from_source, pipe};
 
 mod _validator;

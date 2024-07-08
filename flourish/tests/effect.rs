@@ -1,4 +1,4 @@
-use flourish::{Effect, SourcePin, Announcer};
+use flourish::{Announcer, Effect, SourcePin};
 mod _validator;
 use _validator::Validator;
 

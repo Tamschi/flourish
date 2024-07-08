@@ -1,5 +1,5 @@
 use flourish::{
-    raw::computed_uncached, shadow_clone, GlobalSignalRuntime, Signal, SourcePin as _, Announcer,
+    raw::computed_uncached, shadow_clone, Announcer, GlobalSignalRuntime, Signal, SourcePin as _,
     Subscription,
 };
 use flourish_extra::delta_from_source;
