@@ -7,7 +7,7 @@ use std::{
 };
 
 use flourish::{
-    raw::{computed, folded, merged, Source, Subscribable},
+    raw::{computed, folded, Source, Subscribable},
     SignalRuntimeRef, SubscriptionSR, Update,
 };
 use num_traits::Zero;

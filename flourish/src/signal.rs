@@ -2,7 +2,6 @@ use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
-    mem,
     pin::Pin,
     sync::Arc,
 };
@@ -76,7 +75,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
         }
     }
 
-    pub fn try_subscribe(mut self) -> Result<SubscriptionSR<'a, T, SR>, Self> {
+    pub fn try_subscribe(self) -> Result<SubscriptionSR<'a, T, SR>, Self> {
         if (|| self.source.as_ref().subscribe_inherently().is_some())() {
             Ok(SubscriptionSR {
                 source: self.source,

@@ -62,7 +62,7 @@ impl<
         SR: SignalRuntimeRef,
     > RawMerged<T, S, M, SR>
 {
-    pub fn new(select_fn_pin: S, merge_fn_pin: M, runtime: SR) -> Self {
+    pub(crate) fn new(select_fn_pin: S, merge_fn_pin: M, runtime: SR) -> Self {
         Self(RawSignal::with_runtime(
             ForceSyncUnpin((select_fn_pin, merge_fn_pin).into()),
             runtime,
@@ -89,14 +89,14 @@ impl<
         self.read().borrow().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
+    pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
     where
         T: Sync,
     {
         RawMergedGuard(self.touch().read().unwrap())
     }
 
-    pub fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+    pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
         RawMergedGuardExclusive(self.touch().write().unwrap())
     }
 

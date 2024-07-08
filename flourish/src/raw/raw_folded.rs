@@ -49,14 +49,14 @@ unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef + S
 }
 
 impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded<T, F, SR> {
-    pub fn new(init: T, fn_pin: F, runtime: SR) -> Self {
+    pub(crate) fn new(init: T, fn_pin: F, runtime: SR) -> Self {
         Self(RawSignal::with_runtime(
             (ForceSyncUnpin(init.into()), ForceSyncUnpin(fn_pin.into())),
             runtime,
         ))
     }
 
-    pub fn get(self: Pin<&Self>) -> T
+    pub(crate) fn get(self: Pin<&Self>) -> T
     where
         T: Sync + Copy,
     {
@@ -69,25 +69,25 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
         }
     }
 
-    pub fn get_clone(self: Pin<&Self>) -> T
+    pub(crate) fn get_clone(self: Pin<&Self>) -> T
     where
         T: Sync + Clone,
     {
         self.read().borrow().clone()
     }
 
-    pub fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
+    pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
     where
         T: Sync,
     {
         RawFoldedGuard(self.touch().read().unwrap())
     }
 
-    pub fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+    pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
         RawFoldedGuardExclusive(self.touch().write().unwrap())
     }
 
-    pub fn get_exclusive(self: Pin<&Self>) -> T
+    pub(crate) fn get_exclusive(self: Pin<&Self>) -> T
     where
         T: Copy,
     {
@@ -100,7 +100,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> RawFolded
         }
     }
 
-    pub fn get_clone_exclusive(self: Pin<&Self>) -> T
+    pub(crate) fn get_clone_exclusive(self: Pin<&Self>) -> T
     where
         T: Clone,
     {
