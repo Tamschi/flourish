@@ -3,17 +3,15 @@
 use std::{
 	marker::PhantomData,
 	mem::{self, MaybeUninit},
-	pin::Pin,
 	sync::Arc,
 };
 
 use async_lock::OnceCell;
 use flourish::{
-	raw::Source, shadow_clone, signals_helper, SignalRuntimeRef, SourcePin as _, SubscriptionSR,
-	Update,
+	shadow_clone, signals_helper, SignalRuntimeRef, SourcePin as _, SubscriptionSR, Update,
 };
 
-pub async fn skip_while<'a, T: 'a + Send + Sync, SR: 'a + SignalRuntimeRef>(
+pub async fn skipped_while<'a, T: 'a + Send + Sync, SR: 'a + SignalRuntimeRef>(
 	fn_pin: impl 'a + Send + FnMut() -> T,
 	mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 	runtime: SR,
@@ -36,37 +34,7 @@ pub async fn skip_while<'a, T: 'a + Send + Sync, SR: 'a + SignalRuntimeRef>(
 	sub
 }
 
-pub async fn skip_while_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-	source: impl 'a + Source<SR, Output = T>,
-	predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-) -> SubscriptionSR<'a, T, SR> {
-	let runtime = source.clone_runtime_ref();
-	skip_while(
-		move || unsafe { Pin::new_unchecked(&source) }.get(),
-		predicate_fn_pin,
-		runtime,
-	)
-	.await
-}
-
-pub async fn skip_while_from_source_cloned<
-	'a,
-	T: 'a + Send + Sync + Clone,
-	SR: 'a + SignalRuntimeRef,
->(
-	source: impl 'a + Source<SR, Output = T>,
-	predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-) -> SubscriptionSR<'a, T, SR> {
-	let runtime = source.clone_runtime_ref();
-	skip_while(
-		move || unsafe { Pin::new_unchecked(&source) }.get_clone(),
-		predicate_fn_pin,
-		runtime,
-	)
-	.await
-}
-
-pub async fn filter<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> T,
 	mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 	runtime: SR,
@@ -105,20 +73,7 @@ pub async fn filter<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
 	}
 }
 
-pub async fn filter_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-	source: impl 'a + Source<SR, Output = T>,
-	predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-) -> SubscriptionSR<'a, T, SR> {
-	let runtime = source.clone_runtime_ref();
-	filter(
-		move || unsafe { Pin::new_unchecked(&source) }.get(),
-		predicate_fn_pin,
-		runtime,
-	)
-	.await
-}
-
-pub async fn flatten_some<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+pub async fn filter_mapped<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 	runtime: SR,
 ) -> SubscriptionSR<'a, T, SR> {
@@ -153,17 +108,6 @@ pub async fn flatten_some<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntime
 		//CORRECTNESS: This neglects to call `T::drop()`, but that's fine because `T: Copy`.
 		mem::transmute::<SubscriptionSR<'a, MaybeUninit<T>, SR>, SubscriptionSR<'a, T, SR>>(sub)
 	}
-}
-
-pub async fn flatten_some_from_source<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
-	source: impl 'a + Source<SR, Output = Option<T>>,
-) -> SubscriptionSR<'a, T, SR> {
-	let runtime = source.clone_runtime_ref();
-	flatten_some(
-		move || unsafe { Pin::new_unchecked(&source) }.get(),
-		runtime,
-	)
-	.await
 }
 
 pub struct CancellableSlot<T> {

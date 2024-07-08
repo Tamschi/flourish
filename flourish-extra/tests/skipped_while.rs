@@ -1,5 +1,5 @@
-use flourish::{raw::computed_uncached, Signal, SourcePin as _};
-use flourish_extra::future::filter_from_source;
+use flourish::{Signal, SourcePin as _};
+use flourish_extra::future::skipped_while;
 
 mod _validator;
 use _validator::Validator;
@@ -14,18 +14,16 @@ fn ready() {
 	let signal = Signal::computed(|| v.push("signal"));
 	v.expect([]);
 
-	let found = filter_from_source(
-		computed_uncached(
-			|| {
-				v.push("source");
-				signal.get()
-			},
-			signal.clone_runtime_ref(),
-		),
+	let found = skipped_while(
+		|| {
+			v.push("source");
+			signal.get()
+		},
 		|()| {
 			v.push("test");
-			true
+			false
 		},
+		signal.clone_runtime_ref(),
 	);
 	v.expect([]);
 
@@ -40,18 +38,16 @@ fn pending() {
 	let signal = Signal::computed(|| v.push("signal"));
 	v.expect([]);
 
-	let found = filter_from_source(
-		computed_uncached(
-			|| {
-				v.push("source");
-				signal.get()
-			},
-			signal.clone_runtime_ref(),
-		),
+	let found = skipped_while(
+		|| {
+			v.push("source");
+			signal.get()
+		},
 		|()| {
 			v.push("test");
-			false
+			true
 		},
+		signal.clone_runtime_ref(),
 	);
 	v.expect([]);
 

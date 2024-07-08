@@ -9,7 +9,7 @@ pub mod prelude {
 	use flourish::{SignalRuntimeRef, SignalSR, SubscriptionSR};
 	use flourish_extra::{
 		delta,
-		future::{filter, flatten_some, skip_while},
+		future::{filter_mapped, filtered, skipped_while},
 		sparse_tally,
 	};
 	use num_traits::Zero;
@@ -61,25 +61,25 @@ pub mod prelude {
 	impl<'a, T: 'a + Send + Sync + ?Sized + Clone, SR: 'a + SignalRuntimeRef>
 		SubscriptionSR<'a, T, SR>
 	{
-		async fn skip_while(
+		async fn skipped_while(
 			fn_pin: impl 'a + Send + FnMut() -> T,
 			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 		) -> SubscriptionSR<'a, T, SR>
 		where
 			SR: Default,
 		{
-			Self::skip_while_with_runtime(fn_pin, predicate_fn_pin, SR::default()).await
+			Self::skipped_while_with_runtime(fn_pin, predicate_fn_pin, SR::default()).await
 		}
 
-		async fn skip_while_with_runtime(
+		async fn skipped_while_with_runtime(
 			fn_pin: impl 'a + Send + FnMut() -> T,
 			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 			runtime: SR,
 		) -> SubscriptionSR<'a, T, SR> {
-			skip_while(fn_pin, predicate_fn_pin, runtime).await
+			skipped_while(fn_pin, predicate_fn_pin, runtime).await
 		}
 
-		async fn filter(
+		async fn filtered(
 			fn_pin: impl 'a + Send + FnMut() -> T,
 			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 		) -> SubscriptionSR<'a, T, SR>
@@ -87,10 +87,10 @@ pub mod prelude {
 			T: Copy,
 			SR: Default,
 		{
-			Self::filter_with_runtime(fn_pin, predicate_fn_pin, SR::default()).await
+			Self::filtered_with_runtime(fn_pin, predicate_fn_pin, SR::default()).await
 		}
 
-		async fn filter_with_runtime(
+		async fn filtered_with_runtime(
 			fn_pin: impl 'a + Send + FnMut() -> T,
 			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 			runtime: SR,
@@ -98,27 +98,27 @@ pub mod prelude {
 		where
 			T: Copy,
 		{
-			filter(fn_pin, predicate_fn_pin, runtime).await
+			filtered(fn_pin, predicate_fn_pin, runtime).await
 		}
 
-		async fn flatten_some(
+		async fn filter_mapped(
 			fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 		) -> SubscriptionSR<'a, T, SR>
 		where
 			T: Copy,
 			SR: Default,
 		{
-			Self::flatten_some_with_runtime(fn_pin, SR::default()).await
+			Self::filter_mapped_with_runtime(fn_pin, SR::default()).await
 		}
 
-		async fn flatten_some_with_runtime(
+		async fn filter_mapped_with_runtime(
 			fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 			runtime: SR,
 		) -> SubscriptionSR<'a, T, SR>
 		where
 			T: Copy,
 		{
-			flatten_some(fn_pin, runtime).await
+			filter_mapped(fn_pin, runtime).await
 		}
 	}
 }

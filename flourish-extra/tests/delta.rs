@@ -1,11 +1,10 @@
 use flourish::{
-	raw::computed_uncached, shadow_clone, Announcer, GlobalSignalRuntime, Signal, SourcePin as _,
-	Subscription,
+	shadow_clone, Announcer, GlobalSignalRuntime, Signal, SourcePin as _, Subscription,
 };
-use flourish_extra::delta_from_source;
 
 mod _validator;
 use _validator::Validator;
+use flourish_extra::delta;
 
 #[test]
 fn delta_test() {
@@ -13,10 +12,7 @@ fn delta_test() {
 
 	let (get, set) = Announcer::new(1)
 		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-	let delta = Signal::new(delta_from_source(computed_uncached(
-		get,
-		GlobalSignalRuntime,
-	)));
+	let delta = Signal::new(delta(get, GlobalSignalRuntime));
 	let sub = Subscription::computed({
 		shadow_clone!(delta);
 		move || v.push(delta.get())
