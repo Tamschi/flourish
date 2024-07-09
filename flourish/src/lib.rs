@@ -32,7 +32,7 @@ mod effect;
 pub use effect::{Effect, EffectSR};
 
 mod traits;
-pub use traits::SourcePin;
+pub use traits::{SourceCellPin, SourcePin};
 
 pub use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 

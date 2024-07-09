@@ -2,6 +2,8 @@ use std::{borrow::Borrow, future::Future, mem, pin::Pin};
 
 use isoprenoid::runtime::{SignalRuntimeRef, Update};
 
+use crate::SignalSR;
+
 /// **Combinators should implement this.** Interface for "raw" (stack-pinnable) signals that have an accessible value.
 ///
 /// # Safety Notes
@@ -346,4 +348,181 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	{
 		(self, self)
 	}
+}
+
+/// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalRuntimeRef`].
+///
+/// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
+pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>>:
+	Send + Sync + SourcePin<SR, Output = T>
+{
+	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **may** defer its effect.
+	fn change(&self, new_value: T)
+	where
+		T: 'static + Sized + PartialEq;
+
+	/// Unconditionally replaces the current value with `new_value` and signals dependents.
+	///
+	/// Prefer [`.change(new_value)`] if debouncing is acceptable.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **may** defer its effect.
+	fn replace(&self, new_value: T)
+	where
+		T: 'static + Sized;
+
+	/// Modifies the current value using the given closure.
+	///
+	/// The closure decides whether to signal dependents.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **may** defer its effect.
+	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
+	where
+		Self: Sized,
+		SR::Symbol: Sync;
+
+	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// [`Ok`] with the previous value, or [`Err(new_value)`](`Err`) iff not replaced.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should not** apply its effect unless the returned [`Future`] is polled.  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	fn change_async(&self, new_value: T) -> impl Send + Future<Output = Result<T, T>>
+	where
+		Self: Sized,
+		T: Sized + PartialEq,
+	{
+		self.update_async(|value| {
+			if *value != new_value {
+				(Ok(mem::replace(value, new_value)), Update::Propagate)
+			} else {
+				(Err(new_value), Update::Halt)
+			}
+		})
+	}
+
+	/// Unconditionally replaces the current value with `new_value` and signals dependents.
+	///
+	/// # Returns
+	///
+	/// The previous value.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should not** apply its effect unless the returned [`Future`] is polled.  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	fn replace_async(&self, new_value: T) -> impl Send + Future<Output = T>
+	where
+		Self: Sized,
+		T: Sized,
+	{
+		self.update_async(|value| (mem::replace(value, new_value), Update::Propagate))
+	}
+
+	/// Modifies the current value using the given closure.
+	///
+	/// The closure decides whether to signal dependents.
+	///
+	/// # Returns
+	///
+	/// The `U` returned by `update`.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should not** apply its effect unless the returned [`Future`] is polled.  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	fn update_async<U: Send>(
+		&self,
+		update: impl Send + FnOnce(&mut T) -> (U, Update),
+	) -> impl Send + Future<Output = U>
+	where
+		Self: Sized;
+
+	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// [`Ok`] with the previous value, or [`Err(new_value)`](`Err`) iff not replaced.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	where
+		T: Sized + PartialEq;
+
+	/// Unconditionally replaces the current value with `new_value` and signals dependents.
+	///
+	/// # Returns
+	///
+	/// The previous value.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	fn replace_blocking(&self, new_value: T) -> T
+	where
+		T: Sized;
+
+	/// Modifies the current value using the given closure.
+	///
+	/// The closure decides whether to signal dependents.
+	///
+	/// # Returns
+	///
+	/// The `U` returned by `update`.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	where
+		Self: Sized;
 }
