@@ -17,7 +17,7 @@ This makes it a suitable replacement for most standard use cases of RxJS-style o
 
 ## Prelude
 
-Flourish's prelude imports its accessor traits anonymously.
+Flourish's prelude re-exports its accessor traits anonymously.
 
 If you can't call `.get()` or `.change(…)`, this import is what you're looking for:
 
