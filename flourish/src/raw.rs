@@ -1,6 +1,6 @@
 use isoprenoid::runtime::{CallbackTableTypes, SignalRuntimeRef, Update};
 
-pub use crate::traits::{Source, Subscribable, SourceCell};
+pub use crate::traits::{Source, SourceCell, Subscribable};
 
 mod cached;
 pub(crate) use cached::Cached;
@@ -36,7 +36,10 @@ pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 pub fn inert_cell<T: Send, SR: SignalRuntimeRef>(
 	initial_value: T,
 	runtime: SR,
-) -> InertCell<T, SR> {
+) -> impl SourceCell<T, SR>
+where
+	SR::Symbol: Sync,
+{
 	InertCell::with_runtime(initial_value, runtime)
 }
 #[macro_export]
@@ -66,7 +69,10 @@ pub fn reactive_cell<
 	initial_value: T,
 	on_subscribed_status_change_fn_pin: H,
 	runtime: SR,
-) -> ReactiveCell<T, H, SR> {
+) -> impl SourceCell<T, SR>
+where
+	SR::Symbol: Sync,
+{
 	ReactiveCell::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
 }
 #[macro_export]

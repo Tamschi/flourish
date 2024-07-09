@@ -60,7 +60,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		}
 	}
 
-	/// Cheaply creates a [`SignalSR`] handle to the managed [`InertCell`].
+	/// Cheaply creates a [`SignalSR`] handle to the managed [`SourceCell`].
 	pub fn to_signal<'a>(&self) -> SignalSR<'a, T, SR>
 	where
 		T: 'a,

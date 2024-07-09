@@ -61,11 +61,18 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop
 impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
 	/// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
 	///
-	/// The subscribable is [`pull`](`Subscribable::pull`)ed once.
+	/// The subscribable is subscribed-to inherently.
+	///
+	/// # Panics
+	///
+	/// Iff the call to [`Subscribable::subscribe_inherently`] fails. This should never happen,
+	/// as the subscribable shouldn't have been in a state where it could be subscribed to before pinning.
 	pub fn new<S: 'a + Subscribable<SR, Output = T>>(source: S) -> Self {
 		source.clone_runtime_ref().run_detached(|| {
 			let arc = Arc::pin(source);
-			arc.as_ref().subscribe_inherently();
+			arc.as_ref()
+				.subscribe_inherently()
+				.expect("Couldn't subscribe to the subscribable.");
 			Self { source: arc }
 		})
 	}
