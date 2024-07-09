@@ -19,9 +19,6 @@ pub mod raw;
 mod signal_cell;
 pub use signal_cell::{SignalCell, SignalCellSR};
 
-mod provider;
-pub use provider::{Provider, ProviderSR, WeakProvider};
-
 mod signal;
 pub use signal::{Signal, SignalRef, SignalSR};
 

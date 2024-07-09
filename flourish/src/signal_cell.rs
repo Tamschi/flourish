@@ -11,6 +11,8 @@ use crate::{
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalRuntime`]).
 pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalRuntime>;
 
+//TODO: `WeakSignalCell`.
+
 #[derive(Clone)]
 pub struct SignalCellSR<
 	T: ?Sized + Send,
@@ -137,6 +139,7 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
 	pub fn to_signal<'a>(&self) -> SignalSR<'a, T, SR>
 	where
 		T: 'a,
+		S: 'a + Sized,
 		SR: 'a,
 	{
 		SignalSR {
@@ -144,28 +147,7 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
 		}
 	}
 
-	pub fn into_signal_and_setter<'a, S>(
-		self,
-		into_setter: impl FnOnce(Self) -> S,
-	) -> (SignalSR<'a, T, SR>, S)
-	where
-		T: 'a + Sized,
-		SR: 'a,
-	{
-		(self.to_signal(), into_setter(self))
-	}
-
-	pub fn into_getter_and_setter<'a, S, R>(
-		self,
-		signal_into_getter: impl FnOnce(SignalSR<'a, T, SR>) -> R,
-		into_setter: impl FnOnce(Self) -> S,
-	) -> (R, S)
-	where
-		T: 'a + Sized,
-		SR: 'a,
-	{
-		(signal_into_getter(self.to_signal()), into_setter(self))
-	}
+	//TODO: "Splitting".
 }
 
 //TODO: Clean up `Sync: Sync`… everywhere.
@@ -214,7 +196,7 @@ impl<
 	}
 }
 
-impl<T: Send + Sized + ?Sized, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef>
+impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef>
 	SourceCellPin<T, SR> for SignalCellSR<T, S, SR>
 where
 	<SR as SignalRuntimeRef>::Symbol: Sync,
@@ -270,5 +252,67 @@ where
 		Self: Sized,
 	{
 		self.source_cell.as_ref().update_blocking(update)
+	}
+}
+
+//TODO: Are the non-dispatchable methods callable on this?
+//      Otherwise, allow use of the trait *only* through the trait object.
+impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourceCellPin<T, SR>
+	for SignalCellSR<T, dyn SourceCell<T, SR>, SR>
+where
+	<SR as SignalRuntimeRef>::Symbol: Sync,
+{
+	fn change(&self, new_value: T)
+	where
+		T: 'static + Sized + PartialEq,
+	{
+		self.source_cell.as_ref().change(new_value)
+	}
+
+	fn replace(&self, new_value: T)
+	where
+		T: 'static + Sized,
+	{
+		self.source_cell.as_ref().replace(new_value)
+	}
+
+	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
+	where
+		Self: Sized,
+		<SR as SignalRuntimeRef>::Symbol: Sync,
+	{
+		unimplemented!()
+	}
+
+	fn update_async<U: Send>(
+		&self,
+		update: impl Send + FnOnce(&mut T) -> (U, Update),
+	) -> impl Send + std::future::Future<Output = U>
+	where
+		Self: Sized,
+	{
+		unimplemented!();
+		async { unimplemented!() }
+	}
+
+	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	where
+		T: Sized + PartialEq,
+	{
+		self.source_cell.as_ref().change_blocking(new_value)
+	}
+
+	fn replace_blocking(&self, new_value: T) -> T
+	where
+		T: Sized,
+	{
+		self.source_cell.as_ref().replace_blocking(new_value)
+	}
+
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	where
+		Self: Sized,
+	{
+		unimplemented!()
 	}
 }
