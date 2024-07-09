@@ -10,7 +10,7 @@ use std::{
 use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-	raw::RawProvider,
+	raw::ReactiveCell,
 	traits::{Source, Subscribable},
 	SignalRef, SignalSR, SourcePin,
 };
@@ -38,7 +38,7 @@ pub type Provider<'a, T> = ProviderSR<'a, T, GlobalSignalRuntime>;
 pub struct ProviderSR<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> {
 	provider: Pin<
 		Arc<
-			RawProvider<
+			ReactiveCell<
 				T,
 				Box<
 					dyn 'a
@@ -55,7 +55,7 @@ pub struct ProviderSR<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> {
 pub struct WeakProvider<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> {
 	provider: Pin<
 		Weak<
-			RawProvider<
+			ReactiveCell<
 				T,
 				Box<
 					dyn 'a
@@ -92,7 +92,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> WeakProvider<'a, T, S
 	pub fn upgrade(&self) -> Option<ProviderSR<'a, T, SR>> {
 		unsafe {
 			mem::transmute::<&Pin<Weak<
-            RawProvider<
+            ReactiveCell<
                 T,
                 Box<
                     dyn 'a
@@ -101,7 +101,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalRuntimeRef> WeakProvider<'a, T, S
                 >,
                 SR,
             >>>,&Weak<
-            RawProvider<
+            ReactiveCell<
                 T,
                 Box<
                     dyn 'a
@@ -165,7 +165,7 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 		SR: Default,
 	{
 		Self {
-			provider: Arc::pin(RawProvider::with_runtime(
+			provider: Arc::pin(ReactiveCell::with_runtime(
 				initial_value,
 				Box::new(on_subscribed_status_change_fn_pin),
 				runtime,
@@ -202,10 +202,10 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 		Self {
 			provider: unsafe {
 				Pin::new_unchecked(Arc::new_cyclic(|weak| {
-					RawProvider::with_runtime(
+					ReactiveCell::with_runtime(
 						initial_value,
 						Box::new(make_on_subscribed_status_change_fn_pin(mem::transmute::<Weak<
-							RawProvider<
+							ReactiveCell<
 								T,
 								Box<
 									dyn 'a

@@ -12,11 +12,11 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use super::{Source, Subscribable};
+use super::{Source, SourceCell, Subscribable};
 
 #[pin_project]
 #[repr(transparent)]
-pub struct RawProvider<
+pub struct ReactiveCell<
 	T: ?Sized + Send,
 	H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 	SR: SignalRuntimeRef,
@@ -29,12 +29,12 @@ impl<
 		T: ?Sized + Send + Debug,
 		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) + Debug,
 		SR: SignalRuntimeRef + Debug,
-	> Debug for RawProvider<T, H, SR>
+	> Debug for ReactiveCell<T, H, SR>
 where
 	SR::Symbol: Debug,
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("RawProvider")
+		f.debug_struct("ReactiveCell")
 			.field("signal", &&self.signal)
 			.finish()
 	}
@@ -42,10 +42,10 @@ where
 
 /// TODO: Safety.
 unsafe impl<
-		T: Send,
+		T: ?Sized + Send,
 		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef + Sync,
-	> Sync for RawProvider<T, H, SR>
+	> Sync for ReactiveCell<T, H, SR>
 {
 }
 
@@ -75,16 +75,16 @@ impl<T: Debug + ?Sized, H: Debug> Debug for AssertSync<(Mutex<H>, RwLock<T>)> {
 	}
 }
 
-struct RawProviderGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct RawProviderGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+struct ReactiveCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct ReactiveCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for RawProviderGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuard<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawProviderGuardExclusive<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuardExclusive<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -94,7 +94,7 @@ impl<
 		T: ?Sized + Send,
 		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef,
-	> RawProvider<T, H, SR>
+	> ReactiveCell<T, H, SR>
 {
 	pub fn new(initial_value: T, on_subscribed_status_change_fn_pin: H) -> Self
 	where
@@ -146,12 +146,12 @@ impl<
 		T: Sync,
 	{
 		let this = &self;
-		RawProviderGuard(this.touch().read().unwrap())
+		ReactiveCellGuard(this.touch().read().unwrap())
 	}
 
 	pub fn read_exclusive<'a>(&'a self) -> impl 'a + Borrow<T> {
 		let this = &self;
-		RawProviderGuardExclusive(this.touch().write().unwrap())
+		ReactiveCellGuardExclusive(this.touch().write().unwrap())
 	}
 
 	pub fn get_mut<'a>(&'a mut self) -> &mut T {
@@ -183,120 +183,7 @@ impl<
 		}
 	}
 
-	pub fn change(self: Pin<&Self>, new_value: T)
-	where
-		T: 'static + Send + Sized + PartialEq,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.update(|value| {
-			if *value != new_value {
-				*value = new_value;
-				Update::Propagate
-			} else {
-				Update::Halt
-			}
-		});
-	}
-
-	pub fn replace(self: Pin<&Self>, new_value: T)
-	where
-		T: 'static + Send + Sized,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.update(|value| {
-			*value = new_value;
-			Update::Propagate
-		});
-	}
-
-	pub fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update)
-	where
-		T: Send,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.signal
-			.clone_runtime_ref()
-			.run_detached(|| self.touch());
-		self.project_ref()
-			.signal
-			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
-	}
-
-	pub async fn change_async(self: Pin<&Self>, new_value: T) -> Result<T, T>
-	where
-		T: Send + Sized + PartialEq,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.update_async(|value| {
-			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Update::Propagate)
-			} else {
-				(Err(new_value), Update::Halt)
-			}
-		})
-		.await
-	}
-
-	pub async fn replace_async(self: Pin<&Self>, new_value: T) -> T
-	where
-		T: Send + Sized,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.update_async(|value| (mem::replace(value, new_value), Update::Propagate))
-			.await
-	}
-
-	pub async fn update_async<U: Send>(
-		self: Pin<&Self>,
-		update: impl Send + FnOnce(&mut T) -> (U, Update),
-	) -> U
-	where
-		T: Send,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.signal
-			.clone_runtime_ref()
-			.run_detached(|| self.touch());
-		self.project_ref()
-			.signal
-			.update_async(|value, _| update(&mut value.0 .1.write().unwrap()))
-			.await
-	}
-
-	pub fn change_blocking(&self, new_value: T) -> Result<T, T>
-	where
-		T: Sized + PartialEq,
-	{
-		self.update_blocking(|value| {
-			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Update::Propagate)
-			} else {
-				(Err(new_value), Update::Halt)
-			}
-		})
-	}
-
-	pub fn replace_blocking(&self, new_value: T) -> T
-	where
-		T: Sized,
-	{
-		self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
-	}
-
-	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
-		self.signal
-			.clone_runtime_ref()
-			.run_detached(|| self.touch());
-		self.signal
-			.update_blocking(|value, _| update(&mut value.0 .1.write().unwrap()))
-	}
-
+	//TODO: Revisit.
 	pub fn as_source_setter<'a, S>(
 		self: Pin<&'a Self>,
 		as_setter: impl FnOnce(Pin<&'a Self>) -> S,
@@ -307,6 +194,7 @@ impl<
 		(self, as_setter(self))
 	}
 
+	//TODO: Revisit.
 	pub fn as_getter_setter<'a, S, R>(
 		self: Pin<&'a Self>,
 		source_as_getter: impl FnOnce(Pin<&'a dyn Source<SR, Output = T>>) -> R,
@@ -354,10 +242,10 @@ impl<
 }
 
 impl<
-		T: Send,
+		T: ?Sized + Send,
 		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef,
-	> Source<SR> for RawProvider<T, H, SR>
+	> Source<SR> for ReactiveCell<T, H, SR>
 {
 	type Output = T;
 
@@ -413,10 +301,10 @@ impl<
 }
 
 impl<
-		T: Send,
+		T: ?Sized + Send,
 		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef,
-	> Subscribable<SR> for RawProvider<T, H, SR>
+	> Subscribable<SR> for ReactiveCell<T, H, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
 		//FIXME: This is inefficient.
@@ -434,5 +322,88 @@ impl<
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
 		self.project_ref().signal.unsubscribe_inherently()
+	}
+}
+
+impl<
+		T: ?Sized + Send,
+		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+	> SourceCell<T, SR> for ReactiveCell<T, H, SR>
+{
+	fn change(self: Pin<&Self>, new_value: T)
+	where
+		T: 'static + Sized + PartialEq,
+		SR::Symbol: Sync,
+	{
+		self.update(|value| {
+			if *value != new_value {
+				*value = new_value;
+				Update::Propagate
+			} else {
+				Update::Halt
+			}
+		});
+	}
+
+	fn replace(self: Pin<&Self>, new_value: T)
+	where
+		T: 'static + Sized,
+		SR::Symbol: Sync,
+	{
+		self.update(|value| {
+			*value = new_value;
+			Update::Propagate
+		});
+	}
+
+	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update) {
+		self.signal
+			.clone_runtime_ref()
+			.run_detached(|| self.touch());
+		self.project_ref()
+			.signal
+			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
+	}
+
+	async fn update_async<U: Send>(
+		self: Pin<&Self>,
+		update: impl Send + FnOnce(&mut T) -> (U, Update),
+	) -> U {
+		self.signal
+			.clone_runtime_ref()
+			.run_detached(|| self.touch());
+		self.project_ref()
+			.signal
+			.update_async(|value, _| update(&mut value.0 .1.write().unwrap()))
+			.await
+	}
+
+	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	where
+		T: Sized + PartialEq,
+	{
+		self.update_blocking(|value| {
+			if *value != new_value {
+				(Ok(mem::replace(value, new_value)), Update::Propagate)
+			} else {
+				(Err(new_value), Update::Halt)
+			}
+		})
+	}
+
+	fn replace_blocking(&self, new_value: T) -> T
+	where
+		T: Sized,
+	{
+		self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
+	}
+
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
+		self.signal
+			.clone_runtime_ref()
+			.run_detached(|| self.touch());
+		self.signal
+			.update_blocking(|value, _| update(&mut value.0 .1.write().unwrap()))
 	}
 }

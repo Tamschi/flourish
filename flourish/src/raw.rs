@@ -17,11 +17,8 @@ pub(crate) use computed_uncached_mut::ComputedUncachedMut;
 mod inert_cell;
 pub(crate) use inert_cell::InertCell;
 
-mod raw_provider;
-pub(crate) use raw_provider::RawProvider;
-
-// mod reactive_cell_reflexive;
-// pub(crate) use reactive_cell_reflexive::ReactiveCellReflexive;
+mod reactive_cell;
+pub(crate) use reactive_cell::ReactiveCell;
 
 mod folded;
 pub(crate) use folded::Folded;
