@@ -30,11 +30,11 @@ use flourish::prelude::*;
 You can put signals on the heap:
 
 ```rust
-use flourish::{SignalCell, Provider, Signal, Update, Subscription, Effect};
+use flourish::{SignalCell, Signal, Update, Subscription, Effect};
 
 let _ = SignalCell::new(());
-let _ = Provider::new((), |_status| ());
-let _ = Provider::new_cyclic((), |_weak| |_status| ());
+let _ = SignalCell::new_reactive((), |_status| ());
+let _ = SignalCell::new_cyclic((), |_weak| move |_status| ());
 
 // The closure type is erased!
 // Not evaluated unless subscribed.

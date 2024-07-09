@@ -10,20 +10,17 @@ use _validator::Validator;
 fn heap() {
 	let v = &Validator::new();
 
-	let (a, set_a) = SignalCell::new(())
-		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-	let (b, set_b) = SignalCell::new(())
-		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-	let (c, set_c) = SignalCell::new(())
-		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+	let (a, a_cell) = SignalCell::new(()).into_signal_and_erased();
+	let (b, b_cell) = SignalCell::new(()).into_signal_and_erased();
+	let (c, c_cell) = SignalCell::new(()).into_signal_and_erased();
 
 	let roundabout = Signal::computed_uncached_mut({
 		let mut angle = 0;
 		move || {
 			match angle {
-				0 => a(),
-				1 => b(),
-				2 => c(),
+				0 => a.get(),
+				1 => b.get(),
+				2 => c.get(),
 				_ => unreachable!(),
 			}
 			angle = (angle + 1) % 3;
@@ -44,14 +41,14 @@ fn heap() {
 
 	// There are two subscriptions, so each "hit" advances twice.
 
-	set_b(());
+	b_cell.replace_blocking(());
 	v.expect(['a', 'b']);
 
-	set_b(());
-	set_c(());
+	b_cell.replace_blocking(());
+	c_cell.replace_blocking(());
 	v.expect([]);
 
-	set_a(());
+	a_cell.replace_blocking(());
 	v.expect(['a', 'b']);
 }
 
@@ -59,21 +56,18 @@ fn heap() {
 fn stack() {
 	let v = &Validator::new();
 
-	let (a, set_a) = SignalCell::new(())
-		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-	let (b, set_b) = SignalCell::new(())
-		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
-	let (c, set_c) = SignalCell::new(())
-		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+	let (a, a_cell) = SignalCell::new(()).into_signal_and_erased();
+	let (b, b_cell) = SignalCell::new(()).into_signal_and_erased();
+	let (c, c_cell) = SignalCell::new(()).into_signal_and_erased();
 
 	let roundabout = Signal::computed_uncached({
 		let angle = Mutex::new(0);
 		move || {
 			let mut angle = angle.lock().unwrap();
 			match *angle {
-				0 => a(),
-				1 => b(),
-				2 => c(),
+				0 => a.get(),
+				1 => b.get(),
+				2 => c.get(),
 				_ => unreachable!(),
 			}
 			*angle = (*angle + 1) % 3;
@@ -94,13 +88,13 @@ fn stack() {
 
 	// There are two subscriptions, so each "hit" advances twice.
 
-	set_b(());
+	b_cell.replace_blocking(());
 	v.expect(['a', 'b']);
 
-	set_b(());
-	set_c(());
+	b_cell.replace_blocking(());
+	c_cell.replace_blocking(());
 	v.expect([]);
 
-	set_a(());
+	a_cell.replace_blocking(());
 	v.expect(['a', 'b']);
 }

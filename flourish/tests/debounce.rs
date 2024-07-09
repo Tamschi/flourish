@@ -8,11 +8,10 @@ fn debounce_test() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
-	let (get, set) = SignalCell::new(0)
-		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+	let (signal, cell) = SignalCell::new(0).into_signal_and_erased();
 	let debounced = Signal::debounced(move || {
 		x.push("d");
-		get()
+		signal.get()
 	});
 	let _sub = Subscription::new(computed(
 		move || {
@@ -26,7 +25,7 @@ fn debounce_test() {
 
 	let mut previous = 0;
 	for n in [1, 2, 3, 3, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7, 8, 9, 9] {
-		set(n);
+		cell.replace_blocking(n);
 		if n == previous {
 			x.expect(["d"]);
 		} else {

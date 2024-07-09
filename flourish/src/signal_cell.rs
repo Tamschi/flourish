@@ -2,7 +2,10 @@ use std::{
 	borrow::Borrow,
 	fmt::Debug,
 	marker::PhantomData,
+	mem,
+	ops::Deref,
 	pin::Pin,
+	process::Output,
 	sync::{Arc, Weak},
 };
 
@@ -167,14 +170,16 @@ impl<
 		}
 	}
 
-	pub fn new_cyclic(
+	pub fn new_cyclic<'a>(
 		initial_value: T,
 		make_on_subscribed_change_fn_pin: impl FnOnce(
-			WeakSignalCell<T, ReactiveCell<T, HandlerFnPin, SR>, SR>,
+			WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>,
 		) -> HandlerFnPin,
 	) -> Self
 	where
-		SR: Default,
+		T: 'a,
+		HandlerFnPin: 'a,
+		SR: 'a + Default,
 	{
 		Self::new_cyclic_with_runtime(
 			initial_value,
@@ -183,21 +188,26 @@ impl<
 		)
 	}
 
-	pub fn new_cyclic_with_runtime(
+	pub fn new_cyclic_with_runtime<'a>(
 		initial_value: T,
 		make_on_subscribed_change_fn_pin: impl FnOnce(
-			WeakSignalCell<T, ReactiveCell<T, HandlerFnPin, SR>, SR>,
+			WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>,
 		) -> HandlerFnPin,
 		runtime: SR,
 	) -> Self
 	where
-		SR: Default,
+		T: 'a,
+		HandlerFnPin: 'a,
+		SR: 'a + Default,
 	{
 		let arc = unsafe {
 			Pin::new_unchecked(Arc::new_cyclic(|weak| {
 				ReactiveCell::with_runtime(
 					initial_value,
-					make_on_subscribed_change_fn_pin(todo!()),
+					make_on_subscribed_change_fn_pin(WeakSignalCell {
+						source_cell: weak.clone() as Weak<dyn 'a + SourceCell<T, SR>>,
+						upcast: (weak.as_ptr() as *const dyn Subscribable<SR, Output = T>).into(),
+					}),
 					runtime,
 				)
 			}))
@@ -254,7 +264,34 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
 		}
 	}
 
-	//TODO: "Splitting".
+	pub fn into_erased<'a>(self) -> SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>
+	where
+		S: 'a + Sized,
+	{
+		SignalCellSR {
+			source_cell: self.source_cell,
+			upcast: self.upcast,
+		}
+	}
+
+	pub fn into_signal_and_self<'a>(self) -> (SignalSR<'a, T, SR>, Self)
+	where
+		S: 'a + Sized,
+	{
+		(self.as_signal_ref().to_signal(), self)
+	}
+
+	pub fn into_signal_and_erased<'a>(
+		self,
+	) -> (
+		SignalSR<'a, T, SR>,
+		SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>,
+	)
+	where
+		S: 'a + Sized,
+	{
+		(self.as_signal_ref().to_signal(), self.into_erased())
+	}
 }
 
 //TODO: Clean up `Sync: Sync`… everywhere.
@@ -362,10 +399,56 @@ where
 	}
 }
 
-//TODO: Are the non-dispatchable methods callable on this?
-//      Otherwise, allow use of the trait *only* through the trait object.
+#[repr(transparent)]
+struct Private<T>(T);
+
+impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR>
+	for Private<SignalCellSR<T, dyn SourceCell<T, SR>, SR>>
+where
+	<SR as SignalRuntimeRef>::Symbol: Sync,
+{
+	type Output = T;
+
+	fn touch(&self) {
+		self.0.touch()
+	}
+
+	fn get_clone(&self) -> Self::Output
+	where
+		Self::Output: Sync + Clone,
+	{
+		self.0.get_clone()
+	}
+
+	fn get_clone_exclusive(&self) -> Self::Output
+	where
+		Self::Output: Clone,
+	{
+		self.0.get_clone_exclusive()
+	}
+
+	fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
+	where
+		Self::Output: 'r + Sync,
+	{
+		self.0.read()
+	}
+
+	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
+		self.0.read_exclusive()
+	}
+
+	fn clone_runtime_ref(&self) -> SR
+	where
+		SR: Sized,
+	{
+		self.0.clone_runtime_ref()
+	}
+}
+
+/// This unfortunately must be private/via-`dyn`-only until the non-dispatchable items can be implemented.
 impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourceCellPin<T, SR>
-	for SignalCellSR<T, dyn SourceCell<T, SR>, SR>
+	for Private<SignalCellSR<T, dyn SourceCell<T, SR>, SR>>
 where
 	<SR as SignalRuntimeRef>::Symbol: Sync,
 {
@@ -373,14 +456,14 @@ where
 	where
 		T: 'static + Sized + PartialEq,
 	{
-		self.source_cell.as_ref().change(new_value)
+		self.0.source_cell.as_ref().change(new_value)
 	}
 
 	fn replace(&self, new_value: T)
 	where
 		T: 'static + Sized,
 	{
-		self.source_cell.as_ref().replace(new_value)
+		self.0.source_cell.as_ref().replace(new_value)
 	}
 
 	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
@@ -406,14 +489,14 @@ where
 	where
 		T: Sized + PartialEq,
 	{
-		self.source_cell.as_ref().change_blocking(new_value)
+		self.0.source_cell.as_ref().change_blocking(new_value)
 	}
 
 	fn replace_blocking(&self, new_value: T) -> T
 	where
 		T: Sized,
 	{
-		self.source_cell.as_ref().replace_blocking(new_value)
+		self.0.source_cell.as_ref().replace_blocking(new_value)
 	}
 
 	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
@@ -421,5 +504,20 @@ where
 		Self: Sized,
 	{
 		unimplemented!()
+	}
+}
+
+impl<'a: 'static, T: 'a + Send + Sized + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Deref
+	for SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>
+where
+	<SR as SignalRuntimeRef>::Symbol: Sync,
+{
+	type Target = dyn 'a + SourceCellPin<T, SR>;
+
+	fn deref(&self) -> &Self::Target {
+		unsafe {
+			&*(mem::transmute::<*const Self, &'a Private<Self>>(self as *const _)
+				as *const (dyn 'a + SourceCellPin<T, SR>))
+		}
 	}
 }

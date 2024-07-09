@@ -8,20 +8,19 @@ fn use_constructors() {
 	let x = &Validator::new();
 
 	let a = SignalCell::new(1);
-	let (b, set_b) = SignalCell::new(2)
-		.into_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+	let (b, b_cell) = SignalCell::new(2).into_signal_and_erased();
 	let c = Signal::computed({
 		shadow_clone!(a, b);
 		move || {
 			x.push("c");
-			a.get() + b()
+			a.get() + b.get()
 		}
 	});
 	let d = Signal::computed({
 		shadow_clone!(a, b);
 		move || {
 			x.push("d");
-			a.get() - b()
+			a.get() - b.get()
 		}
 	});
 	let aa = Signal::computed_uncached({
@@ -41,7 +40,7 @@ fn use_constructors() {
 	v.expect([2]);
 	x.expect(["sub_aa", "aa", "c", "d"]);
 
-	set_b(2);
+	b_cell.replace_blocking(2);
 	v.expect([2]);
 	x.expect(["c", "d", "sub_aa", "aa"]);
 
@@ -53,7 +52,7 @@ fn use_constructors() {
 
 	// These evaluate *no* closures!
 	a.replace_blocking(2);
-	set_b(3);
+	b_cell.replace_blocking(3);
 	a.replace_blocking(5);
 	v.expect([]);
 	x.expect([]);
