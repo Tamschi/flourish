@@ -299,7 +299,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR
 	}
 }
 
-/// A very cheap [`SignalSR`] or [`SubscriptionSR`] borrow that's [`Copy`].
+/// A very cheap [`SignalSR`]-like borrow that's [`Copy`].
 ///
 /// Can be cloned into an additional [`SignalSR`] or subscribed to.
 #[derive(Debug)]
