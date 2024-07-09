@@ -3,8 +3,8 @@ use std::{borrow::Borrow, fmt::Debug, marker::PhantomData, pin::Pin, sync::Arc};
 use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 use crate::{
-	raw::SourceCell,
-	traits::{Source, Subscribable},
+	raw::InertCell,
+	traits::{Source, SourceCell, Subscribable},
 	SignalRef, SignalSR, SourcePin,
 };
 
@@ -13,7 +13,7 @@ pub type SignalCell<T> = SignalCellSR<T, GlobalSignalRuntime>;
 
 #[derive(Clone)]
 pub struct SignalCellSR<T: ?Sized + Send, SR: SignalRuntimeRef> {
-	source_cell: Pin<Arc<SourceCell<T, SR>>>,
+	inert_cell: Pin<Arc<InertCell<T, SR>>>,
 }
 
 impl<T: ?Sized + Debug + Send, SR: SignalRuntimeRef + Debug> Debug for SignalCellSR<T, SR>
@@ -21,9 +21,7 @@ where
 	SR::Symbol: Debug,
 {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_tuple("SignalCell")
-			.field(&self.source_cell)
-			.finish()
+		f.debug_tuple("SignalCell").field(&self.inert_cell).finish()
 	}
 }
 
@@ -40,7 +38,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		SR: Default,
 	{
 		Self {
-			source_cell: Arc::pin(SourceCell::with_runtime(initial_value, runtime)),
+			inert_cell: Arc::pin(InertCell::with_runtime(initial_value, runtime)),
 		}
 	}
 
@@ -53,7 +51,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		SignalRef {
 			source: {
 				let ptr = Arc::into_raw(unsafe {
-					Pin::into_inner_unchecked(Pin::clone(&self.source_cell))
+					Pin::into_inner_unchecked(Pin::clone(&self.inert_cell))
 				});
 				unsafe { Arc::decrement_strong_count(ptr) };
 				ptr
@@ -62,14 +60,14 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		}
 	}
 
-	/// Cheaply creates a [`SignalSR`] handle to the managed [`SourceCell`].
+	/// Cheaply creates a [`SignalSR`] handle to the managed [`InertCell`].
 	pub fn to_signal<'a>(&self) -> SignalSR<'a, T, SR>
 	where
 		T: 'a,
 		SR: 'a,
 	{
 		SignalSR {
-			source: Pin::clone(&self.source_cell) as Pin<Arc<dyn Subscribable<SR, Output = T>>>,
+			source: Pin::clone(&self.inert_cell) as Pin<Arc<dyn Subscribable<SR, Output = T>>>,
 		}
 	}
 
@@ -77,11 +75,11 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 	where
 		T: Sync,
 	{
-		self.source_cell.read()
+		self.inert_cell.read()
 	}
 
 	pub fn read_exclusive<'r>(&'r self) -> impl 'r + Borrow<T> {
-		self.source_cell.read_exclusive()
+		self.inert_cell.read_exclusive()
 	}
 
 	pub fn change(&self, new_value: T)
@@ -90,7 +88,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		self.source_cell.as_ref().change(new_value)
+		self.inert_cell.as_ref().change(new_value)
 	}
 
 	pub fn replace(&self, new_value: T)
@@ -99,7 +97,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		self.source_cell.as_ref().replace(new_value)
+		self.inert_cell.as_ref().replace(new_value)
 	}
 
 	pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
@@ -107,7 +105,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		self.source_cell.as_ref().update(update)
+		self.inert_cell.as_ref().update(update)
 	}
 
 	pub async fn change_async(&self, new_value: T) -> Result<T, T>
@@ -116,7 +114,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		self.source_cell.as_ref().change_async(new_value).await
+		self.inert_cell.as_ref().change_async(new_value).await
 	}
 
 	pub async fn replace_async(&self, new_value: T) -> T
@@ -124,7 +122,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		self.source_cell.as_ref().replace_async(new_value).await
+		self.inert_cell.as_ref().replace_async(new_value).await
 	}
 
 	pub async fn update_async<U: Send>(
@@ -135,22 +133,22 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
-		self.source_cell.as_ref().update_async(update).await
+		self.inert_cell.as_ref().update_async(update).await
 	}
 
 	pub fn change_blocking(&self, new_value: T) -> Result<T, T>
 	where
 		T: PartialEq,
 	{
-		self.source_cell.change_blocking(new_value)
+		self.inert_cell.change_blocking(new_value)
 	}
 
 	pub fn replace_blocking(&self, new_value: T) -> T {
-		self.source_cell.replace_blocking(new_value)
+		self.inert_cell.replace_blocking(new_value)
 	}
 
 	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
-		self.source_cell.update_blocking(update)
+		self.inert_cell.update_blocking(update)
 	}
 
 	pub fn into_signal_and_setter<'a, S>(
@@ -183,38 +181,38 @@ impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR>
 	type Output = T;
 
 	fn touch(&self) {
-		self.source_cell.as_ref().touch()
+		self.inert_cell.as_ref().touch()
 	}
 
 	fn get_clone(&self) -> Self::Output
 	where
 		Self::Output: Sync + Clone,
 	{
-		self.source_cell.as_ref().get_clone()
+		self.inert_cell.as_ref().get_clone()
 	}
 
 	fn get_clone_exclusive(&self) -> Self::Output
 	where
 		Self::Output: Clone,
 	{
-		self.source_cell.as_ref().get_clone_exclusive()
+		self.inert_cell.as_ref().get_clone_exclusive()
 	}
 
 	fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
 	where
 		Self::Output: 'r + Sync,
 	{
-		self.source_cell.as_ref().read()
+		self.inert_cell.as_ref().read()
 	}
 
 	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
-		self.source_cell.as_ref().read_exclusive()
+		self.inert_cell.as_ref().read_exclusive()
 	}
 
 	fn clone_runtime_ref(&self) -> SR
 	where
 		SR: Sized,
 	{
-		self.source_cell.as_ref().clone_runtime_ref()
+		self.inert_cell.as_ref().clone_runtime_ref()
 	}
 }

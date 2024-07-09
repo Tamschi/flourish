@@ -8,7 +8,7 @@ fn stack() {
 
 	{
 		signals_helper! {
-			let a = source_cell!(());
+			let a = inert_cell!(());
 		}
 		{
 			signals_helper! {

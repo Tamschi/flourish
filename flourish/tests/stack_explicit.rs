@@ -7,9 +7,9 @@ fn use_macros() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
-	let a = ::core::pin::pin!(flourish::raw::source_cell(1, flourish::GlobalSignalRuntime));
+	let a = ::core::pin::pin!(flourish::raw::inert_cell(1, flourish::GlobalSignalRuntime));
 	let a = ::core::pin::Pin::into_ref(a);
-	let b = ::core::pin::pin!(flourish::raw::source_cell(2, flourish::GlobalSignalRuntime));
+	let b = ::core::pin::pin!(flourish::raw::inert_cell(2, flourish::GlobalSignalRuntime));
 	let b = ::core::pin::Pin::into_ref(b);
 	let (b, set_b) =
 		b.as_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));

@@ -1,6 +1,6 @@
 use isoprenoid::runtime::{CallbackTableTypes, SignalRuntimeRef, Update};
 
-pub use crate::traits::{Source, Subscribable};
+pub use crate::traits::{Source, Subscribable, SourceCell};
 
 mod cached;
 pub(crate) use cached::Cached;
@@ -14,14 +14,14 @@ pub(crate) use computed_uncached::ComputedUncached;
 mod computed_uncached_mut;
 pub(crate) use computed_uncached_mut::ComputedUncachedMut;
 
-mod source_cell;
-pub(crate) use source_cell::SourceCell;
+mod inert_cell;
+pub(crate) use inert_cell::InertCell;
 
 mod raw_provider;
 pub(crate) use raw_provider::RawProvider;
 
-// mod raw_provider_reflexive;
-// pub(crate) use raw_provider_reflexive::RawProviderReflexive;
+// mod reactive_cell_reflexive;
+// pub(crate) use reactive_cell_reflexive::ReactiveCellReflexive;
 
 mod folded;
 pub(crate) use folded::Folded;
@@ -36,30 +36,30 @@ pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 
 //TODO: Can these individual macros still communicate their eventual return type?
 
-pub fn source_cell<T: Send, SR: SignalRuntimeRef>(
+pub fn inert_cell<T: Send, SR: SignalRuntimeRef>(
 	initial_value: T,
 	runtime: SR,
-) -> SourceCell<T, SR> {
-	SourceCell::with_runtime(initial_value, runtime)
+) -> InertCell<T, SR> {
+	InertCell::with_runtime(initial_value, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
-macro_rules! source_cell {
+macro_rules! inert_cell {
     ($source:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::source_cell;
+pub use crate::inert_cell;
 #[macro_export]
 #[doc(hidden)]
-macro_rules! source_cell_with_runtime {
+macro_rules! inert_cell_with_runtime {
     ($source:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::source_cell_with_runtime;
+pub use crate::inert_cell_with_runtime;
 
 pub fn provider<
 	T: Send,
@@ -69,8 +69,8 @@ pub fn provider<
 	initial_value: T,
 	on_subscribed_status_change_fn_pin: H,
 	runtime: SR,
-) -> RawProvider<T, H, SR> {
-	RawProvider::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
+) -> ReactiveCell<T, H, SR> {
+	ReactiveCell::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
@@ -97,7 +97,7 @@ pub use crate::provider_with_runtime;
 //     T: Send,
 //     H: Send
 //         + FnMut(
-//             Pin<&RawProviderReflexive<T, H, SR>>,
+//             Pin<&ReactiveCellReflexive<T, H, SR>>,
 //             <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 //         ),
 //     SR: SignalRuntimeRef,
@@ -105,8 +105,8 @@ pub use crate::provider_with_runtime;
 //     initial_value: T,
 //     on_subscribed_status_change_fn_pin: H,
 //     runtime: SR,
-// ) -> RawProviderReflexive<T, H, SR> {
-//     RawProviderReflexive::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
+// ) -> ReactiveCellReflexive<T, H, SR> {
+//     ReactiveCellReflexive::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
 // }
 // #[macro_export]
 // #[doc(hidden)]
@@ -369,12 +369,12 @@ pub use crate::effect_with_runtime;
 /// A helper to bind macros on the stack.
 #[macro_export]
 macro_rules! signals_helper {
-	{let $name:ident = source_cell!($initial_value:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::source_cell($initial_value, $crate::GlobalSignalRuntime));
+	{let $name:ident = inert_cell!($initial_value:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::inert_cell($initial_value, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = source_cell_with_runtime!($initial_value:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::source_cell($initial_value, $runtime));
+	{let $name:ident = inert_cell_with_runtime!($initial_value:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::inert_cell($initial_value, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = provider!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr$(,)?);} => {
@@ -475,7 +475,7 @@ macro_rules! signals_helper {
 		// The compiler still squiggles the entire macro, unfortunately.
 		::core::compile_error!(::core::concat!(
 			"Unrecognised macro name or wrong argument count (for) `", ::core::stringify!($macro), "`. The following macros are supported:\n",
-			"source_cell[_with_runtime]!(1/2), provider[_with_runtime]!(2/3), cached!(1), debounced[_with_runtime]!(1/2), ",
+			"inert_cell[_with_runtime]!(1/2), provider[_with_runtime]!(2/3), cached!(1), debounced[_with_runtime]!(1/2), ",
 			"computed[_uncached[_mut]][_with_runtime]!(1/2), folded[_with_runtime]!(2/3), reduced[_with_runtime]!(2/3), ",
 			"subscription[_with_runtime]!(1/2), subscription_from_source!(1), effect[_with_runtime]!(2/3)"
 		));

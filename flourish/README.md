@@ -51,7 +51,7 @@ You can also put signals on the stack:
 use flourish::{signals_helper, Update};
 
 signals_helper! {
-  let _source_cell = source_cell!(());
+  let _inert_cell = inert_cell!(());
   let _provider = provider!((), |_status| ());
 
   // The closure type is erased!
@@ -143,7 +143,7 @@ let _ = SignalSR::reduced_with_runtime(|| (), |_value, _next| Update::Propagate,
 let _ = SubscriptionSR::computed_with_runtime(|| (), GlobalSignalRuntime);
 
 signals_helper! {
-  let _source_cell = source_cell_with_runtime!((), GlobalSignalRuntime);
+  let _inert_cell = inert_cell_with_runtime!((), GlobalSignalRuntime);
 
   let _source = computed_with_runtime!(|| (), GlobalSignalRuntime);
   let _source = computed_uncached_with_runtime!(|| (), GlobalSignalRuntime);

@@ -8,8 +8,8 @@ fn use_macros() {
 	let x = &Validator::new();
 
 	signals_helper! {
-		let a = source_cell!(1);
-		let b = source_cell!(2);
+		let a = inert_cell!(1);
+		let b = inert_cell!(2);
 	}
 	let (b, set_b) =
 		b.as_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));

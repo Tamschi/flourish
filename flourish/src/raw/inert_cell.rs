@@ -12,27 +12,27 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use super::{Source, Subscribable};
+use super::{Source, SourceCell, Subscribable};
 
 #[pin_project]
-pub struct SourceCell<T: ?Sized + Send, SR: SignalRuntimeRef> {
+pub struct InertCell<T: ?Sized + Send, SR: SignalRuntimeRef> {
 	#[pin]
 	signal: RawSignal<AssertSync<RwLock<T>>, (), SR>,
 }
 
-impl<T: ?Sized + Send + Debug, SR: SignalRuntimeRef + Debug> Debug for SourceCell<T, SR>
+impl<T: ?Sized + Send + Debug, SR: SignalRuntimeRef + Debug> Debug for InertCell<T, SR>
 where
 	SR::Symbol: Debug,
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("SourceCell")
+		f.debug_struct("InertCell")
 			.field("signal", &&self.signal)
 			.finish()
 	}
 }
 
 /// TODO: Safety.
-unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for SourceCell<T, SR> {}
+unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for InertCell<T, SR> {}
 
 struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
@@ -50,22 +50,22 @@ impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
 	}
 }
 
-struct SourceCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct SourceCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+struct InertCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct InertCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for SourceCellGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for InertCellGuard<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for SourceCellGuardExclusive<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for InertCellGuardExclusive<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
+impl<T: ?Sized + Send, SR: SignalRuntimeRef> InertCell<T, SR> {
 	pub fn new(initial_value: T) -> Self
 	where
 		T: Sized,
@@ -102,12 +102,12 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		T: Sync,
 	{
 		let this = &self;
-		SourceCellGuard(this.touch().read().unwrap())
+		InertCellGuard(this.touch().read().unwrap())
 	}
 
 	pub fn read_exclusive<'a>(&'a self) -> impl 'a + Borrow<T> {
 		let this = &self;
-		SourceCellGuardExclusive(this.touch().write().unwrap())
+		InertCellGuardExclusive(this.touch().write().unwrap())
 	}
 
 	pub fn get_mut<'a>(&'a mut self) -> &mut T {
@@ -138,120 +138,6 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 		}
 	}
 
-	pub fn change(self: Pin<&Self>, new_value: T)
-	where
-		T: 'static + Send + Sized + PartialEq,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.update(|value| {
-			if *value != new_value {
-				*value = new_value;
-				Update::Propagate
-			} else {
-				Update::Halt
-			}
-		});
-	}
-
-	pub fn replace(self: Pin<&Self>, new_value: T)
-	where
-		T: 'static + Send + Sized,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.update(|value| {
-			*value = new_value;
-			Update::Propagate
-		});
-	}
-
-	pub fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update)
-	where
-		T: Send,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.signal
-			.clone_runtime_ref()
-			.run_detached(|| self.touch());
-		self.project_ref()
-			.signal
-			.update(|value, _| update(&mut value.0.write().unwrap()))
-	}
-
-	pub async fn change_async(self: Pin<&Self>, new_value: T) -> Result<T, T>
-	where
-		T: Send + Sized + PartialEq,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.update_async(|value| {
-			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Update::Propagate)
-			} else {
-				(Err(new_value), Update::Halt)
-			}
-		})
-		.await
-	}
-
-	pub async fn replace_async(self: Pin<&Self>, new_value: T) -> T
-	where
-		T: Send + Sized,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.update_async(|value| (mem::replace(value, new_value), Update::Propagate))
-			.await
-	}
-
-	pub async fn update_async<U: Send>(
-		self: Pin<&Self>,
-		update: impl Send + FnOnce(&mut T) -> (U, Update),
-	) -> U
-	where
-		T: Send,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.signal
-			.clone_runtime_ref()
-			.run_detached(|| self.touch());
-		self.project_ref()
-			.signal
-			.update_async(|value, _| update(&mut value.0.write().unwrap()))
-			.await
-	}
-
-	pub fn change_blocking(&self, new_value: T) -> Result<T, T>
-	where
-		T: Sized + PartialEq,
-	{
-		self.update_blocking(|value| {
-			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Update::Propagate)
-			} else {
-				(Err(new_value), Update::Halt)
-			}
-		})
-	}
-
-	pub fn replace_blocking(&self, new_value: T) -> T
-	where
-		T: Sized,
-	{
-		self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
-	}
-
-	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
-		self.signal
-			.clone_runtime_ref()
-			.run_detached(|| self.touch());
-		self.signal
-			.update_blocking(|value, _| update(&mut value.0.write().unwrap()))
-	}
-
 	pub fn as_source_and_setter<'a, S>(
 		self: Pin<&'a Self>,
 		as_setter: impl FnOnce(Pin<&'a Self>) -> S,
@@ -274,7 +160,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> SourceCell<T, SR> {
 	}
 }
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for SourceCell<T, SR> {
+impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for InertCell<T, SR> {
 	type Output = T;
 
 	fn touch(self: Pin<&Self>) {
@@ -328,7 +214,7 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for SourceCell<T, SR> {
 	}
 }
 
-impl<T: Send, SR: SignalRuntimeRef> Subscribable<SR> for SourceCell<T, SR> {
+impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Subscribable<SR> for InertCell<T, SR> {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
 		//FIXME: This is inefficient.
 		if self
@@ -345,5 +231,85 @@ impl<T: Send, SR: SignalRuntimeRef> Subscribable<SR> for SourceCell<T, SR> {
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
 		self.project_ref().signal.unsubscribe_inherently()
+	}
+}
+
+impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T, SR>
+	for InertCell<T, SR>
+{
+	fn change(self: Pin<&Self>, new_value: T)
+	where
+		T: 'static + Sized + PartialEq,
+		SR::Symbol: Sync,
+	{
+		self.update(|value| {
+			if *value != new_value {
+				*value = new_value;
+				Update::Propagate
+			} else {
+				Update::Halt
+			}
+		});
+	}
+
+	fn replace(self: Pin<&Self>, new_value: T)
+	where
+		T: 'static + Sized,
+		SR::Symbol: Sync,
+	{
+		self.update(|value| {
+			*value = new_value;
+			Update::Propagate
+		});
+	}
+
+	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update) {
+		self.signal
+			.clone_runtime_ref()
+			.run_detached(|| self.touch());
+		self.project_ref()
+			.signal
+			.update(|value, _| update(&mut value.0.write().unwrap()))
+	}
+
+	async fn update_async<U: Send>(
+		self: Pin<&Self>,
+		update: impl Send + FnOnce(&mut T) -> (U, Update),
+	) -> U {
+		self.signal
+			.clone_runtime_ref()
+			.run_detached(|| self.touch());
+		self.project_ref()
+			.signal
+			.update_async(|value, _| update(&mut value.0.write().unwrap()))
+			.await
+	}
+
+	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	where
+		T: Sized + PartialEq,
+	{
+		self.update_blocking(|value| {
+			if *value != new_value {
+				(Ok(mem::replace(value, new_value)), Update::Propagate)
+			} else {
+				(Err(new_value), Update::Halt)
+			}
+		})
+	}
+
+	fn replace_blocking(&self, new_value: T) -> T
+	where
+		T: Sized,
+	{
+		self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
+	}
+
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
+		self.signal
+			.clone_runtime_ref()
+			.run_detached(|| self.touch());
+		self.signal
+			.update_blocking(|value, _| update(&mut value.0.write().unwrap()))
 	}
 }
