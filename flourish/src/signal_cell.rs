@@ -86,7 +86,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 
 	pub fn change(&self, new_value: T)
 	where
-		T: 'static + Send + PartialEq,
+		T: 'static + PartialEq,
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
@@ -95,7 +95,7 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 
 	pub fn replace(&self, new_value: T)
 	where
-		T: 'static + Send,
+		T: 'static,
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
@@ -121,7 +121,6 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 
 	pub async fn replace_async(&self, new_value: T) -> T
 	where
-		T: Send,
 		SR: Sync,
 		SR::Symbol: Sync,
 	{
