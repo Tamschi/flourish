@@ -59,7 +59,7 @@ pub mod __ {
 /// This is useful to create additional handles:
 ///
 /// ```
-/// use flourish::{shadow_clone, SignalCell, Signal, SourcePin as _};
+/// use flourish::{prelude::*, shadow_clone, SignalCell, Signal};
 ///
 /// let a = SignalCell::new(1);
 /// let b = SignalCell::new(2);

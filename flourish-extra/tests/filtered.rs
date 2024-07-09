@@ -1,4 +1,4 @@
-use flourish::{Signal, SourcePin as _};
+use flourish::{prelude::*, Signal};
 
 mod _validator;
 use _validator::Validator;

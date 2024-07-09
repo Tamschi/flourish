@@ -1,4 +1,4 @@
-use flourish::{shadow_clone, Provider, SourcePin as _, Subscription};
+use flourish::{prelude::*, shadow_clone, Provider, Subscription};
 mod _validator;
 use _validator::Validator;
 

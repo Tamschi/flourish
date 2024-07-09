@@ -1,6 +1,4 @@
-use flourish::{
-	raw::computed, GlobalSignalRuntime, Signal, SignalCell, SourcePin as _, Subscription,
-};
+use flourish::{prelude::*, raw::computed, GlobalSignalRuntime, Signal, SignalCell, Subscription};
 
 mod _validator;
 use _validator::Validator;

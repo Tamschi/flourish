@@ -2,8 +2,6 @@ use std::{borrow::Borrow, future::Future, mem, pin::Pin};
 
 use isoprenoid::runtime::{SignalRuntimeRef, Update};
 
-use crate::SignalSR;
-
 /// **Combinators should implement this.** Interface for "raw" (stack-pinnable) signals that have an accessible value.
 ///
 /// # Safety Notes

@@ -15,6 +15,16 @@ This makes it a suitable replacement for most standard use cases of RxJS-style o
 
 ⚠️ The update task queue is currently not fair whatsoever, so one thread looping inside signal processing will block all others.
 
+## Prelude
+
+Flourish's prelude imports its accessor traits anonymously.
+
+If you can't call `.get()` or `.change(…)`, this import is what you're looking for:
+
+```rust
+use flourish::prelude::*;
+```
+
 ## Quick-Start
 
 You can put signals on the heap:
@@ -43,12 +53,14 @@ let _ = Subscription::reduced(|| (), |_value, _next| Update::Propagate);
 // The closure and value type are erased!
 // Runs `drop` *before* computing the new value.
 let _ = Effect::new(|| (), drop);
+
+//TODO: "Splitting"
 ```
 
 You can also put signals on the stack:
 
 ```rust
-use flourish::{signals_helper, Update, raw::SourceCell as _};
+use flourish::{signals_helper, prelude::*, Update};
 
 signals_helper! {
   let inert_cell = inert_cell!(());
@@ -82,7 +94,7 @@ Additionally, inside `flourish::raw`, you can find constructor functions for unp
 `flourish` detects and updates dependencies automatically:
 
 ```rust
-use flourish::{shadow_clone, SignalCell, Signal, Subscription, SourcePin as _};
+use flourish::{prelude::*, shadow_clone, SignalCell, Signal, Subscription};
 
 let a = SignalCell::new("a");
 let b = SignalCell::new("b");

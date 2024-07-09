@@ -1,9 +1,8 @@
-use ::core::pin::pin;
-use ::core::pin::Pin;
-use flourish::raw::inert_cell;
-use flourish::raw::Source;
-use flourish::raw::SourceCell;
-use flourish::GlobalSignalRuntime;
+use ::core::pin::{pin, Pin};
+use flourish::{
+	raw::{inert_cell, Source, SourceCell},
+	GlobalSignalRuntime,
+};
 mod _validator;
 use _validator::Validator;
 

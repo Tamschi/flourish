@@ -1,4 +1,4 @@
-use flourish::{Signal, SourcePin as _};
+use flourish::{prelude::*, Signal};
 use flourish_extra::future::filter_mapped;
 
 mod _validator;

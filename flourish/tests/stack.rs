@@ -1,5 +1,7 @@
-use flourish::raw::SourceCell;
-use flourish::{raw::Source, signals_helper};
+use flourish::{
+	raw::{Source, SourceCell},
+	signals_helper,
+};
 mod _validator;
 use _validator::Validator;
 
