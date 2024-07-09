@@ -140,7 +140,7 @@ where
 impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 	pub fn new(
 		initial_value: T,
-		on_subscribed_status_change_fn_pin: impl 'a
+		on_subscribed_change_fn_pin: impl 'a
 			+ Send
 			+ FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 	) -> Self
@@ -149,14 +149,14 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 	{
 		Self::with_runtime(
 			initial_value,
-			on_subscribed_status_change_fn_pin,
+			on_subscribed_change_fn_pin,
 			SR::default(),
 		)
 	}
 
 	pub fn with_runtime(
 		initial_value: T,
-		on_subscribed_status_change_fn_pin: impl 'a
+		on_subscribed_change_fn_pin: impl 'a
 			+ Send
 			+ FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		runtime: SR,
@@ -167,7 +167,7 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 		Self {
 			provider: Arc::pin(ReactiveCell::with_runtime(
 				initial_value,
-				Box::new(on_subscribed_status_change_fn_pin),
+				Box::new(on_subscribed_change_fn_pin),
 				runtime,
 			)),
 		}
@@ -177,14 +177,14 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 		HandlerFnPin: 'a + Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 	>(
 		initial_value: T,
-		make_on_subscribed_status_change_fn_pin: impl FnOnce(WeakProvider<'a, T, SR>) -> HandlerFnPin,
+		make_on_subscribed_change_fn_pin: impl FnOnce(WeakProvider<'a, T, SR>) -> HandlerFnPin,
 	) -> Self
 	where
 		SR: Default,
 	{
 		Self::new_cyclic_with_runtime(
 			initial_value,
-			make_on_subscribed_status_change_fn_pin,
+			make_on_subscribed_change_fn_pin,
 			SR::default(),
 		)
 	}
@@ -193,7 +193,7 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 		HandlerFnPin: 'a + Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 	>(
 		initial_value: T,
-		make_on_subscribed_status_change_fn_pin: impl FnOnce(WeakProvider<'a, T, SR>) -> HandlerFnPin,
+		make_on_subscribed_change_fn_pin: impl FnOnce(WeakProvider<'a, T, SR>) -> HandlerFnPin,
 		runtime: SR,
 	) -> Self
 	where
@@ -204,7 +204,7 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 				Pin::new_unchecked(Arc::new_cyclic(|weak| {
 					ReactiveCell::with_runtime(
 						initial_value,
-						Box::new(make_on_subscribed_status_change_fn_pin(mem::transmute::<Weak<
+						Box::new(make_on_subscribed_change_fn_pin(mem::transmute::<Weak<
 							ReactiveCell<
 								T,
 								Box<

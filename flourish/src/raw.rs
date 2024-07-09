@@ -67,18 +67,18 @@ pub fn reactive_cell<
 	SR: SignalRuntimeRef,
 >(
 	initial_value: T,
-	on_subscribed_status_change_fn_pin: H,
+	on_subscribed_change_fn_pin: H,
 	runtime: SR,
 ) -> impl SourceCell<T, SR>
 where
 	SR::Symbol: Sync,
 {
-	ReactiveCell::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
+	ReactiveCell::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 }
 #[macro_export]
 #[doc(hidden)]
 macro_rules! reactive_cell {
-    ($source:expr, $on_subscribed_status_change_fn_pin:expr$(,)?) => {{
+    ($source:expr, $on_subscribed_change_fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
@@ -93,42 +93,6 @@ macro_rules! reactive_cell_with_runtime {
 }
 #[doc(hidden)]
 pub use crate::reactive_cell_with_runtime;
-
-//FIXME: Figure out how to use this or remove it entirely.
-// // > **Note:** This does not work with closures due to the cyclic signature. See <https://github.com/rust-lang/rust/issues/46062>.
-// pub fn reactive_cell_reflexive<
-//     T: Send,
-//     H: Send
-//         + FnMut(
-//             Pin<&ReactiveCellReflexive<T, H, SR>>,
-//             <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-//         ),
-//     SR: SignalRuntimeRef,
-// >(
-//     initial_value: T,
-//     on_subscribed_status_change_fn_pin: H,
-//     runtime: SR,
-// ) -> ReactiveCellReflexive<T, H, SR> {
-//     ReactiveCellReflexive::with_runtime(initial_value, on_subscribed_status_change_fn_pin, runtime)
-// }
-// #[macro_export]
-// #[doc(hidden)]
-// macro_rules! reactive_cell_reflexive {
-//     ($source:expr, $on_subscribed_status_change_fn_pin:expr$(,)?) => {{
-// 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
-// 	}};
-// }
-// #[doc(hidden)]
-// pub use crate::reactive_cell_reflexive;
-// #[macro_export]
-// #[doc(hidden)]
-// macro_rules! reactive_cell_reflexive_with_runtime {
-//     ($source:expr, $runtime:expr$(,)?) => {{
-// 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
-// 	}};
-// }
-// #[doc(hidden)]
-// pub use crate::reactive_cell_reflexive_with_runtime;
 
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
 	source: impl 'a + Subscribable<SR, Output = T>,
@@ -380,22 +344,14 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::inert_cell($initial_value, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = reactive_cell!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::reactive_cell($initial_value, $on_subscribed_status_change_fn_pin, $crate::GlobalSignalRuntime));
+	{let $name:ident = reactive_cell!($initial_value:expr, $on_subscribed_change_fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::reactive_cell($initial_value, $on_subscribed_change_fn_pin, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	{let $name:ident = reactive_cell_with_runtime!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::reactive_cell($initial_value, $on_subscribed_status_change_fn_pin, $runtime));
+	{let $name:ident = reactive_cell_with_runtime!($initial_value:expr, $on_subscribed_change_fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::reactive_cell($initial_value, $on_subscribed_change_fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
-	// {let $name:ident = reactive_cell_reflexive!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr$(,)?);} => {
-	// 	let $name = ::core::pin::pin!($crate::raw::reactive_cell_reflexive($initial_value, $on_subscribed_status_change_fn_pin, $crate::GlobalSignalRuntime));
-	// 	let $name = ::core::pin::Pin::into_ref($name);
-	// };
-	// {let $name:ident = reactive_cell_reflexive_with_runtime!($initial_value:expr, $on_subscribed_status_change_fn_pin:expr, $runtime:expr$(,)?);} => {
-	// 	let $name = ::core::pin::pin!($crate::raw::reactive_cell_reflexive($initial_value, $on_subscribed_status_change_fn_pin, $runtime));
-	// 	let $name = ::core::pin::Pin::into_ref($name);
-	// };
 	{let $name:ident = cached!($source:expr$(,)?);} => {
 		let $name = ::core::pin::pin!($crate::raw::cached($source));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
@@ -404,12 +360,16 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::computed($fn_pin, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
+	{let $name:ident = computed_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::computed($fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
+	};
 	{let $name:ident = debounced!($fn_pin:expr$(,)?);} => {
 		let $name = ::core::pin::pin!($crate::raw::debounced($fn_pin, $crate::GlobalSignalRuntime));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
-	{let $name:ident = computed_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed($fn_pin, $runtime));
+	{let $name:ident = debounced_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::debounced($fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
 	};
 	{let $name:ident = computed_uncached!($fn_pin:expr$(,)?);} => {

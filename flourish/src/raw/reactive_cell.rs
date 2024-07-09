@@ -18,18 +18,18 @@ use super::{Source, SourceCell, Subscribable};
 #[repr(transparent)]
 pub(crate) struct ReactiveCell<
 	T: ?Sized + Send,
-	H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+	HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 	SR: SignalRuntimeRef,
 > {
 	#[pin]
-	signal: RawSignal<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>,
+	signal: RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>,
 }
 
 impl<
 		T: ?Sized + Send + Debug,
-		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) + Debug,
+		HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) + Debug,
 		SR: SignalRuntimeRef + Debug,
-	> Debug for ReactiveCell<T, H, SR>
+	> Debug for ReactiveCell<T, HandlerFnPin, SR>
 where
 	SR::Symbol: Debug,
 {
@@ -43,16 +43,18 @@ where
 /// TODO: Safety.
 unsafe impl<
 		T: ?Sized + Send,
-		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef + Sync,
-	> Sync for ReactiveCell<T, H, SR>
+	> Sync for ReactiveCell<T, HandlerFnPin, SR>
 {
 }
 
 struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
 
-impl<T: Debug + ?Sized, H: Debug> Debug for AssertSync<(Mutex<H>, RwLock<T>)> {
+impl<T: Debug + ?Sized, HandlerFnPin: Debug> Debug
+	for AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>
+{
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let debug_tuple = &mut f.debug_tuple("AssertSync");
 		{
@@ -92,25 +94,25 @@ impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuardExclusive<'a, T> {
 
 impl<
 		T: ?Sized + Send,
-		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef,
-	> ReactiveCell<T, H, SR>
+	> ReactiveCell<T, HandlerFnPin, SR>
 {
-	pub(crate) fn new(initial_value: T, on_subscribed_status_change_fn_pin: H) -> Self
+	pub(crate) fn new(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
 	where
 		T: Sized,
 		SR: Default,
 	{
 		Self::with_runtime(
 			initial_value,
-			on_subscribed_status_change_fn_pin,
+			on_subscribed_change_fn_pin,
 			SR::default(),
 		)
 	}
 
 	pub(crate) fn with_runtime(
 		initial_value: T,
-		on_subscribed_status_change_fn_pin: H,
+		on_subscribed_change_fn_pin: HandlerFnPin,
 		runtime: SR,
 	) -> Self
 	where
@@ -119,7 +121,7 @@ impl<
 		Self {
 			signal: RawSignal::with_runtime(
 				AssertSync((
-					Mutex::new(on_subscribed_status_change_fn_pin),
+					Mutex::new(on_subscribed_change_fn_pin),
 					RwLock::new(initial_value),
 				)),
 				runtime,
@@ -157,42 +159,42 @@ impl<
 enum E {}
 impl<
 		T: ?Sized + Send,
-		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef,
-	> Callbacks<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR> for E
+	> Callbacks<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR> for E
 {
 	const UPDATE: Option<
 		fn(
-			eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>,
+			eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>,
 			lazy: Pin<&()>,
 		) -> isoprenoid::runtime::Update,
 	> = None;
 
 	const ON_SUBSCRIBED_CHANGE: Option<
 		fn(
-			signal: Pin<&RawSignal<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,
-			eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>,
+			signal: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>,
+			eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>,
 			lazy: Pin<&()>,
 			subscribed: <<SR as SignalRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		),
 	> = {
-		fn on_subscribed_status_change_fn_pin<
+		fn on_subscribed_change_fn_pin<
 			T: ?Sized + Send,
-			H: Send + FnMut( <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+			HandlerFnPin: Send + FnMut( <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 			SR: SignalRuntimeRef,
-		>(_: Pin<&RawSignal<AssertSync<(Mutex<H>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<H>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus){
+		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus){
 			eager.0.0.lock().unwrap()(status)
 		}
 
-		Some(on_subscribed_status_change_fn_pin::<T,H,SR>)
+		Some(on_subscribed_change_fn_pin::<T,HandlerFnPin,SR>)
 	};
 }
 
 impl<
 		T: ?Sized + Send,
-		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef,
-	> Source<SR> for ReactiveCell<T, H, SR>
+	> Source<SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
 	type Output = T;
 
@@ -235,9 +237,9 @@ impl<
 
 impl<
 		T: ?Sized + Send,
-		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef,
-	> Subscribable<SR> for ReactiveCell<T, H, SR>
+	> Subscribable<SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
 		//FIXME: This is inefficient.
@@ -260,9 +262,9 @@ impl<
 
 impl<
 		T: ?Sized + Send,
-		H: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
-	> SourceCell<T, SR> for ReactiveCell<T, H, SR>
+	> SourceCell<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
 	fn change(self: Pin<&Self>, new_value: T)
 	where
