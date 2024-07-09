@@ -1,3 +1,4 @@
+use flourish::raw::SourceCell;
 use flourish::{raw::Source, signals_helper};
 mod _validator;
 use _validator::Validator;
@@ -11,16 +12,15 @@ fn use_macros() {
 		let a = inert_cell!(1);
 		let b = inert_cell!(2);
 	}
-	let (b, set_b) =
-		b.as_getter_and_setter(|s| move || s.get(), |s| move |v| s.replace_blocking(v));
+	let (b, b_cell) = b.as_source_and_cell();
 	signals_helper! {
 		let c = computed!(|| {
 			x.push("c");
-			a.get() + b()
+			a.get() + b.get()
 		});
 		let d = computed!(|| {
 			x.push("d");
-			a.get() - b()
+			a.get() - b.get()
 		});
 		let aa = computed_uncached!(|| {
 			x.push("aa");
@@ -37,7 +37,7 @@ fn use_macros() {
 		v.expect([2]);
 		x.expect(["sub_aa", "aa", "c", "d"]);
 
-		set_b(2);
+		b_cell.replace_blocking(2);
 		v.expect([2]);
 		x.expect(["c", "d", "sub_aa", "aa"]);
 
@@ -48,7 +48,7 @@ fn use_macros() {
 
 	// These evaluate *no* closures!
 	a.replace_blocking(2);
-	set_b(3);
+	b_cell.replace_blocking(3);
 	a.replace_blocking(5);
 	v.expect([]);
 	x.expect([]);

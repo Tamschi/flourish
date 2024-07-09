@@ -163,7 +163,7 @@ pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Source<SR> 
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
 pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>>:
-	Send + Sync + Subscribable<SR>
+	Send + Sync + Subscribable<SR, Output = T>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -334,4 +334,16 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
 	where
 		Self: Sized;
+
+	fn as_source_and_cell(
+		self: Pin<&Self>,
+	) -> (
+		Pin<&impl Source<SR, Output = T>>,
+		Pin<&impl SourceCell<T, SR>>,
+	)
+	where
+		Self: Sized,
+	{
+		(self, self)
+	}
 }

@@ -48,11 +48,11 @@ let _ = Effect::new(|| (), drop);
 You can also put signals on the stack:
 
 ```rust
-use flourish::{signals_helper, Update};
+use flourish::{signals_helper, Update, raw::SourceCell as _};
 
 signals_helper! {
-  let _inert_cell = inert_cell!(());
-  let _provider = provider!((), |_status| ());
+  let inert_cell = inert_cell!(());
+  let reactive_cell = reactive_cell!((), |_status| ());
 
   // The closure type is erased!
   // Not evaluated unless subscribed.
@@ -69,6 +69,10 @@ signals_helper! {
   // Runs `drop` *before* computing the new value.
   let _effect = effect!(|| (), drop);
 }
+
+// "Splitting":
+let (_source, _source_cell) = inert_cell.as_source_and_cell();
+let (_source, _source_cell) = reactive_cell.as_source_and_cell();
 ```
 
 Additionally, inside `flourish::raw`, you can find constructor functions for unpinned raw signals that enable composition with data-inlining.

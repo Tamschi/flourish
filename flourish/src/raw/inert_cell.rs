@@ -137,29 +137,6 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> InertCell<T, SR> {
 				 .0 as *const _)
 		}
 	}
-
-	//TODO: Revisit.
-	pub fn as_source_and_setter<'a, S>(
-		self: Pin<&'a Self>,
-		as_setter: impl FnOnce(Pin<&'a Self>) -> S,
-	) -> (Pin<&'a impl Source<SR, Output = T>>, S)
-	where
-		T: Sized,
-	{
-		(self, as_setter(self))
-	}
-
-	//TODO: Revisit.
-	pub fn as_getter_and_setter<'a, S, R>(
-		self: Pin<&'a Self>,
-		source_as_getter: impl FnOnce(Pin<&'a dyn Source<SR, Output = T>>) -> R,
-		as_setter: impl FnOnce(Pin<&'a Self>) -> S,
-	) -> (R, S)
-	where
-		T: Sized,
-	{
-		(source_as_getter(self), as_setter(self))
-	}
 }
 
 impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for InertCell<T, SR> {

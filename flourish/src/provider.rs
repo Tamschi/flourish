@@ -11,7 +11,7 @@ use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntime
 
 use crate::{
 	raw::ReactiveCell,
-	traits::{Source, Subscribable},
+	traits::{Source, SourceCell, Subscribable},
 	SignalRef, SignalSR, SourcePin,
 };
 
@@ -311,15 +311,22 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 	pub fn change_blocking(&self, new_value: T) -> Result<T, T>
 	where
 		T: PartialEq,
+		SR::Symbol: Sync,
 	{
 		self.provider.change_blocking(new_value)
 	}
 
-	pub fn replace_blocking(&self, new_value: T) -> T {
+	pub fn replace_blocking(&self, new_value: T) -> T
+	where
+		SR::Symbol: Sync,
+	{
 		self.provider.replace_blocking(new_value)
 	}
 
-	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
+	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	where
+		SR::Symbol: Sync,
+	{
 		self.provider.update_blocking(update)
 	}
 
