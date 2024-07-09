@@ -122,14 +122,14 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// The runtime **should** run `f` eventually, but **may** instead cancel and return it in response to
 	/// a [`.stop(id)`](`SignalRuntimeRef::stop`) call with the same `id``.
 	///
-	/// # Panics
+	/// # Logic
 	///
-	/// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
+	/// Calling [`.stop(id)`](`SignalRuntimeRef::stop`) with matching `id` **should** cancel the update and return the [`Err`] variant.
 	///
 	/// # Safety
 	///
-	/// `f` **must not** be dropped or consumed after the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.  
-	/// `f` **must not** run after the [`Future`] returned by this function is dropped.
+	/// `f` **must not** be dropped or run after the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.  
+	/// `f` **must not** be dropped or run after the [`Future`] returned by this function is dropped.
 	fn update_async<T: Send, F: Send + FnOnce() -> (T, Update)>(
 		&self,
 		id: Self::Symbol,
@@ -145,7 +145,6 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Panics
 	///
-	/// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.  
 	/// This function **may** panic when called in any other exclusivity context.  
 	/// (Runtimes **may** limit situations where this can occur in their documentation.)
 	///

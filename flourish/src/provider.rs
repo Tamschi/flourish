@@ -246,11 +246,11 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 	where
 		T: Sync,
 	{
-		self.provider.read()
+		self.provider.as_ref().read()
 	}
 
 	pub fn read_exclusive(&'a self) -> impl 'a + Borrow<T> {
-		self.provider.read_exclusive()
+		self.provider.as_ref().read_exclusive()
 	}
 
 	pub fn change(&self, new_value: T)
@@ -313,21 +313,21 @@ impl<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef> ProviderSR<'a, T, SR> {
 		T: PartialEq,
 		SR::Symbol: Sync,
 	{
-		self.provider.change_blocking(new_value)
+		self.provider.as_ref().change_blocking(new_value)
 	}
 
 	pub fn replace_blocking(&self, new_value: T) -> T
 	where
 		SR::Symbol: Sync,
 	{
-		self.provider.replace_blocking(new_value)
+		self.provider.as_ref().replace_blocking(new_value)
 	}
 
 	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
 	where
 		SR::Symbol: Sync,
 	{
-		self.provider.update_blocking(update)
+		self.provider.as_ref().update_blocking(update)
 	}
 
 	pub fn into_signal_and_setter<S>(
@@ -373,11 +373,11 @@ impl<'a, T: 'a + Send + Sized + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Sour
 	where
 		Self::Output: 'r + Sync,
 	{
-		self.provider.as_ref().read()
+		Source::read(self.provider.as_ref())
 	}
 
 	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
-		self.provider.as_ref().read_exclusive()
+		Source::read_exclusive(self.provider.as_ref())
 	}
 
 	fn clone_runtime_ref(&self) -> SR

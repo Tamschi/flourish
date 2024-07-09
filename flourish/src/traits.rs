@@ -295,7 +295,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	fn change_blocking(self: Pin<&Self>, new_value: T) -> Result<T, T>
 	where
 		T: Sized + PartialEq;
 
@@ -312,7 +312,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn replace_blocking(&self, new_value: T) -> T
+	fn replace_blocking(self: Pin<&Self>, new_value: T) -> T
 	where
 		T: Sized;
 
@@ -331,7 +331,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	fn update_blocking<U>(self: Pin<&Self>, update: impl FnOnce(&mut T) -> (U, Update)) -> U
 	where
 		Self: Sized;
 

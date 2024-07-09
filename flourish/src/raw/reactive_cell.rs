@@ -96,7 +96,7 @@ impl<
 		SR: SignalRuntimeRef,
 	> ReactiveCell<T, H, SR>
 {
-	pub fn new(initial_value: T, on_subscribed_status_change_fn_pin: H) -> Self
+	pub(crate) fn new(initial_value: T, on_subscribed_status_change_fn_pin: H) -> Self
 	where
 		T: Sized,
 		SR: Default,
@@ -108,7 +108,7 @@ impl<
 		)
 	}
 
-	pub fn with_runtime(
+	pub(crate) fn with_runtime(
 		initial_value: T,
 		on_subscribed_status_change_fn_pin: H,
 		runtime: SR,
@@ -127,21 +127,7 @@ impl<
 		}
 	}
 
-	pub fn get(&self) -> T
-	where
-		T: Sync + Copy,
-	{
-		*self.read().borrow()
-	}
-
-	pub fn get_clone(&self) -> T
-	where
-		T: Sync + Clone,
-	{
-		self.read().borrow().clone()
-	}
-
-	pub fn read<'a>(&'a self) -> impl 'a + Borrow<T>
+	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
 	where
 		T: Sync,
 	{
@@ -149,33 +135,17 @@ impl<
 		ReactiveCellGuard(this.touch().read().unwrap())
 	}
 
-	pub fn read_exclusive<'a>(&'a self) -> impl 'a + Borrow<T> {
+	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
 		let this = &self;
 		ReactiveCellGuardExclusive(this.touch().write().unwrap())
 	}
 
-	pub fn get_mut<'a>(&'a mut self) -> &mut T {
-		self.signal.eager_mut().0 .1.get_mut().unwrap()
-	}
-
-	pub fn get_exclusive(&self) -> T
-	where
-		T: Copy,
-	{
-		self.get_clone_exclusive()
-	}
-
-	pub fn get_clone_exclusive(&self) -> T
-	where
-		T: Clone,
-	{
-		self.touch().write().unwrap().clone()
-	}
-
-	pub(crate) fn touch(&self) -> &RwLock<T> {
+	fn touch(self: Pin<&Self>) -> &RwLock<T> {
 		unsafe {
 			// SAFETY: Doesn't defer memory access.
-			&*(&Pin::new_unchecked(&self.signal)
+			&*(&self
+				.project_ref()
+				.signal
 				.project_or_init::<E>(|_, slot| slot.write(()))
 				.0
 				 .0
@@ -227,46 +197,32 @@ impl<
 	type Output = T;
 
 	fn touch(self: Pin<&Self>) {
-		(*self).touch();
-	}
-
-	fn get(self: Pin<&Self>) -> Self::Output
-	where
-		Self::Output: Sync + Copy,
-	{
-		(*self).get()
+		self.touch();
 	}
 
 	fn get_clone(self: Pin<&Self>) -> Self::Output
 	where
 		Self::Output: Sync + Clone,
 	{
-		(*self).get_clone()
-	}
-
-	fn get_exclusive(self: Pin<&Self>) -> Self::Output
-	where
-		Self::Output: Copy,
-	{
-		(*self).get_exclusive()
+		self.read().borrow().clone()
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
 	where
 		Self::Output: Clone,
 	{
-		(*self).get_clone_exclusive()
+		self.touch().write().unwrap().clone()
 	}
 
 	fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
 	where
 		Self::Output: Sync,
 	{
-		Box::new(self.get_ref().read())
+		Box::new(self.read())
 	}
 
 	fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
-		Box::new(self.get_ref().read_exclusive())
+		Box::new(self.read_exclusive())
 	}
 
 	fn clone_runtime_ref(&self) -> SR
@@ -291,7 +247,7 @@ impl<
 			.subscribe_inherently::<E>(|_, slot| slot.write(()))
 			.is_some()
 		{
-			Some(self.read_exclusive())
+			Some(Source::read_exclusive(self))
 		} else {
 			None
 		}
@@ -356,7 +312,7 @@ impl<
 			.await
 	}
 
-	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	fn change_blocking(self: Pin<&Self>, new_value: T) -> Result<T, T>
 	where
 		T: Sized + PartialEq,
 	{
@@ -369,14 +325,14 @@ impl<
 		})
 	}
 
-	fn replace_blocking(&self, new_value: T) -> T
+	fn replace_blocking(self: Pin<&Self>, new_value: T) -> T
 	where
 		T: Sized,
 	{
 		self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
 	}
 
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
+	fn update_blocking<U>(self: Pin<&Self>, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
 		self.signal
 			.clone_runtime_ref()
 			.run_detached(|| self.touch());

@@ -75,11 +75,11 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 	where
 		T: Sync,
 	{
-		self.inert_cell.read()
+		self.inert_cell.as_ref().read()
 	}
 
 	pub fn read_exclusive<'r>(&'r self) -> impl 'r + Borrow<T> {
-		self.inert_cell.read_exclusive()
+		self.inert_cell.as_ref().read_exclusive()
 	}
 
 	pub fn change(&self, new_value: T)
@@ -141,21 +141,21 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		T: PartialEq,
 		SR::Symbol: Sync,
 	{
-		self.inert_cell.change_blocking(new_value)
+		self.inert_cell.as_ref().change_blocking(new_value)
 	}
 
 	pub fn replace_blocking(&self, new_value: T) -> T
 	where
 		SR::Symbol: Sync,
 	{
-		self.inert_cell.replace_blocking(new_value)
+		self.inert_cell.as_ref().replace_blocking(new_value)
 	}
 
 	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
 	where
 		SR::Symbol: Sync,
 	{
-		self.inert_cell.update_blocking(update)
+		self.inert_cell.as_ref().update_blocking(update)
 	}
 
 	pub fn into_signal_and_setter<'a, S>(
@@ -209,11 +209,11 @@ impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR>
 	where
 		Self::Output: 'r + Sync,
 	{
-		self.inert_cell.as_ref().read()
+		Source::read(self.inert_cell.as_ref())
 	}
 
 	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
-		self.inert_cell.as_ref().read_exclusive()
+		Source::read_exclusive(self.inert_cell.as_ref())
 	}
 
 	fn clone_runtime_ref(&self) -> SR

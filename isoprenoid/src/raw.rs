@@ -291,7 +291,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	/// **May** panic iff called *not* between `self.start(…)` and `self.stop(…)`.
 	pub fn update(
 		self: Pin<&Self>,
-		f: impl 'static + Send + FnOnce(Pin<&Eager>, Pin<&Lazy>) -> Update,
+		f: impl 'static + Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> Update,
 	) where
 		SR::Symbol: Sync,
 	{
@@ -299,7 +299,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		let update: Box<dyn Send + FnOnce() -> Update> = Box::new(move || unsafe {
 			f(
 				this.map_unchecked(|this| &this.eager),
-				this.map_unchecked(|this| (&*this.lazy.get()).get().expect("unreachable")),
+				(&*this.lazy.get())
+					.get()
+					.map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		});
 		let update: Box<dyn 'static + Send + FnOnce() -> Update> =
@@ -308,14 +310,31 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	}
 
 	pub async fn update_async<T: Send>(
+		&self,
+		f: impl Send + FnOnce(&Eager, Option<&Lazy>) -> (T, Update),
+	) -> T {
+		let update: Box<dyn Send + FnOnce() -> (T, Update)> =
+			Box::new(move || f(&self.eager, unsafe { &*self.lazy.get() }.get()));
+		let update: Box<dyn 'static + Send + FnOnce() -> (T, Update)> =
+			unsafe { mem::transmute(update) };
+		self.handle
+            .update_async(update)
+            .await
+            .map_err(|_| ())
+            .expect("Cancelling the update in a way this here would be reached would require calling `.stop()`, which isn't possible here because that requires an exclusive/`mut` reference.")
+	}
+
+	pub async fn update_async_pin<T: Send>(
 		self: Pin<&Self>,
-		f: impl Send + FnOnce(Pin<&Eager>, Pin<&Lazy>) -> (T, Update),
+		f: impl Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (T, Update),
 	) -> T {
 		let this = Pin::clone(&self);
 		let update: Box<dyn Send + FnOnce() -> (T, Update)> = Box::new(move || unsafe {
 			f(
 				this.map_unchecked(|this| &this.eager),
-				this.map_unchecked(|this| (&*this.lazy.get()).get().expect("unreachable")),
+				(&*this.lazy.get())
+					.get()
+					.map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		});
 		let update: Box<dyn 'static + Send + FnOnce() -> (T, Update)> =
@@ -327,9 +346,23 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
             .expect("Cancelling the update in a way this here would be reached would require calling `.stop()`, which isn't possible here because that requires an exclusive/`mut` reference.")
 	}
 
-	pub fn update_blocking<T>(&self, f: impl FnOnce(&Eager, &OnceLock<Lazy>) -> (T, Update)) -> T {
+	pub fn update_blocking<T>(&self, f: impl FnOnce(&Eager, Option<&Lazy>) -> (T, Update)) -> T {
 		self.handle
-			.update_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }))
+			.update_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }.get()))
+	}
+
+	pub fn update_blocking_pin<T>(
+		self: Pin<&Self>,
+		f: impl FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (T, Update),
+	) -> T {
+		self.handle.update_blocking(move || unsafe {
+			f(
+				self.map_unchecked(|this| &this.eager),
+				(&*self.lazy.get())
+					.get()
+					.map(|lazy| Pin::new_unchecked(lazy)),
+			)
+		})
 	}
 
 	pub fn update_dependency_set<T, F: FnOnce(Pin<&Eager>, Pin<&Lazy>) -> T>(
