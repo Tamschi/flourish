@@ -15,7 +15,7 @@ use pin_project::pin_project;
 use super::{Source, SourceCell, Subscribable};
 
 #[pin_project]
-pub(crate) struct InertCell<T: ?Sized + Send, SR: SignalRuntimeRef> {
+pub struct InertCell<T: ?Sized + Send, SR: SignalRuntimeRef> {
 	#[pin]
 	signal: RawSignal<AssertSync<RwLock<T>>, (), SR>,
 }

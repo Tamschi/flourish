@@ -1,4 +1,10 @@
-use std::{borrow::Borrow, fmt::Debug, marker::PhantomData, pin::Pin, sync::Arc};
+use std::{
+	borrow::Borrow,
+	fmt::Debug,
+	marker::PhantomData,
+	pin::Pin,
+	sync::{Arc, Weak},
+};
 
 use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update};
 
@@ -11,16 +17,55 @@ use crate::{
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalRuntime`]).
 pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalRuntime>;
 
-//TODO: `WeakSignalCell`.
+pub struct WeakSignalCell<
+	T: ?Sized + Send,
+	S: ?Sized + SourceCell<T, SR>,
+	SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+> {
+	source_cell: Weak<S>,
+	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
+	/// being unstable. Once that's stabilised, this field can be removed.
+	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
+}
 
-#[derive(Clone)]
+impl<
+		T: ?Sized + Send,
+		S: ?Sized + SourceCell<T, SR>,
+		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+	> WeakSignalCell<T, S, SR>
+{
+	#[must_use]
+	pub fn upgrade(&self) -> Option<SignalCellSR<T, S, SR>> {
+		self.source_cell.upgrade().map(|strong| SignalCellSR {
+			source_cell: unsafe { Pin::new_unchecked(strong) },
+			upcast: self.upcast,
+		})
+	}
+}
+
 pub struct SignalCellSR<
 	T: ?Sized + Send,
 	S: ?Sized + SourceCell<T, SR>,
 	SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
 > {
 	source_cell: Pin<Arc<S>>,
-	_phantom: PhantomData<AssertSync<(PhantomData<T>, SR)>>,
+	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
+	/// being unstable. Once that's stabilised, this field can be removed.
+	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
+}
+
+impl<
+		T: ?Sized + Send,
+		S: ?Sized + SourceCell<T, SR>,
+		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+	> Clone for SignalCellSR<T, S, SR>
+{
+	fn clone(&self) -> Self {
+		Self {
+			source_cell: self.source_cell.clone(),
+			upcast: self.upcast,
+		}
+	}
 }
 
 impl<
@@ -38,8 +83,16 @@ where
 	}
 }
 
-struct AssertSync<T: ?Sized>(T);
-unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
+#[derive(Clone, Copy)]
+struct AssertSendSync<T: ?Sized>(T);
+unsafe impl<T: ?Sized> Send for AssertSendSync<T> {}
+unsafe impl<T: ?Sized> Sync for AssertSendSync<T> {}
+
+impl<T> From<T> for AssertSendSync<T> {
+	fn from(value: T) -> Self {
+		Self(value)
+	}
+}
 
 impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, SR>, SR> {
 	pub fn new(initial_value: T) -> Self
@@ -53,9 +106,15 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 	where
 		SR: Default,
 	{
+		let arc = Arc::pin(InertCell::with_runtime(initial_value, runtime));
 		Self {
-			source_cell: Arc::pin(InertCell::with_runtime(initial_value, runtime)),
-			_phantom: PhantomData,
+			upcast: unsafe {
+				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
+					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				ptr
+			}
+			.into(),
+			source_cell: arc,
 		}
 	}
 
@@ -92,13 +151,65 @@ impl<
 	where
 		SR: Default,
 	{
+		let arc = Arc::pin(ReactiveCell::with_runtime(
+			initial_value,
+			on_subscribed_change_fn_pin,
+			runtime,
+		));
 		Self {
-			source_cell: Arc::pin(ReactiveCell::with_runtime(
-				initial_value,
-				on_subscribed_change_fn_pin,
-				runtime,
-			)),
-			_phantom: PhantomData,
+			upcast: unsafe {
+				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
+					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				ptr
+			}
+			.into(),
+			source_cell: arc,
+		}
+	}
+
+	pub fn new_cyclic(
+		initial_value: T,
+		make_on_subscribed_change_fn_pin: impl FnOnce(
+			WeakSignalCell<T, ReactiveCell<T, HandlerFnPin, SR>, SR>,
+		) -> HandlerFnPin,
+	) -> Self
+	where
+		SR: Default,
+	{
+		Self::new_cyclic_with_runtime(
+			initial_value,
+			make_on_subscribed_change_fn_pin,
+			SR::default(),
+		)
+	}
+
+	pub fn new_cyclic_with_runtime(
+		initial_value: T,
+		make_on_subscribed_change_fn_pin: impl FnOnce(
+			WeakSignalCell<T, ReactiveCell<T, HandlerFnPin, SR>, SR>,
+		) -> HandlerFnPin,
+		runtime: SR,
+	) -> Self
+	where
+		SR: Default,
+	{
+		let arc = unsafe {
+			Pin::new_unchecked(Arc::new_cyclic(|weak| {
+				ReactiveCell::with_runtime(
+					initial_value,
+					make_on_subscribed_change_fn_pin(todo!()),
+					runtime,
+				)
+			}))
+		};
+		Self {
+			upcast: unsafe {
+				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
+					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				ptr
+			}
+			.into(),
+			source_cell: arc,
 		}
 	}
 
@@ -117,20 +228,16 @@ impl<
 impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
 	SignalCellSR<T, S, SR>
 {
+	//TODO: `as_ref`/`SignalCellRef`?
+
 	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
-	pub fn as_ref<'a>(&self) -> SignalRef<'_, 'a, T, SR>
+	pub fn as_signal_ref<'a>(&self) -> SignalRef<'_, 'a, T, SR>
 	where
 		T: 'a,
 		SR: 'a,
 	{
 		SignalRef {
-			source: {
-				let ptr = Arc::into_raw(unsafe {
-					Pin::into_inner_unchecked(Pin::clone(&self.source_cell))
-				});
-				unsafe { Arc::decrement_strong_count(ptr) };
-				ptr
-			},
+			source: self.upcast.0,
 			_phantom: PhantomData,
 		}
 	}

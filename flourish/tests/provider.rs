@@ -1,4 +1,4 @@
-use flourish::{prelude::*, shadow_clone, Effect, Provider};
+use flourish::{prelude::*, shadow_clone, Effect, SignalCell};
 mod _validator;
 use _validator::Validator;
 
@@ -6,9 +6,9 @@ use _validator::Validator;
 fn cyclic() {
 	let v = &Validator::new();
 
-	let p = Provider::new_cyclic((), |weak_provider| {
+	let p = SignalCell::new_cyclic((), |weak_signal_cell| {
 		move |status| {
-			v.push((weak_provider.upgrade().is_some(), status));
+			v.push((weak_signal_cell.upgrade().is_some(), status));
 		}
 	});
 

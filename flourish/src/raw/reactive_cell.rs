@@ -16,7 +16,7 @@ use super::{Source, SourceCell, Subscribable};
 
 #[pin_project]
 #[repr(transparent)]
-pub(crate) struct ReactiveCell<
+pub struct ReactiveCell<
 	T: ?Sized + Send,
 	HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 	SR: SignalRuntimeRef,
