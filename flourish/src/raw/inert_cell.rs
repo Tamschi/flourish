@@ -205,20 +205,13 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 			.update(|value, _| update(&mut value.0.write().unwrap()))
 	}
 
-	async fn update_async<U: Send>(
-		self: Pin<&Self>,
-		update: impl Send + FnOnce(&mut T) -> (U, Update),
-	) -> U {
+	async fn update_async<U: Send>(&self, update: impl Send + FnOnce(&mut T) -> (U, Update)) -> U {
 		self.signal
-			.clone_runtime_ref()
-			.run_detached(|| self.touch());
-		self.project_ref()
-			.signal
 			.update_async(|value, _| update(&mut value.0.write().unwrap()))
 			.await
 	}
 
-	fn change_blocking(self: Pin<&Self>, new_value: T) -> Result<T, T>
+	fn change_blocking(&self, new_value: T) -> Result<T, T>
 	where
 		T: Sized + PartialEq,
 	{
@@ -231,17 +224,14 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 		})
 	}
 
-	fn replace_blocking(self: Pin<&Self>, new_value: T) -> T
+	fn replace_blocking(&self, new_value: T) -> T
 	where
 		T: Sized,
 	{
 		self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
 	}
 
-	fn update_blocking<U>(self: Pin<&Self>, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
-		self.signal
-			.clone_runtime_ref()
-			.run_detached(|| self.touch());
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
 		self.signal
 			.update_blocking(|value, _| update(&mut value.0.write().unwrap()))
 	}

@@ -374,7 +374,7 @@ where
 	where
 		Self: Sized,
 	{
-		self.source_cell.as_ref().update_async(update)
+		self.source_cell.update_async(update)
 	}
 
 	fn change_blocking(&self, new_value: T) -> Result<T, T>

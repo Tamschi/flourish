@@ -7,7 +7,7 @@ use crate::raw::new_raw_unsubscribed_effect;
 /// Type inference helper alias for [`EffectSR`] (using [`GlobalSignalRuntime`]).
 pub type Effect<'a> = EffectSR<'a, GlobalSignalRuntime>;
 
-/// An [`EffectSR`] subscribes to signal sources just like a [`Subscription`](`crate::Subscription`) does,
+/// An [`EffectSR`] subscribes to signal sources just like a [`SubscriptionSR`](`crate::SubscriptionSR`) does,
 /// but instead of caching the value and thereby requiring [`Clone`], it executes side-effects.
 ///
 /// Please note that when an update is received, `drop` consumes the previous value *before* `f` creates the next.

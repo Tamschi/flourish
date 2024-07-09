@@ -480,10 +480,6 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 			let lock = this.critical_mutex.lock();
 			let borrow = (*lock).borrow();
 
-			if !borrow.callbacks.contains_key(&id) {
-				panic!("Tried to update without starting the `isoprenoid::raw::RawSignal` first! (This panic may be sporadic when threading.)")
-			}
-
 			if !(borrow.context_stack.is_empty() && borrow.stale_queue.peek().is_none()) {
 				panic!("Called `update_blocking` (via `change_blocking` or `replace_blocking`?) while propagating another update. This would deadlock with a better queue.");
 			}
