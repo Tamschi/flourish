@@ -1,4 +1,4 @@
-use flourish::{Effect, SignalCell, SourcePin};
+use flourish::{prelude::*, Effect, SignalCell, SourcePin};
 mod _validator;
 use _validator::Validator;
 

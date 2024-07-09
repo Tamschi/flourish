@@ -200,6 +200,8 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 		Self: Sized,
 		SR::Symbol: Sync;
 
+	//TODO: `_dyn` methods?
+
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Returns
@@ -388,6 +390,8 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	where
 		Self: Sized,
 		SR::Symbol: Sync;
+
+	//TODO: `_dyn` methods?
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///

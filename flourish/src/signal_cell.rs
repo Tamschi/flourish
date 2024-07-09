@@ -5,7 +5,7 @@ use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 use crate::{
 	raw::InertCell,
 	traits::{Source, SourceCell, Subscribable},
-	SignalRef, SignalSR, SourcePin,
+	SignalRef, SignalSR, SourceCellPin, SourcePin,
 };
 
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalRuntime`]).
@@ -82,82 +82,6 @@ impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, SR> {
 		self.inert_cell.as_ref().read_exclusive()
 	}
 
-	pub fn change(&self, new_value: T)
-	where
-		T: 'static + PartialEq,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.inert_cell.as_ref().change(new_value)
-	}
-
-	pub fn replace(&self, new_value: T)
-	where
-		T: 'static,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.inert_cell.as_ref().replace(new_value)
-	}
-
-	pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
-	where
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.inert_cell.as_ref().update(update)
-	}
-
-	pub async fn change_async(&self, new_value: T) -> Result<T, T>
-	where
-		T: Send + PartialEq,
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.inert_cell.as_ref().change_async(new_value).await
-	}
-
-	pub async fn replace_async(&self, new_value: T) -> T
-	where
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.inert_cell.as_ref().replace_async(new_value).await
-	}
-
-	pub async fn update_async<U: Send>(
-		&self,
-		update: impl Send + FnOnce(&mut T) -> (U, Update),
-	) -> U
-	where
-		SR: Sync,
-		SR::Symbol: Sync,
-	{
-		self.inert_cell.as_ref().update_async(update).await
-	}
-
-	pub fn change_blocking(&self, new_value: T) -> Result<T, T>
-	where
-		T: PartialEq,
-		SR::Symbol: Sync,
-	{
-		self.inert_cell.as_ref().change_blocking(new_value)
-	}
-
-	pub fn replace_blocking(&self, new_value: T) -> T
-	where
-		SR::Symbol: Sync,
-	{
-		self.inert_cell.as_ref().replace_blocking(new_value)
-	}
-
-	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
-	where
-		SR::Symbol: Sync,
-	{
-		self.inert_cell.as_ref().update_blocking(update)
-	}
-
 	pub fn into_signal_and_setter<'a, S>(
 		self,
 		into_setter: impl FnOnce(Self) -> S,
@@ -221,5 +145,64 @@ impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR>
 		SR: Sized,
 	{
 		self.inert_cell.as_ref().clone_runtime_ref()
+	}
+}
+
+impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourceCellPin<T, SR>
+	for SignalCellSR<T, SR>
+where
+	<SR as SignalRuntimeRef>::Symbol: Sync,
+{
+	fn change(&self, new_value: T)
+	where
+		T: 'static + Sized + PartialEq,
+	{
+		self.inert_cell.as_ref().change(new_value)
+	}
+
+	fn replace(&self, new_value: T)
+	where
+		T: 'static + Sized,
+	{
+		self.inert_cell.as_ref().replace(new_value)
+	}
+
+	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
+	where
+		Self: Sized,
+		<SR as SignalRuntimeRef>::Symbol: Sync,
+	{
+		self.inert_cell.as_ref().update(update)
+	}
+
+	fn update_async<U: Send>(
+		&self,
+		update: impl Send + FnOnce(&mut T) -> (U, Update),
+	) -> impl Send + std::future::Future<Output = U>
+	where
+		Self: Sized,
+	{
+		self.inert_cell.as_ref().update_async(update)
+	}
+
+	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	where
+		T: Sized + PartialEq,
+	{
+		self.inert_cell.as_ref().change_blocking(new_value)
+	}
+
+	fn replace_blocking(&self, new_value: T) -> T
+	where
+		T: Sized,
+	{
+		self.inert_cell.as_ref().replace_blocking(new_value)
+	}
+
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	where
+		Self: Sized,
+	{
+		self.inert_cell.as_ref().update_blocking(update)
 	}
 }
