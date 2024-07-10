@@ -6,7 +6,7 @@ use _validator::Validator;
 fn inherent() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |status| v.push(status));
+	let a = SignalCell::new_reactive((), |_value, status| v.push(status));
 	let s = a.to_signal();
 	drop(a);
 	v.expect([]);
@@ -22,7 +22,7 @@ fn inherent() {
 fn dependent() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |status| v.push(status));
+	let a = SignalCell::new_reactive((), |_value, status| v.push(status));
 	v.expect([]);
 
 	let s = Subscription::computed({
@@ -42,7 +42,7 @@ fn dependent() {
 fn dependent_reversed() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |status| v.push(status));
+	let a = SignalCell::new_reactive((), |_value, status| v.push(status));
 	v.expect([]);
 
 	let s = Subscription::computed({

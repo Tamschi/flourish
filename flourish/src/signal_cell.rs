@@ -175,7 +175,7 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 
 impl<
 		T: Send,
-		HandlerFnPin: Send + FnMut(<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 		SR: SignalRuntimeRef<Symbol: Sync>,
 	> SignalCellSR<T, ReactiveCell<T, HandlerFnPin, SR>, SR>
 {

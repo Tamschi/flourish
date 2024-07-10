@@ -7,7 +7,7 @@ fn cyclic() {
 	let v = &Validator::new();
 
 	let p = SignalCell::new_cyclic_reactive(|weak_signal_cell| {
-		((), move |status| {
+		((), move |_value, status| {
 			v.push((weak_signal_cell.upgrade().is_some(), status));
 		})
 	});
