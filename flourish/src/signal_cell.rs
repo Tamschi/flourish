@@ -121,6 +121,46 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 		}
 	}
 
+	pub fn new_cyclic<'a>(
+		make_initial_value: impl FnOnce(WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>) -> T,
+	) -> Self
+	where
+		T: 'a,
+		SR: 'a + Default,
+	{
+		Self::new_cyclic_with_runtime(make_initial_value, SR::default())
+	}
+
+	pub fn new_cyclic_with_runtime<'a>(
+		make_initial_value: impl FnOnce(WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>) -> T,
+		runtime: SR,
+	) -> Self
+	where
+		T: 'a,
+		SR: 'a + Default,
+	{
+		let arc = unsafe {
+			Pin::new_unchecked(Arc::new_cyclic(|weak| {
+				InertCell::with_runtime(
+					make_initial_value(WeakSignalCell {
+						source_cell: weak.clone() as Weak<dyn 'a + SourceCell<T, SR>>,
+						upcast: (weak.as_ptr() as *const dyn Subscribable<SR, Output = T>).into(),
+					}),
+					runtime,
+				)
+			}))
+		};
+		Self {
+			upcast: unsafe {
+				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
+					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				ptr
+			}
+			.into(),
+			source_cell: arc,
+		}
+	}
+
 	pub fn read<'r>(&'r self) -> impl 'r + Borrow<T>
 	where
 		T: Sync,
@@ -170,29 +210,26 @@ impl<
 		}
 	}
 
-	pub fn new_cyclic<'a>(
-		initial_value: T,
-		make_on_subscribed_change_fn_pin: impl FnOnce(
+	pub fn new_cyclic_reactive<'a>(
+		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
 			WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>,
-		) -> HandlerFnPin,
+		) -> (T, HandlerFnPin),
 	) -> Self
 	where
 		T: 'a,
 		HandlerFnPin: 'a,
 		SR: 'a + Default,
 	{
-		Self::new_cyclic_with_runtime(
-			initial_value,
-			make_on_subscribed_change_fn_pin,
+		Self::new_cyclic_reactive_with_runtime(
+			make_initial_value_and_on_subscribed_change_fn_pin,
 			SR::default(),
 		)
 	}
 
-	pub fn new_cyclic_with_runtime<'a>(
-		initial_value: T,
-		make_on_subscribed_change_fn_pin: impl FnOnce(
+	pub fn new_cyclic_reactive_with_runtime<'a>(
+		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
 			WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>,
-		) -> HandlerFnPin,
+		) -> (T, HandlerFnPin),
 		runtime: SR,
 	) -> Self
 	where
@@ -202,14 +239,12 @@ impl<
 	{
 		let arc = unsafe {
 			Pin::new_unchecked(Arc::new_cyclic(|weak| {
-				ReactiveCell::with_runtime(
-					initial_value,
-					make_on_subscribed_change_fn_pin(WeakSignalCell {
+				let (initial_value, on_subscribed_change_fn_pin) =
+					make_initial_value_and_on_subscribed_change_fn_pin(WeakSignalCell {
 						source_cell: weak.clone() as Weak<dyn 'a + SourceCell<T, SR>>,
 						upcast: (weak.as_ptr() as *const dyn Subscribable<SR, Output = T>).into(),
-					}),
-					runtime,
-				)
+					});
+				ReactiveCell::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 			}))
 		};
 		Self {

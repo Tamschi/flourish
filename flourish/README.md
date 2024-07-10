@@ -33,8 +33,9 @@ You can put signals on the heap:
 use flourish::{SignalCell, Signal, Update, Subscription, Effect};
 
 let _ = SignalCell::new(());
+let _ = SignalCell::new_cyclic(|_weak| ());
 let _ = SignalCell::new_reactive((), |_status| ());
-let _ = SignalCell::new_cyclic((), |_weak| move |_status| ());
+let _ = SignalCell::new_cyclic_reactive(|_weak| ((), move |_status| ()));
 
 // The closure type is erased!
 // Not evaluated unless subscribed.

@@ -6,10 +6,10 @@ use _validator::Validator;
 fn cyclic() {
 	let v = &Validator::new();
 
-	let p = SignalCell::new_cyclic((), |weak_signal_cell| {
-		move |status| {
+	let p = SignalCell::new_cyclic_reactive(|weak_signal_cell| {
+		((), move |status| {
 			v.push((weak_signal_cell.upgrade().is_some(), status));
-		}
+		})
 	});
 
 	let e = Effect::new(
