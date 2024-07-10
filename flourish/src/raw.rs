@@ -20,6 +20,9 @@ pub(crate) use inert_cell::InertCell;
 mod reactive_cell;
 pub(crate) use reactive_cell::ReactiveCell;
 
+mod reactive_cell_mut;
+pub(crate) use reactive_cell_mut::ReactiveCellMut;
+
 mod folded;
 pub(crate) use folded::Folded;
 
@@ -63,7 +66,7 @@ pub use crate::inert_cell_with_runtime;
 
 pub fn reactive_cell<
 	T: Send,
-	H: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+	H: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
 	SR: SignalRuntimeRef,
 >(
 	initial_value: T,
@@ -93,6 +96,39 @@ macro_rules! reactive_cell_with_runtime {
 }
 #[doc(hidden)]
 pub use crate::reactive_cell_with_runtime;
+
+pub fn reactive_cell_mut<
+	T: Send,
+	H: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+	SR: SignalRuntimeRef,
+>(
+	initial_value: T,
+	on_subscribed_change_fn_pin: H,
+	runtime: SR,
+) -> impl SourceCell<T, SR>
+where
+	SR::Symbol: Sync,
+{
+	ReactiveCellMut::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
+}
+#[macro_export]
+#[doc(hidden)]
+macro_rules! reactive_cell_mut {
+    ($source:expr, $on_subscribed_change_fn_pin:expr$(,)?) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+	}};
+}
+#[doc(hidden)]
+pub use crate::reactive_cell_mut;
+#[macro_export]
+#[doc(hidden)]
+macro_rules! reactive_cell_mut_with_runtime {
+    ($source:expr, $runtime:expr$(,)?) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+	}};
+}
+#[doc(hidden)]
+pub use crate::reactive_cell_mut_with_runtime;
 
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalRuntimeRef>(
 	source: impl 'a + Subscribable<SR, Output = T>,
@@ -352,6 +388,14 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::raw::reactive_cell($initial_value, $on_subscribed_change_fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
+	{let $name:ident = reactive_cell_mut!($initial_value:expr, $on_subscribed_change_fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::reactive_cell_mut($initial_value, $on_subscribed_change_fn_pin, $crate::GlobalSignalRuntime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = reactive_cell_mut_with_runtime!($initial_value:expr, $on_subscribed_change_fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::raw::reactive_cell_mut($initial_value, $on_subscribed_change_fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
 	{let $name:ident = cached!($source:expr$(,)?);} => {
 		let $name = ::core::pin::pin!($crate::raw::cached($source));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, Output = _>>;
@@ -438,7 +482,7 @@ macro_rules! signals_helper {
 		// The compiler still squiggles the entire macro, unfortunately.
 		::core::compile_error!(::core::concat!(
 			"Unrecognised macro name or wrong argument count (for) `", ::core::stringify!($macro), "`. The following macros are supported:\n",
-			"inert_cell[_with_runtime]!(1/2), reactive_cell[_with_runtime]!(2/3), cached!(1), debounced[_with_runtime]!(1/2), ",
+			"inert_cell[_with_runtime]!(1/2), reactive_cell[_mut][_with_runtime]!(2/3), cached!(1), debounced[_with_runtime]!(1/2), ",
 			"computed[_uncached[_mut]][_with_runtime]!(1/2), folded[_with_runtime]!(2/3), reduced[_with_runtime]!(2/3), ",
 			"subscription[_with_runtime]!(1/2), subscription_from_source!(1), effect[_with_runtime]!(2/3)"
 		));
