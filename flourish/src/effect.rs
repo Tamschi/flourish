@@ -52,4 +52,36 @@ impl<'a, SR: SignalRuntimeRef> EffectSR<'a, SR> {
 			_phantom: PhantomData,
 		}
 	}
+	/// A pinning effect with computed state and `acquire_fn_pin` activation and `release_fn_pin` cleanup closure that runs first on notification and drop.
+	///
+	/// *Both* closures are part of the dependency detection scope.
+	pub fn pin<T: 'a + Send, ActivateFnPin: 'a + Send + FnMut(Pin<&mut T>)>(
+		fn_pin: impl 'a + Send + FnMut() -> (T, ActivateFnPin),
+		drop_fn_pin: impl 'a + Send + FnMut(Pin<&mut T>),
+	) -> Self
+	where
+		SR: Default,
+	{
+		Self::pin_with_runtime(fn_pin, drop_fn_pin, SR::default())
+	}
+
+	/// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on notification and drop.
+	///
+	/// *Both* closures are part of the dependency detection scope.
+	pub fn pin_with_runtime<T: 'a + Send, ActivateFnPin: 'a + Send + FnMut(Pin<&mut T>)>(
+		fn_pin: impl 'a + Send + FnMut() -> (T, ActivateFnPin),
+		drop_fn_pin: impl 'a + Send + FnMut(Pin<&mut T>),
+		runtime: SR,
+	) -> Self {
+		let box_ = Box::pin(new_raw_unsubscribed_pinning_effect(
+			fn_pin,
+			drop_fn_pin,
+			runtime,
+		));
+		box_.as_ref().pull();
+		Self {
+			_raw_effect: box_,
+			_phantom: PhantomData,
+		}
+	}
 }

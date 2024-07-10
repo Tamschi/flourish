@@ -31,6 +31,9 @@ pub use effect::{Effect, EffectSR};
 mod traits;
 pub use traits::{SourceCellPin, SourcePin};
 
+mod pinning_traits;
+pub use pinning_traits::{PinningSourceCellPin, PinningSourcePin};
+
 pub use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
 
 pub mod prelude {
