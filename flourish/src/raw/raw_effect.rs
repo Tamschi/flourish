@@ -106,7 +106,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
 
 	pub fn pull(self: Pin<&RawEffect<T, S, D, SR>>) {
 		self.0.clone_runtime_ref().run_detached(|| unsafe {
-			Pin::new_unchecked(&self.0).subscribe_inherently::<E>(|source, cache| {
+			Pin::new_unchecked(&self.0).subscribe_inherently_or_init::<E>(|source, cache| {
 				RawEffect::<T, S, D, SR>::init(source, cache)
 			});
 		})

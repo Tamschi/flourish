@@ -173,6 +173,7 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 	}
 }
 
+// TODO: Make `HandlerFnPin` return `Update`, combined propagation!
 impl<
 		T: Send,
 		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
@@ -270,6 +271,7 @@ impl<
 	}
 }
 
+// TODO: Make `HandlerFnPin` return `Update`, combined propagation!
 impl<
 		T: Send,
 		HandlerFnPin: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),

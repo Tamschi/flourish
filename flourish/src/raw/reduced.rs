@@ -125,7 +125,7 @@ impl<
 			mem::transmute::<ReducedGuard<T>, ReducedGuard<T>>(ReducedGuard(
 				self.project_ref()
 					.0
-					.subscribe_inherently::<E>(|f, cache| Self::init(f, cache))?
+					.subscribe_inherently_or_init::<E>(|f, cache| Self::init(f, cache))?
 					.1
 					 .0
 					.read()

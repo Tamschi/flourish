@@ -56,7 +56,7 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> ComputedUncached
 		let fn_pin = unsafe {
 			self.project_ref()
 				.0
-				.subscribe_inherently::<NoCallbacks>(|fn_pin, cache| Self::init(fn_pin, cache))?
+				.subscribe_inherently_or_init::<NoCallbacks>(|fn_pin, cache| Self::init(fn_pin, cache))?
 				.0
 				.map_unchecked(|r| &r.0)
 		};

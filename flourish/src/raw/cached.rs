@@ -131,7 +131,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cac
 			mem::transmute::<CachedGuard<T>, CachedGuard<T>>(CachedGuard(
 				self.project_ref()
 					.0
-					.subscribe_inherently::<E>(|source, cache| Self::init(source, cache))?
+					.subscribe_inherently_or_init::<E>(|source, cache| Self::init(source, cache))?
 					.1
 					.project_ref()
 					.0

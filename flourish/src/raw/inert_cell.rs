@@ -153,7 +153,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Subscribable<SR> for Inert
 		if self
 			.project_ref()
 			.signal
-			.subscribe_inherently::<NoCallbacks>(|_, slot| slot.write(()))
+			.subscribe_inherently_or_init::<NoCallbacks>(|_, slot| slot.write(()))
 			.is_some()
 		{
 			Some(Source::read_exclusive(self))

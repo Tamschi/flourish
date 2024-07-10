@@ -113,7 +113,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
 			mem::transmute::<ComputedGuard<T>, ComputedGuard<T>>(ComputedGuard(
 				self.project_ref()
 					.0
-					.subscribe_inherently::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
+					.subscribe_inherently_or_init::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
 					.1
 					.project_ref()
 					.0

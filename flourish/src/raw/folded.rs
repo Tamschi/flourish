@@ -114,7 +114,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Update, SR: SignalRuntimeRef> Folded<T,
 			mem::transmute::<FoldedGuard<T>, FoldedGuard<T>>(FoldedGuard(
 				self.project_ref()
 					.0
-					.subscribe_inherently::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
+					.subscribe_inherently_or_init::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
 					.0
 					 .0
 					 .0

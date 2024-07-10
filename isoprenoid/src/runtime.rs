@@ -27,6 +27,13 @@ mod stale_queue;
 ///
 /// [`GlobalSignalRuntime`] provides a usable default.
 ///
+/// # Logic
+///
+/// Callbacks associated with the same `id` **must not** run in parallel or otherwise interlace (
+/// except for [`reentrant_critical`](`SignalRuntimeRef::reentrant_critical`), which is allowed to
+/// re-enter from and into itself and other callbacks freely).  
+/// Callback invocations *with the same `id` **must** be totally orderable across all threads.
+///
 /// # Safety
 ///
 /// Please see the 'Safety' sections on individual associated items.
@@ -59,6 +66,11 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 
 	/// When run in a context that records dependencies, records `id` as dependency of that context.
 	///
+	/// # Logic
+	///
+	/// If a touch causes a subscription change, the runtime **should** call that [`CallbackTable::on_subscribed_change`]
+	/// callback before returning from this function. (This helps more easily manage on-demand-only resources.)
+	///
 	/// # Panics
 	///
 	/// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
@@ -86,6 +98,10 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// This process **may** cause subscription notification callbacks to be called.  
 	/// This **may or may not** happen before this method returns.
 	///
+	/// # Logic
+	///
+	/// //TODO: Say that unsubscribe notifications from this **should** apply after the unsubscribing dependent has been removed (so that it won't be marked stale).
+	///
 	/// # Panics
 	///
 	/// This function **may** panic unless called between the start of [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
@@ -97,6 +113,13 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	///
 	/// **Idempotent** aside from the return value.  
 	/// **Returns** whether there was a change in the inherent subscription.
+	///
+	/// # Logic
+	///
+	/// If the [`CallbackTable::on_subscribed_change`] returns [`Update::Propagate`],
+	/// that **should** still cause refreshes of the unsubscribing dependencies (except
+	/// for dependencies that have in fact been removed). This ensures that e.g. reference-
+	/// counted resources can be freed appropriately. Such refreshes **may** be deferred.
 	///
 	/// # Panics
 	///
@@ -626,9 +649,18 @@ static GLOBAL_SIGNAL_RUNTIME: ASignalRuntime = ASignalRuntime::new();
 
 /// A plain [`SignalRuntimeRef`] implementation that represents a static signal runtime.
 ///
-/// It makes no additional guarantees over those specified in [`SignalRuntimeRef`]'s documentation.
-///
 /// 🚧 This implementation is currently not optimised. 🚧
+///
+/// # Logic
+///
+/// This runtime is guaranteed to have settled whenever the last borrow of it ceases, but
+/// only regarding effects originating on the current thread. Effects from other threads
+/// won't necessarily be visible without external synchronisation.
+///
+/// (This means that in addition to transiently borrowing calls, returned [`Future`]s
+/// **may** cause the [`GlobalSignalRuntime`] not to settle until they are dropped.)
+///
+/// Otherwise, it makes no additional guarantees over those specified in [`SignalRuntimeRef`]'s documentation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GlobalSignalRuntime;
 
