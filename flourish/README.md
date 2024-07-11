@@ -35,7 +35,9 @@ use flourish::{SignalCell, Signal, Update, Subscription, Effect};
 let _ = SignalCell::new(());
 let _ = SignalCell::new_cyclic(|_weak| ());
 let _ = SignalCell::new_reactive((), |_value, _status| ());
+let _ = SignalCell::new_reactive_mut((), |_value, _status| ());
 let _ = SignalCell::new_cyclic_reactive(|_weak| ((), move |_value, _status| ()));
+let _ = SignalCell::new_cyclic_reactive_mut(|_weak| ((), move |_value, _status| ()));
 
 // The closure type is erased!
 // Not evaluated unless subscribed.
@@ -55,7 +57,9 @@ let _ = Subscription::reduced(|| (), |_value, _next| Update::Propagate);
 // Runs `drop` *before* computing the new value.
 let _ = Effect::new(|| (), drop);
 
-//TODO: "Splitting"
+// "Splitting":
+let (_signal, _cell) = SignalCell::new(()).into_signal_and_self();
+let (_signal, _type_erased_cell) = SignalCell::new(()).into_signal_and_erased();
 ```
 
 You can also put signals on the stack:

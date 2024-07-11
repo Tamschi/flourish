@@ -85,6 +85,10 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// Only after `f` completes, the runtime **may** run the functions specified in `callback_table` with
 	/// `callback_data`, but only one at a time and only before the next [`.stop(id)`](`SignalRuntimeRef::stop`)
 	/// call for the same runtime with an identical `id` completes.
+	///
+	/// # See also
+	///
+	/// [`SignalRuntimeRef::stop`], [`SignalRuntimeRef::purge`]
 	unsafe fn start<T, D: ?Sized>(
 		&self,
 		id: Self::Symbol,
@@ -92,6 +96,21 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 		callback_table: *const CallbackTable<D, Self::CallbackTableTypes>,
 		callback_data: *const D,
 	) -> T;
+
+	/// Removes callbacks associated with `id`.
+	///
+	/// # Logic
+	///
+	/// This method **should not** remove interdependencies, just clear the callback information.
+	///
+	/// # Safety
+	///
+	/// After this method returns, previously-scheduled callbacks for `id` **must not** run.
+	///
+	/// # See also
+	///
+	/// [`SignalRuntimeRef::purge`]
+	fn stop(&self, id: Self::Symbol);
 
 	/// Executes `f` while recording dependencies for `id`, updating the recorded dependencies for `id` to the new set.
 	///
@@ -105,6 +124,10 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// # Panics
 	///
 	/// This function **may** panic unless called between the start of [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
+	///
+	/// # See also
+	///
+	/// [`SignalRuntimeRef::purge`]
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
 
 	/// Enables or disables the inherent subscription of `id`.
@@ -121,9 +144,11 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// for dependencies that have in fact been removed). This ensures that e.g. reference-
 	/// counted resources can be freed appropriately. Such refreshes **may** be deferred.
 	///
-	/// # Panics
+	/// This function **must** be callable at any time with any valid `id`.
 	///
-	/// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
+	/// # See also
+	///
+	/// [`SignalRuntimeRef::purge`]
 	fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
 
 	/// Submits `f` to run exclusively for `id` outside of recording dependencies.
@@ -192,10 +217,26 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// [`update`][`CallbackTable::update`] callback before this method returns.
 	fn refresh(&self, id: Self::Symbol);
 
+	/// Removes callbacks, dependency relations (in either direction) associated with `id`.
+	///
+	/// # Logic
+	///
+	/// This method **should** be called last when ceasing use of a particular `id`.  
+	/// The runtime **may** indefinitely hold onto resources associated with `id` if this
+	/// method isn't called.
+	///
+	/// The runtime **must** process resulting subscription changes appropriately. This
+	/// includes notifying `id` of the subscription change from its inherent subscription
+	/// being removed, where applicable.  
+	/// The runtime **must not** indefinitely hold onto resources associated with `id`
+	/// after this method returns.
+	///
+	/// The caller **may** reuse `id` later on as if fresh.
+	///
 	/// # Safety
 	///
-	/// Once this method returns, previously-scheduled callbacks for `id` **must not** run.
-	fn stop(&self, id: Self::Symbol);
+	/// After this method returns, previously-scheduled callbacks for `id` **must not** run.
+	fn purge(&self, id: Self::Symbol);
 }
 
 #[derive(Default)]
@@ -363,6 +404,38 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		}
 		self.process_updates_if_ready();
 		r.unwrap_or_else(|p| resume_unwind(p))
+	}
+
+	fn stop(&self, id: Self::Symbol) {
+		let lock = self.critical_mutex.lock();
+		let mut borrow = (*lock).borrow_mut();
+		if borrow
+			.context_stack
+			.iter()
+			.filter_map(|s| s.as_ref())
+			.any(|(symbol, _)| *symbol == id)
+		{
+			//TODO: Does this need to abort the process?
+			panic!("Can't stop symbol while it is executing on the same thread.");
+		}
+
+		// Does *not* purge interdependencies!
+		if let Some(callbacks) = borrow.callbacks.get_mut(&id) {
+			static NO_CALLBACKS: CallbackTable<
+				(),
+				<&'static ASignalRuntime as SignalRuntimeRef>::CallbackTableTypes,
+			> = CallbackTable {
+				update: None,
+				on_subscribed_change: None,
+			};
+
+			*callbacks = (&NO_CALLBACKS, &());
+		}
+
+		borrow
+			.update_queue
+			.borrow_mut()
+			.retain(|(item_id, _)| *item_id != id);
 	}
 
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
@@ -607,7 +680,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		self.process_updates_if_ready();
 	}
 
-	fn stop(&self, id: Self::Symbol) {
+	fn purge(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
 		if borrow
@@ -711,6 +784,10 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
 		)
 	}
 
+	fn stop(&self, id: Self::Symbol) {
+		(&GLOBAL_SIGNAL_RUNTIME).stop(id.0)
+	}
+
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
 		(&GLOBAL_SIGNAL_RUNTIME).update_dependency_set(id.0, f)
 	}
@@ -747,8 +824,8 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
 		(&GLOBAL_SIGNAL_RUNTIME).refresh(id.0)
 	}
 
-	fn stop(&self, id: Self::Symbol) {
-		(&GLOBAL_SIGNAL_RUNTIME).stop(id.0)
+	fn purge(&self, id: Self::Symbol) {
+		(&GLOBAL_SIGNAL_RUNTIME).purge(id.0)
 	}
 }
 

@@ -57,7 +57,9 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> ComputedUncachedMut<
 		let fn_pin = unsafe {
 			self.project_ref()
 				.0
-				.subscribe_inherently_or_init::<NoCallbacks>(|fn_pin, cache| Self::init(fn_pin, cache))?
+				.subscribe_inherently_or_init::<NoCallbacks>(|fn_pin, cache| {
+					Self::init(fn_pin, cache)
+				})?
 				.0
 				.map_unchecked(|r| &r.0)
 		};

@@ -82,12 +82,15 @@ impl<S: Hash + Ord + Copy + Debug> StaleQueue<S> {
 		symbol: S,
 		enabled: bool,
 	) -> (bool, impl IntoIterator<Item = SensorNotification<S>>) {
-		let subscribed = self
+		let subscribed = match self
 			.interdependencies
 			.subscribers_by_dependency
-			.get(&symbol)
-			.expect("`set_subscription` can only be called between `start` and `stop`")
-			.contains(&symbol);
+			.entry(symbol)
+		{
+			Entry::Vacant(v) => v.insert(BTreeSet::new()),
+			Entry::Occupied(o) => o.into_mut(),
+		}
+		.contains(&symbol);
 		if enabled && !subscribed {
 			(
 				true,

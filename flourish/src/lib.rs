@@ -17,7 +17,7 @@ pub mod raw;
 //TODO: Inter-runtime signals (i.e. takes two signal runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
 mod signal_cell;
-pub use signal_cell::{SignalCell, SignalCellSR};
+pub use signal_cell::{ErasedSignalCell, SignalCell, SignalCellSR};
 
 mod signal;
 pub use signal::{Signal, SignalRef, SignalSR};

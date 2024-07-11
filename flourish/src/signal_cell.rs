@@ -5,7 +5,6 @@ use std::{
 	mem,
 	ops::Deref,
 	pin::Pin,
-	process::Output,
 	sync::{Arc, Weak},
 };
 
@@ -19,6 +18,12 @@ use crate::{
 
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalRuntime`]).
 pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalRuntime>;
+
+//TODO: It may be possible to fully implement the API with additional `dyn` methods on the traits.
+/// Type of [`SignalCellSR`]s after type-erasure. Less convenient API.
+pub type ErasedSignalCell<'a, T, SR> = SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>;
+
+pub type ErasedWeakSignalCell<'a, T, SR> = WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>;
 
 pub struct WeakSignalCell<
 	T: ?Sized + Send,
@@ -122,7 +127,7 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 	}
 
 	pub fn new_cyclic<'a>(
-		make_initial_value: impl FnOnce(WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>) -> T,
+		make_initial_value: impl FnOnce(ErasedWeakSignalCell<'a, T, SR>) -> T,
 	) -> Self
 	where
 		T: 'a,
@@ -132,7 +137,7 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 	}
 
 	pub fn new_cyclic_with_runtime<'a>(
-		make_initial_value: impl FnOnce(WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>) -> T,
+		make_initial_value: impl FnOnce(ErasedWeakSignalCell<'a, T, SR>) -> T,
 		runtime: SR,
 	) -> Self
 	where
@@ -213,7 +218,7 @@ impl<
 
 	pub fn new_cyclic_reactive<'a>(
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
-			WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>,
+			ErasedWeakSignalCell<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 	) -> Self
 	where
@@ -229,7 +234,7 @@ impl<
 
 	pub fn new_cyclic_reactive_with_runtime<'a>(
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
-			WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>,
+			ErasedWeakSignalCell<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 		runtime: SR,
 	) -> Self
@@ -315,7 +320,7 @@ impl<
 
 	pub fn new_cyclic_reactive_mut<'a>(
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
-			WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>,
+			ErasedWeakSignalCell<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 	) -> Self
 	where
@@ -331,7 +336,7 @@ impl<
 
 	pub fn new_cyclic_reactive_mut_with_runtime<'a>(
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
-			WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>,
+			ErasedWeakSignalCell<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 		runtime: SR,
 	) -> Self
@@ -402,7 +407,7 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
 		}
 	}
 
-	pub fn into_erased<'a>(self) -> SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>
+	pub fn into_erased<'a>(self) -> ErasedSignalCell<'a, T, SR>
 	where
 		S: 'a + Sized,
 	{
@@ -419,12 +424,7 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
 		(self.as_signal_ref().to_signal(), self)
 	}
 
-	pub fn into_signal_and_erased<'a>(
-		self,
-	) -> (
-		SignalSR<'a, T, SR>,
-		SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>,
-	)
+	pub fn into_signal_and_erased<'a>(self) -> (SignalSR<'a, T, SR>, ErasedSignalCell<'a, T, SR>)
 	where
 		S: 'a + Sized,
 	{
@@ -646,7 +646,7 @@ where
 }
 
 impl<'a: 'static, T: 'a + Send + Sized + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Deref
-	for SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>
+	for ErasedSignalCell<'a, T, SR>
 where
 	<SR as SignalRuntimeRef>::Symbol: Sync,
 {

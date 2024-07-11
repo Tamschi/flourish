@@ -1,4 +1,4 @@
-use flourish::{prelude::*, shadow_clone, SignalCell, Subscription};
+use flourish::{prelude::*, shadow_clone, Signal, SignalCell, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -55,5 +55,26 @@ fn dependent_reversed() {
 	v.expect([false]);
 
 	drop(a);
+	v.expect([]);
+}
+
+#[test]
+fn lifecycle() {
+	let v = &Validator::new();
+
+	let (s, _) =
+		SignalCell::new_reactive_mut(false, |value, status| *value = status).into_signal_and_self();
+	assert!(!s.get());
+
+	let s = Signal::computed(move || v.push(s.get()));
+	v.expect([]);
+
+	let s = s.try_subscribe().unwrap();
+	v.expect([true]);
+
+	let s = s.unsubscribe();
+	v.expect([false]);
+
+	drop(s);
 	v.expect([]);
 }

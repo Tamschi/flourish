@@ -41,10 +41,10 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 
 	fn subscribe_inherently_and_mark<T>(&self, f: impl FnOnce() -> T) -> Option<T> {
 		self.runtime.reentrant_critical(self.id, || {
-			todo!("Subscribe inherently and only run the closure if that returns true.");
-			self.runtime.touch(self.id);
-			f();
-			todo!()
+			self.set_subscription(true).then(|| {
+				self.runtime.touch(self.id);
+				f()
+			})
 		})
 	}
 
@@ -88,8 +88,8 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 		self.runtime.refresh(self.id);
 	}
 
-	fn stop(&self) {
-		self.runtime.stop(self.id)
+	fn purge(&self) {
+		self.runtime.purge(self.id)
 	}
 }
 
@@ -483,12 +483,12 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self.handle.runtime.clone()
 	}
 
-	pub fn stop_and<T>(
+	pub fn deinit_and<T>(
 		self: Pin<&mut Self>,
 		f: impl FnOnce(Pin<&Eager>, Pin<&mut Lazy>) -> T,
 	) -> Option<T> {
 		if unsafe { &*self.lazy.get() }.get().is_some() {
-			self.handle.stop();
+			self.handle.purge();
 			let t = f(unsafe { Pin::new_unchecked(&self.eager) }, unsafe {
 				Pin::new_unchecked((&mut *self.lazy.get()).get_mut().expect("unreachable"))
 			});
@@ -503,7 +503,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
 	fn drop(&mut self) {
 		if unsafe { &*self.lazy.get() }.get().is_some() {
-			self.handle.stop()
+			self.handle.purge()
 		}
 	}
 }
