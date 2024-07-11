@@ -32,17 +32,20 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 		}
 	}
 
-	fn mark<T>(&self, f: impl FnOnce() -> T) -> T {
+	fn record_as_dependency_and<T>(&self, f: impl FnOnce() -> T) -> T {
 		self.runtime.reentrant_critical(self.id, || {
-			self.runtime.touch(self.id);
+			self.runtime.record_dependency(self.id);
 			f()
 		})
 	}
 
-	fn subscribe_inherently_and_mark<T>(&self, f: impl FnOnce() -> T) -> Option<T> {
+	fn subscribe_inherently_and_record_as_dependency_and<T>(
+		&self,
+		f: impl FnOnce() -> T,
+	) -> Option<T> {
 		self.runtime.reentrant_critical(self.id, || {
 			self.set_subscription(true).then(|| {
-				self.runtime.touch(self.id);
+				self.runtime.record_dependency(self.id);
 				f()
 			})
 		})
@@ -162,50 +165,50 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	) -> (Pin<&Eager>, Pin<&Lazy>) {
 		unsafe {
 			let eager = Pin::new_unchecked(&self.eager);
-			let lazy = self.handle.mark(|| {
+			let lazy = self.handle.record_as_dependency_and(|| {
 				(&*self.lazy.get()).get_or_init(|| {
 					let mut lazy = MaybeUninit::uninit();
-					let init = || drop(init(eager, Slot::new(&mut lazy)));
-					let callback_table = {
-						let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
-						match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
-							Entry::Vacant(vacant) => vacant.insert(AssertSend(
-								(Box::leak(Box::new(BTreeMap::<
-									CallbackTable<(), SR::CallbackTableTypes>,
-									Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
-								>::new()))
-									as *mut BTreeMap<
+					self.handle.start(
+						|| drop(init(eager, Slot::new(&mut lazy))),
+						{
+							let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
+							match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
+								Entry::Vacant(vacant) => vacant.insert(AssertSend(
+									(Box::leak(Box::new(BTreeMap::<
 										CallbackTable<(), SR::CallbackTableTypes>,
 										Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
-									>)
-									.cast::<()>(),
-							)),
-							Entry::Occupied(cached) => cached.into_mut(),
-						} {
-							AssertSend(ptr) => &mut *ptr.cast::<BTreeMap<
-								CallbackTable<(), SR::CallbackTableTypes>,
-								Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
-							>>(),
-						}
-						.entry(
-							CallbackTable {
-								update: C::UPDATE.is_some().then_some(update::<Eager, Lazy, SR, C>),
-								on_subscribed_change: C::ON_SUBSCRIBED_CHANGE
-									.is_some()
-									.then_some(on_subscribed_change::<Eager, Lazy, SR, C>),
+									>::new()))
+										as *mut BTreeMap<
+											CallbackTable<(), SR::CallbackTableTypes>,
+											Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+										>)
+										.cast::<()>(),
+								)),
+								Entry::Occupied(cached) => cached.into_mut(),
+							} {
+								AssertSend(ptr) => &mut *ptr.cast::<BTreeMap<
+									CallbackTable<(), SR::CallbackTableTypes>,
+									Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+								>>(),
 							}
-							.into_erased(),
-						) {
-							Entry::Vacant(v) => {
-								let table = v.key().clone();
-								&**v.insert(Box::pin(table)) as *const _
+							.entry(
+								CallbackTable {
+									update: C::UPDATE
+										.is_some()
+										.then_some(update::<Eager, Lazy, SR, C>),
+									on_subscribed_change: C::ON_SUBSCRIBED_CHANGE
+										.is_some()
+										.then_some(on_subscribed_change::<Eager, Lazy, SR, C>),
+								}
+								.into_erased(),
+							) {
+								Entry::Vacant(v) => {
+									let table = v.key().clone();
+									&**v.insert(Box::pin(table)) as *const _
+								}
+								Entry::Occupied(o) => &**o.get() as *const _,
 							}
-							Entry::Occupied(o) => &**o.get() as *const _,
-						}
-					};
-					self.handle.start(
-						init,
-						callback_table,
+						},
 						(Pin::into_inner_unchecked(self) as *const Self).cast(),
 					);
 
@@ -271,97 +274,101 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	) -> Option<(Pin<&Eager>, Pin<&Lazy>)> {
 		unsafe {
 			let eager = Pin::new_unchecked(&self.eager);
-			let lazy = self.handle.subscribe_inherently_and_mark(|| {
-				(&*self.lazy.get()).get_or_init(|| {
-					let mut lazy = MaybeUninit::uninit();
-					let init = || drop(init(eager, Slot::new(&mut lazy)));
-					let callback_table = {
-						let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
-						match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
-							Entry::Vacant(vacant) => vacant.insert(AssertSend(
-								(Box::leak(Box::new(BTreeMap::<
-									CallbackTable<(), SR::CallbackTableTypes>,
-									Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
-								>::new()))
-									as *mut BTreeMap<
+			let lazy = self
+				.handle
+				.subscribe_inherently_and_record_as_dependency_and(|| {
+					(&*self.lazy.get()).get_or_init(|| {
+						let mut lazy = MaybeUninit::uninit();
+						self.handle.start(
+							|| drop(init(eager, Slot::new(&mut lazy))),
+							{
+								let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
+								match match match guard
+									.entry(TypeId::of::<SR::CallbackTableTypes>())
+								{
+									Entry::Vacant(vacant) => vacant.insert(AssertSend(
+										(Box::leak(Box::new(BTreeMap::<
+											CallbackTable<(), SR::CallbackTableTypes>,
+											Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+										>::new()))
+											as *mut BTreeMap<
+												CallbackTable<(), SR::CallbackTableTypes>,
+												Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+											>)
+											.cast::<()>(),
+									)),
+									Entry::Occupied(cached) => cached.into_mut(),
+								} {
+									AssertSend(ptr) => &mut *ptr.cast::<BTreeMap<
 										CallbackTable<(), SR::CallbackTableTypes>,
 										Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
-									>)
-									.cast::<()>(),
-							)),
-							Entry::Occupied(cached) => cached.into_mut(),
-						} {
-							AssertSend(ptr) => &mut *ptr.cast::<BTreeMap<
-								CallbackTable<(), SR::CallbackTableTypes>,
-								Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
-							>>(),
+									>>(),
+								}
+								.entry(
+									CallbackTable {
+										update: C::UPDATE
+											.is_some()
+											.then_some(update::<Eager, Lazy, SR, C>),
+										on_subscribed_change: C::ON_SUBSCRIBED_CHANGE
+											.is_some()
+											.then_some(on_subscribed_change::<Eager, Lazy, SR, C>),
+									}
+									.into_erased(),
+								) {
+									Entry::Vacant(v) => {
+										let table = v.key().clone();
+										&**v.insert(Box::pin(table)) as *const _
+									}
+									Entry::Occupied(o) => &**o.get() as *const _,
+								}
+							},
+							(Pin::into_inner_unchecked(self) as *const Self).cast(),
+						);
+
+						struct AssertSend<T>(T);
+						unsafe impl<T> Send for AssertSend<T> {}
+
+						static CALLBACK_TABLES: Mutex<
+							//BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
+							BTreeMap<TypeId, AssertSend<*mut ()>>,
+						> = Mutex::new(BTreeMap::new());
+
+						unsafe fn update<
+							Eager: Sync + ?Sized,
+							Lazy: Sync,
+							SR: SignalRuntimeRef,
+							C: Callbacks<Eager, Lazy, SR>,
+						>(
+							this: *const RawSignal<Eager, Lazy, SR>,
+						) -> Update {
+							let this = &*this;
+							C::UPDATE.expect("unreachable")(
+								Pin::new_unchecked(&this.eager),
+								Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
+							)
 						}
-						.entry(
-							CallbackTable {
-								update: C::UPDATE.is_some().then_some(update::<Eager, Lazy, SR, C>),
-								on_subscribed_change: C::ON_SUBSCRIBED_CHANGE
-									.is_some()
-									.then_some(on_subscribed_change::<Eager, Lazy, SR, C>),
-							}
-							.into_erased(),
+
+						unsafe fn on_subscribed_change<
+							Eager: Sync + ?Sized,
+							Lazy: Sync,
+							SR: SignalRuntimeRef,
+							C: Callbacks<Eager, Lazy, SR>,
+						>(
+							this: *const RawSignal<Eager, Lazy, SR>,
+							subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 						) {
-							Entry::Vacant(v) => {
-								let table = v.key().clone();
-								&**v.insert(Box::pin(table)) as *const _
-							}
-							Entry::Occupied(o) => &**o.get() as *const _,
+							let this = &*this;
+							C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
+								Pin::new_unchecked(this),
+								Pin::new_unchecked(&this.eager),
+								Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
+								subscribed,
+							)
 						}
-					};
-					self.handle.start(
-						init,
-						callback_table,
-						(Pin::into_inner_unchecked(self) as *const Self).cast(),
-					);
 
-					struct AssertSend<T>(T);
-					unsafe impl<T> Send for AssertSend<T> {}
-
-					static CALLBACK_TABLES: Mutex<
-						//BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
-						BTreeMap<TypeId, AssertSend<*mut ()>>,
-					> = Mutex::new(BTreeMap::new());
-
-					unsafe fn update<
-						Eager: Sync + ?Sized,
-						Lazy: Sync,
-						SR: SignalRuntimeRef,
-						C: Callbacks<Eager, Lazy, SR>,
-					>(
-						this: *const RawSignal<Eager, Lazy, SR>,
-					) -> Update {
-						let this = &*this;
-						C::UPDATE.expect("unreachable")(
-							Pin::new_unchecked(&this.eager),
-							Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
-						)
-					}
-
-					unsafe fn on_subscribed_change<
-						Eager: Sync + ?Sized,
-						Lazy: Sync,
-						SR: SignalRuntimeRef,
-						C: Callbacks<Eager, Lazy, SR>,
-					>(
-						this: *const RawSignal<Eager, Lazy, SR>,
-						subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-					) {
-						let this = &*this;
-						C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
-							Pin::new_unchecked(this),
-							Pin::new_unchecked(&this.eager),
-							Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
-							subscribed,
-						)
-					}
-
-					lazy.assume_init()
-				})
-			});
+						lazy.assume_init()
+					})
+				});
 			self.handle.refresh();
 			lazy.map(|lazy| mem::transmute((eager, Pin::new_unchecked(lazy))))
 		}

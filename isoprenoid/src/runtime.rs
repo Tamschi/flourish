@@ -74,9 +74,18 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// # Panics
 	///
 	/// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
-	fn touch(&self, id: Self::Symbol);
+	fn record_dependency(&self, id: Self::Symbol);
 
 	/// Starts managed callback processing for `id`.
+	///
+	/// # Logic
+	///
+	/// Dependencies that are [recorded](`SignalRuntimeRef::record_dependency`) within
+	/// `init` and [`CallbackTable::update`] on the same thread **must** be recorded
+	/// as and update the dependency set of `id`, respectively.
+	///
+	/// The [`CallbackTable::on_subscribed_change`] callback **must** run detached from
+	/// outer dependency recording.
 	///
 	/// # Safety
 	///
@@ -92,7 +101,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	unsafe fn start<T, D: ?Sized>(
 		&self,
 		id: Self::Symbol,
-		f: impl FnOnce() -> T,
+		init: impl FnOnce() -> T,
 		callback_table: *const CallbackTable<D, Self::CallbackTableTypes>,
 		callback_data: *const D,
 	) -> T;
@@ -360,7 +369,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		f()
 	}
 
-	fn touch(&self, id: Self::Symbol) {
+	fn record_dependency(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
 		if let Some(Some((context_id, touched))) = &mut borrow.context_stack.last_mut() {
@@ -761,8 +770,8 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
 		(&GLOBAL_SIGNAL_RUNTIME).reentrant_critical(id.0, f)
 	}
 
-	fn touch(&self, id: Self::Symbol) {
-		(&GLOBAL_SIGNAL_RUNTIME).touch(id.0)
+	fn record_dependency(&self, id: Self::Symbol) {
+		(&GLOBAL_SIGNAL_RUNTIME).record_dependency(id.0)
 	}
 
 	unsafe fn start<T, D: ?Sized>(
