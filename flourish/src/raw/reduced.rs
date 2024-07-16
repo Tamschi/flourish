@@ -8,7 +8,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, SignalRuntimeRef, Propagation},
+	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -149,7 +149,11 @@ impl<
 			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
 		) -> Propagation,
 	> = {
-		fn eval<T: Send, S: Send + FnMut() -> T, M: Send + ?Sized + FnMut(&mut T, T) -> Propagation>(
+		fn eval<
+			T: Send,
+			S: Send + FnMut() -> T,
+			M: Send + ?Sized + FnMut(&mut T, T) -> Propagation,
+		>(
 			state: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
 			cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
 		) -> Propagation {

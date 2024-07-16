@@ -5,7 +5,7 @@ use std::ops::{AddAssign, Sub};
 
 use flourish::{
 	raw::{folded, Subscribable},
-	SignalRuntimeRef, SubscriptionSR, Propagation,
+	Propagation, SignalRuntimeRef, SubscriptionSR,
 };
 use num_traits::Zero;
 

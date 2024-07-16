@@ -7,7 +7,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, SignalRuntimeRef, Propagation},
+	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -129,7 +129,10 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 	Callbacks<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
 	const UPDATE: Option<
-		fn(eager: Pin<&ForceSyncUnpin<Mutex<F>>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Propagation,
+		fn(
+			eager: Pin<&ForceSyncUnpin<Mutex<F>>>,
+			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
+		) -> Propagation,
 	> = {
 		fn eval<T: Send, F: Send + FnMut() -> T>(
 			fn_pin: Pin<&ForceSyncUnpin<Mutex<F>>>,

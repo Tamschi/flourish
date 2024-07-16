@@ -14,7 +14,7 @@ use std::{
 };
 
 use crate::{
-	runtime::{CallbackTable, CallbackTableTypes, SignalRuntimeRef, Propagation},
+	runtime::{CallbackTable, CallbackTableTypes, Propagation, SignalRuntimeRef},
 	slot::{Slot, Token},
 };
 
@@ -60,11 +60,14 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 		self.runtime.update_or_enqueue(self.id, f);
 	}
 
-	async fn update_async<T: Send, F: Send + FnOnce() -> (T, Propagation)>(&self, f: F) -> Result<T, F> {
+	async fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
+		&self,
+		f: F,
+	) -> Result<T, F> {
 		self.runtime.update_async(self.id, f).await
 	}
 
-	fn update_blocking<T>(&self, f: impl FnOnce() -> (T, Propagation)) -> T {
+	fn update_blocking<T>(&self, f: impl FnOnce() -> (Propagation, T)) -> T {
 		self.runtime.update_blocking(self.id, f)
 	}
 
@@ -410,11 +413,11 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 
 	pub async fn update_async<T: Send>(
 		&self,
-		f: impl Send + FnOnce(&Eager, Option<&Lazy>) -> (T, Propagation),
+		f: impl Send + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
 	) -> T {
-		let update: Box<dyn Send + FnOnce() -> (T, Propagation)> =
+		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> =
 			Box::new(move || f(&self.eager, unsafe { &*self.lazy.get() }.get()));
-		let update: Box<dyn 'static + Send + FnOnce() -> (T, Propagation)> =
+		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
 			unsafe { mem::transmute(update) };
 		self.handle
             .update_async(update)
@@ -425,10 +428,10 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 
 	pub async fn update_async_pin<T: Send>(
 		self: Pin<&Self>,
-		f: impl Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (T, Propagation),
+		f: impl Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
 	) -> T {
 		let this = Pin::clone(&self);
-		let update: Box<dyn Send + FnOnce() -> (T, Propagation)> = Box::new(move || unsafe {
+		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> = Box::new(move || unsafe {
 			f(
 				this.map_unchecked(|this| &this.eager),
 				(&*this.lazy.get())
@@ -436,7 +439,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 					.map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		});
-		let update: Box<dyn 'static + Send + FnOnce() -> (T, Propagation)> =
+		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
 			unsafe { mem::transmute(update) };
 		self.handle
             .update_async(update)
@@ -445,14 +448,17 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
             .expect("Cancelling the update in a way this here would be reached would require calling `.stop()`, which isn't possible here because that requires an exclusive/`mut` reference.")
 	}
 
-	pub fn update_blocking<T>(&self, f: impl FnOnce(&Eager, Option<&Lazy>) -> (T, Propagation)) -> T {
+	pub fn update_blocking<T>(
+		&self,
+		f: impl FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
+	) -> T {
 		self.handle
 			.update_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }.get()))
 	}
 
 	pub fn update_blocking_pin<T>(
 		self: Pin<&Self>,
-		f: impl FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (T, Propagation),
+		f: impl FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
 	) -> T {
 		self.handle.update_blocking(move || unsafe {
 			f(

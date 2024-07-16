@@ -1,4 +1,4 @@
-use isoprenoid::runtime::{CallbackTableTypes, SignalRuntimeRef, Propagation};
+use isoprenoid::runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef};
 
 pub use crate::traits::{Source, SourceCell, Subscribable};
 
@@ -66,7 +66,8 @@ pub use crate::inert_cell_with_runtime;
 
 pub fn reactive_cell<
 	T: Send,
-	H: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
+	H: Send
+		+ FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 	SR: SignalRuntimeRef,
 >(
 	initial_value: T,
@@ -100,7 +101,10 @@ pub use crate::reactive_cell_with_runtime;
 pub fn reactive_cell_mut<
 	T: Send,
 	H: Send
-		+ FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
+		+ FnMut(
+			&mut T,
+			<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+		) -> Propagation,
 	SR: SignalRuntimeRef,
 >(
 	initial_value: T,

@@ -8,7 +8,7 @@ use std::{
 	sync::{Arc, Weak},
 };
 
-use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Propagation};
+use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, Propagation, SignalRuntimeRef};
 
 use crate::{
 	raw::{InertCell, ReactiveCell, ReactiveCellMut},
@@ -181,7 +181,11 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 // TODO: Make `HandlerFnPin` return `Update`, combined propagation!
 impl<
 		T: Send,
-		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
+		HandlerFnPin: Send
+			+ FnMut(
+				&T,
+				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			) -> Propagation,
 		SR: SignalRuntimeRef<Symbol: Sync>,
 	> SignalCellSR<T, ReactiveCell<T, HandlerFnPin, SR>, SR>
 {
@@ -279,7 +283,11 @@ impl<
 // TODO: Make `HandlerFnPin` return `Update`, combined propagation!
 impl<
 		T: Send,
-		HandlerFnPin: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
+		HandlerFnPin: Send
+			+ FnMut(
+				&mut T,
+				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			) -> Propagation,
 		SR: SignalRuntimeRef<Symbol: Sync>,
 	> SignalCellSR<T, ReactiveCellMut<T, HandlerFnPin, SR>, SR>
 {
@@ -507,7 +515,7 @@ where
 
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (U, Propagation),
+		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
 	) -> impl Send + std::future::Future<Output = U>
 	where
 		Self: Sized,
@@ -529,7 +537,7 @@ where
 		self.source_cell.as_ref().replace_blocking(new_value)
 	}
 
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Propagation)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U
 	where
 		Self: Sized,
 	{
@@ -614,7 +622,7 @@ where
 
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (U, Propagation),
+		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
 	) -> impl Send + std::future::Future<Output = U>
 	where
 		Self: Sized,
@@ -637,7 +645,7 @@ where
 		self.0.source_cell.as_ref().replace_blocking(new_value)
 	}
 
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Propagation)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U
 	where
 		Self: Sized,
 	{

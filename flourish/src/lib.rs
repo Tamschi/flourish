@@ -31,7 +31,7 @@ pub use effect::{Effect, EffectSR};
 mod traits;
 pub use traits::{SourceCellPin, SourcePin};
 
-pub use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Propagation};
+pub use isoprenoid::runtime::{GlobalSignalRuntime, Propagation, SignalRuntimeRef};
 
 pub mod prelude {
 	//! Flourish's value accessor traits ([`SourcePin`](`crate::traits::SourcePin`),

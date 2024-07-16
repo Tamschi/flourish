@@ -173,7 +173,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	///
 	/// `f` **must not** be dropped or run after the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.  
 	/// `f` **must not** be dropped or run after the [`Future`] returned by this function is dropped.
-	fn update_async<T: Send, F: Send + FnOnce() -> (T, Propagation)>(
+	fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
@@ -194,7 +194,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// # Safety
 	///
 	/// `f` **must** be consumed before this method returns.
-	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (T, Propagation)) -> T;
+	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (Propagation, T)) -> T;
 
 	/// Recursively marks dependencies of `id` as stale.
 	///
@@ -548,7 +548,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		todo!()
 	}
 
-	async fn update_async<T: Send, F: Send + FnOnce() -> (T, Propagation)>(
+	async fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
@@ -576,11 +576,11 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 				let arc = ScopeGuard::into_inner(guard);
 				let mut f_guard = arc.lock().expect("unreachable");
 				if let (Some(once), Some(f)) = (weak.upgrade(), f_guard.borrow_mut().take()) {
-					let (t, update) = f();
+					let (propagation, t) = f();
 					once.set_blocking(Some(Ok(t)).into())
 						.map_err(|_| ())
 						.expect("unreachable");
-					update
+					propagation
 				} else {
 					Propagation::Halt
 				}
@@ -629,14 +629,14 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		Ok(t)
 	}
 
-	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (T, Propagation)) -> T {
+	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (Propagation, T)) -> T {
 		// This is indirected because the nested function's text size may be relatively large.
 		//BLOCKED: Avoid the heap allocation once the `Allocator` API is stabilised.
 
 		fn update_blocking<T>(
 			this: &ASignalRuntime,
 			id: ASymbol,
-			f: Box<dyn '_ + FnOnce() -> (T, Propagation)>,
+			f: Box<dyn '_ + FnOnce() -> (Propagation, T)>,
 		) -> T {
 			let lock = this.critical_mutex.lock();
 			let borrow = (*lock).borrow_mut();
@@ -648,9 +648,9 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 				panic!("Called `update_blocking` (via `change_blocking` or `replace_blocking`?) while propagating another update. This would deadlock with a better queue.");
 			}
 
-			let (t, update) = f();
+			let (propagation, t) = f();
 			drop(borrow);
-			match update {
+			match propagation {
 				Propagation::Propagate => this.propagate_from(id),
 				Propagation::Halt => (),
 			}
@@ -784,7 +784,7 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
 		(&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue(id.0, f)
 	}
 
-	async fn update_async<T: Send, F: Send + FnOnce() -> (T, Propagation)>(
+	async fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
@@ -792,7 +792,7 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
 		(&GLOBAL_SIGNAL_RUNTIME).update_async(id.0, f).await
 	}
 
-	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (T, Propagation)) -> T {
+	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (Propagation, T)) -> T {
 		(&GLOBAL_SIGNAL_RUNTIME).update_blocking(id.0, f)
 	}
 

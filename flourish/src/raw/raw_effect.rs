@@ -2,7 +2,7 @@ use std::{borrow::BorrowMut, pin::Pin, sync::Mutex};
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, SignalRuntimeRef, Propagation},
+	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;

@@ -8,7 +8,7 @@ use std::{
 
 use async_lock::OnceCell;
 use flourish::{
-	prelude::*, shadow_clone, signals_helper, SignalRuntimeRef, SubscriptionSR, Propagation,
+	prelude::*, shadow_clone, signals_helper, Propagation, SignalRuntimeRef, SubscriptionSR,
 };
 
 pub async fn skipped_while<'a, T: 'a + Send + Sync, SR: 'a + SignalRuntimeRef>(

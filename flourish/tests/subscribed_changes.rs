@@ -1,4 +1,4 @@
-use flourish::{prelude::*, shadow_clone, Signal, SignalCell, Subscription, Propagation};
+use flourish::{prelude::*, shadow_clone, Propagation, Signal, SignalCell, Subscription};
 mod _validator;
 use _validator::Validator;
 

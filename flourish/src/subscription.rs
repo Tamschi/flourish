@@ -6,7 +6,7 @@ use std::{
 	sync::Arc,
 };
 
-use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Propagation};
+use isoprenoid::runtime::{GlobalSignalRuntime, Propagation, SignalRuntimeRef};
 
 use crate::{
 	raw::{computed, folded, reduced},
