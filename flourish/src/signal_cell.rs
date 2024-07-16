@@ -8,7 +8,7 @@ use std::{
 	sync::{Arc, Weak},
 };
 
-use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Update};
+use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, SignalRuntimeRef, Propagation};
 
 use crate::{
 	raw::{InertCell, ReactiveCell, ReactiveCellMut},
@@ -181,7 +181,7 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 // TODO: Make `HandlerFnPin` return `Update`, combined propagation!
 impl<
 		T: Send,
-		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
+		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 		SR: SignalRuntimeRef<Symbol: Sync>,
 	> SignalCellSR<T, ReactiveCell<T, HandlerFnPin, SR>, SR>
 {
@@ -279,7 +279,7 @@ impl<
 // TODO: Make `HandlerFnPin` return `Update`, combined propagation!
 impl<
 		T: Send,
-		HandlerFnPin: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
+		HandlerFnPin: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 		SR: SignalRuntimeRef<Symbol: Sync>,
 	> SignalCellSR<T, ReactiveCellMut<T, HandlerFnPin, SR>, SR>
 {
@@ -497,7 +497,7 @@ where
 		self.source_cell.as_ref().replace(new_value)
 	}
 
-	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
+	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
 		<SR as SignalRuntimeRef>::Symbol: Sync,
@@ -507,7 +507,7 @@ where
 
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (U, Update),
+		update: impl Send + FnOnce(&mut T) -> (U, Propagation),
 	) -> impl Send + std::future::Future<Output = U>
 	where
 		Self: Sized,
@@ -529,7 +529,7 @@ where
 		self.source_cell.as_ref().replace_blocking(new_value)
 	}
 
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Propagation)) -> U
 	where
 		Self: Sized,
 	{
@@ -604,7 +604,7 @@ where
 		self.0.source_cell.as_ref().replace(new_value)
 	}
 
-	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
+	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
 		<SR as SignalRuntimeRef>::Symbol: Sync,
@@ -614,7 +614,7 @@ where
 
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (U, Update),
+		update: impl Send + FnOnce(&mut T) -> (U, Propagation),
 	) -> impl Send + std::future::Future<Output = U>
 	where
 		Self: Sized,
@@ -637,7 +637,7 @@ where
 		self.0.source_cell.as_ref().replace_blocking(new_value)
 	}
 
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Propagation)) -> U
 	where
 		Self: Sized,
 	{

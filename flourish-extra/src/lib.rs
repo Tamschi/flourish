@@ -5,7 +5,7 @@ use std::ops::{AddAssign, Sub};
 
 use flourish::{
 	raw::{folded, Subscribable},
-	SignalRuntimeRef, SubscriptionSR, Update,
+	SignalRuntimeRef, SubscriptionSR, Propagation,
 };
 use num_traits::Zero;
 
@@ -31,7 +31,7 @@ where
 				*delta = &next - &*previous;
 			}
 			previous = Some(next);
-			Update::Propagate
+			Propagation::Propagate
 		},
 		runtime,
 	)
@@ -45,7 +45,7 @@ pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + Sign
 		T::zero(),
 		move |tally| {
 			*tally += fn_pin();
-			Update::Propagate
+			Propagation::Propagate
 		},
 		runtime,
 	)

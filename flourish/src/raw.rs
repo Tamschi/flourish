@@ -1,4 +1,4 @@
-use isoprenoid::runtime::{CallbackTableTypes, SignalRuntimeRef, Update};
+use isoprenoid::runtime::{CallbackTableTypes, SignalRuntimeRef, Propagation};
 
 pub use crate::traits::{Source, SourceCell, Subscribable};
 
@@ -66,7 +66,7 @@ pub use crate::inert_cell_with_runtime;
 
 pub fn reactive_cell<
 	T: Send,
-	H: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
+	H: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 	SR: SignalRuntimeRef,
 >(
 	initial_value: T,
@@ -100,7 +100,7 @@ pub use crate::reactive_cell_with_runtime;
 pub fn reactive_cell_mut<
 	T: Send,
 	H: Send
-		+ FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
+		+ FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 	SR: SignalRuntimeRef,
 >(
 	initial_value: T,
@@ -194,9 +194,9 @@ pub fn debounced<
 		|value, new_value| {
 			if *value != new_value {
 				*value = new_value;
-				Update::Propagate
+				Propagation::Propagate
 			} else {
-				Update::Halt
+				Propagation::Halt
 			}
 		},
 		runtime,
@@ -283,7 +283,7 @@ pub use crate::computed_uncached_mut_with_runtime;
 
 pub fn folded<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
 	init: T,
-	fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update,
+	fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
 	Folded::new(init, fold_fn_pin, runtime)
@@ -300,7 +300,7 @@ pub use crate::folded;
 
 pub fn reduced<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
 	select_fn_pin: impl 'a + Send + FnMut() -> T,
-	reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+	reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
 	Reduced::new(select_fn_pin, reduce_fn_pin, runtime)

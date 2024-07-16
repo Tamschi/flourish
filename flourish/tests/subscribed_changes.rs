@@ -1,4 +1,4 @@
-use flourish::{prelude::*, shadow_clone, Signal, SignalCell, Subscription, Update};
+use flourish::{prelude::*, shadow_clone, Signal, SignalCell, Subscription, Propagation};
 mod _validator;
 use _validator::Validator;
 
@@ -8,7 +8,7 @@ fn inherent() {
 
 	let a = SignalCell::new_reactive((), |_value, status| {
 		v.push(status);
-		Update::Halt
+		Propagation::Halt
 	});
 	let s = a.to_signal();
 	drop(a);
@@ -27,7 +27,7 @@ fn dependent() {
 
 	let a = SignalCell::new_reactive((), |_value, status| {
 		v.push(status);
-		Update::Halt
+		Propagation::Halt
 	});
 	v.expect([]);
 
@@ -50,7 +50,7 @@ fn dependent_reversed() {
 
 	let a = SignalCell::new_reactive((), |_value, status| {
 		v.push(status);
-		Update::Halt
+		Propagation::Halt
 	});
 	v.expect([]);
 
@@ -73,7 +73,7 @@ fn lifecycle() {
 
 	let (s, _) = SignalCell::new_reactive_mut(false, |value, status| {
 		*value = status;
-		Update::Propagate
+		Propagation::Propagate
 	})
 	.into_signal_and_self();
 	assert!(!s.get());

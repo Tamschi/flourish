@@ -8,7 +8,7 @@ use std::{
 
 use async_lock::OnceCell;
 use flourish::{
-	prelude::*, shadow_clone, signals_helper, SignalRuntimeRef, SubscriptionSR, Update,
+	prelude::*, shadow_clone, signals_helper, SignalRuntimeRef, SubscriptionSR, Propagation,
 };
 
 pub async fn skipped_while<'a, T: 'a + Send + Sync, SR: 'a + SignalRuntimeRef>(
@@ -56,9 +56,9 @@ pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>
 						value.write(next);
 						once.set_blocking(()).expect("unreachable");
 					}
-					Update::Propagate
+					Propagation::Propagate
 				} else {
-					Update::Halt
+					Propagation::Halt
 				}
 			}
 		},
@@ -93,9 +93,9 @@ pub async fn filter_mapped<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntim
 						value.write(next);
 						once.set_blocking(()).expect("unreachable");
 					}
-					Update::Propagate
+					Propagation::Propagate
 				} else {
-					Update::Halt
+					Propagation::Halt
 				}
 			}
 		},

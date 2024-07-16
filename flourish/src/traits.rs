@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, future::Future, mem, pin::Pin};
 
-use isoprenoid::runtime::{SignalRuntimeRef, Update};
+use isoprenoid::runtime::{SignalRuntimeRef, Propagation};
 
 /// **Combinators should implement this.** Interface for "raw" (stack-pinnable) signals that have an accessible value.
 ///
@@ -195,7 +195,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update)
+	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
 		SR::Symbol: Sync;
@@ -226,9 +226,9 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	{
 		self.update_async(|value| {
 			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Update::Propagate)
+				(Ok(mem::replace(value, new_value)), Propagation::Propagate)
 			} else {
-				(Err(new_value), Update::Halt)
+				(Err(new_value), Propagation::Halt)
 			}
 		})
 	}
@@ -255,7 +255,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 		Self: Sized,
 		T: Sized,
 	{
-		self.update_async(|value| (mem::replace(value, new_value), Update::Propagate))
+		self.update_async(|value| (mem::replace(value, new_value), Propagation::Propagate))
 	}
 
 	/// Modifies the current value using the given closure.
@@ -279,7 +279,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (U, Update),
+		update: impl Send + FnOnce(&mut T) -> (U, Propagation),
 	) -> impl Send + Future<Output = U>
 	where
 		Self: Sized;
@@ -333,7 +333,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Propagation)) -> U
 	where
 		Self: Sized;
 
@@ -386,7 +386,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Update)
+	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
 		SR::Symbol: Sync;
@@ -417,9 +417,9 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	{
 		self.update_async(|value| {
 			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Update::Propagate)
+				(Ok(mem::replace(value, new_value)), Propagation::Propagate)
 			} else {
-				(Err(new_value), Update::Halt)
+				(Err(new_value), Propagation::Halt)
 			}
 		})
 	}
@@ -446,7 +446,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		Self: Sized,
 		T: Sized,
 	{
-		self.update_async(|value| (mem::replace(value, new_value), Update::Propagate))
+		self.update_async(|value| (mem::replace(value, new_value), Propagation::Propagate))
 	}
 
 	/// Modifies the current value using the given closure.
@@ -470,7 +470,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (U, Update),
+		update: impl Send + FnOnce(&mut T) -> (U, Propagation),
 	) -> impl Send + Future<Output = U>
 	where
 		Self: Sized;
@@ -524,7 +524,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Propagation)) -> U
 	where
 		Self: Sized;
 }

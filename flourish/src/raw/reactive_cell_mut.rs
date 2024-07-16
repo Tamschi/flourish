@@ -8,7 +8,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
+	runtime::{CallbackTableTypes, SignalRuntimeRef, Propagation},
 };
 use pin_project::pin_project;
 
@@ -19,7 +19,7 @@ use super::{Source, SourceCell, Subscribable};
 pub struct ReactiveCellMut<
 	T: ?Sized + Send,
 	HandlerFnPin: Send
-		+ FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
+		+ FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 	SR: SignalRuntimeRef,
 > {
 	#[pin]
@@ -32,7 +32,7 @@ impl<
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-			) -> Update
+			) -> Propagation
 			+ Debug,
 		SR: SignalRuntimeRef + Debug,
 	> Debug for ReactiveCellMut<T, HandlerFnPin, SR>
@@ -53,7 +53,7 @@ unsafe impl<
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-			) -> Update,
+			) -> Propagation,
 		SR: SignalRuntimeRef + Sync,
 	> Sync for ReactiveCellMut<T, HandlerFnPin, SR>
 {
@@ -108,7 +108,7 @@ impl<
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-			) -> Update,
+			) -> Propagation,
 		SR: SignalRuntimeRef,
 	> ReactiveCellMut<T, HandlerFnPin, SR>
 {
@@ -173,7 +173,7 @@ impl<
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-			) -> Update,
+			) -> Propagation,
 		SR: SignalRuntimeRef,
 	> Callbacks<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR> for E
 {
@@ -181,7 +181,7 @@ impl<
 		fn(
 			eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>,
 			lazy: Pin<&()>,
-		) -> isoprenoid::runtime::Update,
+		) -> isoprenoid::runtime::Propagation,
 	> = None;
 
 	const ON_SUBSCRIBED_CHANGE: Option<
@@ -190,13 +190,13 @@ impl<
 			eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>,
 			lazy: Pin<&()>,
 			subscribed: <<SR as SignalRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		) -> Update,
+		) -> Propagation,
 	> = {
 		fn on_subscribed_change_fn_pin<
 			T: ?Sized + Send,
-			HandlerFnPin: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
+			HandlerFnPin: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 			SR: SignalRuntimeRef,
-		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update{
+		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation{
 			eager.0.0.lock().unwrap()(eager.0.1.write().unwrap().borrow_mut(), status)
 		}
 
@@ -210,7 +210,7 @@ impl<
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-			) -> Update,
+			) -> Propagation,
 		SR: SignalRuntimeRef,
 	> Source<SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
@@ -259,7 +259,7 @@ impl<
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-			) -> Update,
+			) -> Propagation,
 		SR: SignalRuntimeRef,
 	> Subscribable<SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
@@ -288,7 +288,7 @@ impl<
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-			) -> Update,
+			) -> Propagation,
 		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
 	> SourceCell<T, SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
@@ -300,9 +300,9 @@ impl<
 		self.update(|value| {
 			if *value != new_value {
 				*value = new_value;
-				Update::Propagate
+				Propagation::Propagate
 			} else {
-				Update::Halt
+				Propagation::Halt
 			}
 		});
 	}
@@ -314,11 +314,11 @@ impl<
 	{
 		self.update(|value| {
 			*value = new_value;
-			Update::Propagate
+			Propagation::Propagate
 		});
 	}
 
-	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update) {
+	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Propagation) {
 		self.signal
 			.clone_runtime_ref()
 			.run_detached(|| self.touch());
@@ -327,7 +327,7 @@ impl<
 			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
 	}
 
-	async fn update_async<U: Send>(&self, update: impl Send + FnOnce(&mut T) -> (U, Update)) -> U {
+	async fn update_async<U: Send>(&self, update: impl Send + FnOnce(&mut T) -> (U, Propagation)) -> U {
 		self.signal
 			.update_async(|value, _| update(&mut value.0 .1.write().unwrap()))
 			.await
@@ -339,9 +339,9 @@ impl<
 	{
 		self.update_blocking(|value| {
 			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Update::Propagate)
+				(Ok(mem::replace(value, new_value)), Propagation::Propagate)
 			} else {
-				(Err(new_value), Update::Halt)
+				(Err(new_value), Propagation::Halt)
 			}
 		})
 	}
@@ -350,10 +350,10 @@ impl<
 	where
 		T: Sized,
 	{
-		self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
+		self.update_blocking(|value| (mem::replace(value, new_value), Propagation::Propagate))
 	}
 
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Propagation)) -> U {
 		self.signal
 			.update_blocking(|value, _| update(&mut value.0 .1.write().unwrap()))
 	}

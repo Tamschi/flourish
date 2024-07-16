@@ -2,7 +2,7 @@ use std::{borrow::BorrowMut, pin::Pin, sync::Mutex};
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
+	runtime::{CallbackTableTypes, SignalRuntimeRef, Propagation},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -61,17 +61,17 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
 		fn(
 			eager: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
 			lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
-		) -> isoprenoid::runtime::Update,
+		) -> isoprenoid::runtime::Propagation,
 	> = {
 		fn eval<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T)>(
 			source: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
 			cache: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
-		) -> Update {
+		) -> Propagation {
 			let (source, drop) = &mut *source.0.lock().expect("unreachable");
 			let cache = &mut *cache.0.lock().expect("unreachable");
 			cache.take().map(drop);
 			*cache = Some(source());
-			Update::Halt
+			Propagation::Halt
 		}
 		Some(eval)
 	};
@@ -84,7 +84,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
 			eager: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
 			lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		) -> Update,
+		) -> Propagation,
 	> = None;
 }
 
