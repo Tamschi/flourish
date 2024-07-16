@@ -1,7 +1,6 @@
 //! Low-level types for implementing [`SignalRuntimeRef`], as well as a functional [`GlobalSignalRuntime`].
 
 use core::{
-	fmt::Debug,
 	num::NonZeroU64,
 	sync::atomic::{AtomicU64, Ordering},
 };
@@ -10,6 +9,7 @@ use std::{
 	cell::{RefCell, RefMut},
 	collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
 	convert::identity,
+	fmt::Debug,
 	future::Future,
 	mem,
 	panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
@@ -19,9 +19,6 @@ use std::{
 use async_lock::OnceCell;
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use scopeguard::{guard, ScopeGuard};
-use stale_queue::{SensorNotification, StaleQueue};
-
-mod stale_queue;
 
 /// Trait for handles that let signals refer to a specific runtime (instance).
 ///
@@ -29,9 +26,7 @@ mod stale_queue;
 ///
 /// # Logic
 ///
-/// Callbacks associated with the same `id` **must not** run in parallel or otherwise interlace (
-/// except for [`reentrant_critical`](`SignalRuntimeRef::reentrant_critical`), which is allowed to
-/// re-enter from and into itself and other callbacks freely).  
+/// Callbacks associated with the same `id` **must not** run in parallel or nested.  
 /// Callback invocations *with the same `id` **must** be totally orderable across all threads.
 ///
 /// # Safety
@@ -56,13 +51,6 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// The return value **must** be able to uniquely identify a signal towards this runtime.  
 	/// Symbols **may not** be reused even after calls to [`.stop(id)`](`SignalRuntimeRef::stop`).
 	fn next_id(&self) -> Self::Symbol;
-
-	/// Runs `f` in the runtime's reentrant critical section for `id`.
-	///
-	/// # Safety
-	///
-	/// Callbacks associated with `id` **may not** run in parallel.
-	fn reentrant_critical<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
 
 	/// When run in a context that records dependencies, records `id` as dependency of that context.
 	///
@@ -248,7 +236,6 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	fn purge(&self, id: Self::Symbol);
 }
 
-#[derive(Default)]
 struct ASignalRuntime {
 	source_counter: AtomicU64,
 	critical_mutex: ReentrantMutex<RefCell<ASignalRuntime_>>,
@@ -256,22 +243,30 @@ struct ASignalRuntime {
 
 unsafe impl Sync for ASignalRuntime {}
 
-#[derive(Default)]
 struct ASignalRuntime_ {
-	stale_queue: StaleQueue<ASymbol>,
 	context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
 	callbacks: BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
 	///FIXME: This is not-at-all a fair queue.
-	update_queue: RefCell<VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce() -> Update>)>>,
+	update_queue: VecDeque<(ASymbol, Box<dyn 'static + Send + FnOnce() -> Update>)>,
+	stale_queue: BTreeSet<ASymbol>,
+	interdependencies: Interdependencies,
 }
 
-impl ASignalRuntime_ {
-	const fn new() -> Self {
+struct Interdependencies {
+	/// Note: While a symbol is flagged as subscribed explicitly,
+	///       it is present as its own subscriber here (by not in `all_by_dependency`!).
+	/// FIXME: This could store subscriber counts instead.
+	subscribers_by_dependency: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
+	all_by_dependent: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
+	all_by_dependency: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
+}
+
+impl Interdependencies {
+	pub(crate) const fn new() -> Self {
 		Self {
-			stale_queue: StaleQueue::new(),
-			context_stack: Vec::new(),
-			callbacks: BTreeMap::new(),
-			update_queue: RefCell::new(VecDeque::new()),
+			subscribers_by_dependency: BTreeMap::new(),
+			all_by_dependent: BTreeMap::new(),
+			all_by_dependency: BTreeMap::new(),
 		}
 	}
 }
@@ -283,65 +278,61 @@ impl ASignalRuntime {
 	const fn new() -> Self {
 		Self {
 			source_counter: AtomicU64::new(0),
-			critical_mutex: ReentrantMutex::new(RefCell::new(ASignalRuntime_::new())),
+			critical_mutex: ReentrantMutex::new(RefCell::new(ASignalRuntime_ {
+				context_stack: Vec::new(),
+				callbacks: BTreeMap::new(),
+				update_queue: VecDeque::new(),
+				stale_queue: BTreeSet::new(),
+				interdependencies: Interdependencies::new(),
+			})),
 		}
 	}
 
-	#[must_use]
-	fn notify_all<'a: 'b, 'b>(
-		lock: &'a ReentrantMutexGuard<RefCell<ASignalRuntime_>>,
-		notifications: impl IntoIterator<Item = SensorNotification<ASymbol>>,
-		mut borrow: RefMut<'b, ASignalRuntime_>,
-	) -> RefMut<'b, ASignalRuntime_> {
-		fn notify<'a: 'b, 'b>(
-			lock: &'a ReentrantMutexGuard<RefCell<ASignalRuntime_>>,
-			SensorNotification { symbol, value }: SensorNotification<ASymbol>,
-			mut borrow: RefMut<'b, ASignalRuntime_>,
-		) -> RefMut<'b, ASignalRuntime_> {
-			let &(callback_table, data) = borrow.callbacks.get(&symbol).expect("unreachable");
-			if let &CallbackTable {
-				on_subscribed_change: Some(on_subscribed_change),
-				..
-			} = unsafe { &*callback_table }
-			{
-				//TODO: Dirty queue isolation!
-				borrow.context_stack.push(None); // Important! Dependency isolation.
-				drop(borrow);
-				let r = catch_unwind(|| unsafe { on_subscribed_change(data, value) });
-				let mut borrow = (**lock).borrow_mut();
-				assert_eq!(borrow.context_stack.pop(), Some(None));
-				if let Err(payload) = r {
-					resume_unwind(payload)
-				}
-				borrow
-			} else {
-				borrow
-			}
-		}
+	fn peek_stale<'a>(
+		&self,
+		mut borrow: RefMut<'a, ASignalRuntime_>,
+	) -> (Option<ASymbol>, RefMut<'a, ASignalRuntime_>) {
+		//FIXME: This is very inefficient!
 
-		for notification in notifications {
-			borrow = notify(&lock, notification, borrow)
-		}
-		borrow
+		(
+			borrow.stale_queue.iter().copied().find(|next| {
+				!borrow
+					.interdependencies
+					.subscribers_by_dependency
+					.get(&next)
+					.expect("unreachable")
+					.is_empty()
+			}),
+			borrow,
+		)
 	}
 
-	fn process_updates_if_ready<'a>(&'a self) {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = lock.borrow();
-		if !borrow.context_stack.is_empty() || borrow.stale_queue.peek().is_some() {
-			// Still processing something else (which will) process updates afterwards.
-			return;
+	fn pop_stale<'a>(
+		&self,
+		mut borrow: RefMut<'a, ASignalRuntime_>,
+	) -> (Option<ASymbol>, RefMut<'a, ASignalRuntime_>) {
+		//FIXME: This is very inefficient! Stale-marking propagates only forwards, so one step up in the call graph, a cursor can be used.
+		if let Some(next) = borrow.stale_queue.iter().copied().find(|next| {
+			!borrow
+				.interdependencies
+				.subscribers_by_dependency
+				.get(&next)
+				.expect("unreachable")
+				.is_empty()
+		}) {
+			assert!(borrow.stale_queue.remove(&next));
 		}
-
-		while let Some((id, next)) = (|| borrow.update_queue.borrow_mut().pop_front())() {
-			debug_assert!(borrow.callbacks.contains_key(&id));
-			drop(borrow);
-			match next() {
-				Update::Propagate => self.propagate_from(id),
-				Update::Halt => (),
-			}
-			borrow = lock.borrow();
-		}
+		(
+			borrow.stale_queue.iter().copied().find(|next| {
+				!borrow
+					.interdependencies
+					.subscribers_by_dependency
+					.get(&next)
+					.expect("unreachable")
+					.is_empty()
+			}),
+			borrow,
+		)
 	}
 }
 
@@ -363,12 +354,6 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		)
 	}
 
-	fn reentrant_critical<T>(&self, _id: Self::Symbol, f: impl FnOnce() -> T) -> T {
-		// This implementation is globally critical, so the `_id` isn't needed here.
-		let _guard = self.critical_mutex.lock();
-		f()
-	}
-
 	fn record_dependency(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
@@ -388,108 +373,32 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		callback_data: *const D,
 	) -> T {
 		let lock = self.critical_mutex.lock();
-		{
-			let mut borrow = (*lock).borrow_mut();
-			borrow.stale_queue.register_id(id);
-			borrow.context_stack.push(Some((id, BTreeSet::new())));
-		}
-		let r = catch_unwind(AssertUnwindSafe(f));
-		{
-			let mut borrow = (*lock).borrow_mut();
-			let (popped_id, touched_dependencies) =
-				borrow.context_stack.pop().flatten().expect("unreachable");
-			assert_eq!(popped_id, id);
-			let notifications = borrow
-				.stale_queue
-				.update_dependency_set(id, touched_dependencies);
-			match borrow.callbacks.entry(id) {
-				Entry::Vacant(v) => v.insert((
-					CallbackTable::into_erased_ptr(callback_table),
-					callback_data.cast(),
-				)),
-				Entry::Occupied(_) => panic!("Can't call `start` again before calling `stop`."),
-			};
-			let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
-		}
-		self.process_updates_if_ready();
-		r.unwrap_or_else(|p| resume_unwind(p))
+		let mut borrow = (*lock).borrow_mut();
+		todo!()
 	}
 
 	fn stop(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		if borrow
-			.context_stack
-			.iter()
-			.filter_map(|s| s.as_ref())
-			.any(|(symbol, _)| *symbol == id)
-		{
-			//TODO: Does this need to abort the process?
-			panic!("Can't stop symbol while it is executing on the same thread.");
-		}
-
-		// Does *not* purge interdependencies!
-		if let Some(callbacks) = borrow.callbacks.get_mut(&id) {
-			static NO_CALLBACKS: CallbackTable<
-				(),
-				<&'static ASignalRuntime as SignalRuntimeRef>::CallbackTableTypes,
-			> = CallbackTable {
-				update: None,
-				on_subscribed_change: None,
-			};
-
-			*callbacks = (&NO_CALLBACKS, &());
-		}
-
-		borrow
-			.update_queue
-			.borrow_mut()
-			.retain(|(item_id, _)| *item_id != id);
+		todo!()
 	}
 
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
 		let lock = self.critical_mutex.lock();
-		{
-			let mut borrow = (*lock).borrow_mut();
-			borrow.context_stack.push(Some((id, BTreeSet::new())));
-		}
-		let r = catch_unwind(AssertUnwindSafe(f));
-		{
-			let mut borrow = (*lock).borrow_mut();
-			let (popped_id, touched_dependencies) =
-				borrow.context_stack.pop().flatten().expect("unreachable");
-			assert_eq!(popped_id, id);
-			let notifications = borrow
-				.stale_queue
-				.update_dependency_set(id, touched_dependencies);
-			let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
-		}
-		self.process_updates_if_ready();
-		r.unwrap_or_else(|p| resume_unwind(p))
+		let mut borrow = (*lock).borrow_mut();
+		todo!()
 	}
 
 	fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		let (result, notifications) = borrow.stale_queue.set_subscription(id, enabled);
-		let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
-		result
+		todo!()
 	}
 
 	fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce() -> Update) {
 		let lock = self.critical_mutex.lock();
-		let borrow = (*lock).borrow();
-
-		if !borrow.callbacks.contains_key(&id) {
-			panic!("Tried to update without starting the `isoprenoid::raw::RawSignal` first! (This panic may be sporadic when threading.)")
-		}
-
-		borrow
-			.update_queue
-			.borrow_mut()
-			.push_back((id, Box::new(f)));
-		drop(borrow);
-		self.process_updates_if_ready();
+		let mut borrow = (*lock).borrow_mut();
+		todo!()
 	}
 
 	async fn update_async<T: Send, F: Send + FnOnce() -> (T, Update)>(
@@ -583,9 +492,12 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 			f: Box<dyn '_ + FnOnce() -> (T, Update)>,
 		) -> T {
 			let lock = this.critical_mutex.lock();
-			let borrow = (*lock).borrow();
+			let borrow = (*lock).borrow_mut();
 
-			if !(borrow.context_stack.is_empty() && borrow.stale_queue.peek().is_none()) {
+			let (stale, borrow) = this.peek_stale(borrow);
+			let has_stale = stale.is_some();
+
+			if !(borrow.context_stack.is_empty() && !has_stale) {
 				panic!("Called `update_blocking` (via `change_blocking` or `replace_blocking`?) while propagating another update. This would deadlock with a better queue.");
 			}
 
@@ -602,128 +514,26 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 
 	fn propagate_from(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
-		if (*lock)
-			.borrow_mut()
-			.stale_queue
-			.mark_dependents_as_stale(id)
-		{
-			while let Some(current) = (|| (*lock).borrow_mut().stale_queue.next())() {
-				let mut borrow = (*lock).borrow_mut();
-				let &(callback_table, data) = borrow.callbacks.get(&current).expect("unreachable");
-				if let &CallbackTable {
-					update: Some(update),
-					..
-				} = unsafe { &*callback_table }
-				{
-					borrow.context_stack.push(Some((current, BTreeSet::new())));
-					drop(borrow);
-					let update = catch_unwind(|| unsafe { update(data) });
-					let mut borrow = (*lock).borrow_mut();
-					let (popped_id, touched_dependencies) =
-						borrow.context_stack.pop().flatten().expect("unreachable");
-					assert_eq!(popped_id, current);
-					let notifications = borrow
-						.stale_queue
-						.update_dependency_set(current, touched_dependencies);
-					borrow = ASignalRuntime::notify_all(&lock, notifications, borrow);
-					match update {
-						Ok(Update::Propagate) => {
-							let _ = borrow.stale_queue.mark_dependents_as_stale(current);
-						}
-						Ok(Update::Halt) => (),
-						Err(payload) => resume_unwind(payload),
-					}
-				} else {
-					// As documented on `Callbacks`.
-					let _ = borrow.stale_queue.mark_dependents_as_stale(current);
-				}
-			}
-		}
-		self.process_updates_if_ready();
+		let mut borrow = (*lock).borrow_mut();
+		todo!()
 	}
 
 	fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		//TODO: Dirty queue isolation!
-		borrow.context_stack.push(None);
-		drop(borrow);
-		let r = catch_unwind(AssertUnwindSafe(f));
-		let mut borrow = (*lock).borrow_mut();
-		assert_eq!(borrow.context_stack.pop(), Some(None));
-		drop(borrow);
-		self.process_updates_if_ready();
-		r.unwrap_or_else(|payload| resume_unwind(payload))
+		todo!()
 	}
 
 	fn refresh(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
-		{
-			let mut borrow = (*lock).borrow_mut();
-			let is_stale = borrow.stale_queue.remove_stale(id);
-			if is_stale {
-				let &(callback_table, data) = borrow.callbacks.get(&id).expect("unreachable");
-				if let &CallbackTable {
-					update: Some(update),
-					..
-				} = unsafe { &*callback_table }
-				{
-					borrow.context_stack.push(Some((id, BTreeSet::new())));
-					drop(borrow);
-					let r = catch_unwind(|| unsafe { update(data) });
-					let mut borrow = (*lock).borrow_mut();
-					let (popped_id, touched_dependencies) =
-						borrow.context_stack.pop().flatten().expect("unreachable");
-					assert_eq!(popped_id, id);
-					if let Err(payload) = r {
-						resume_unwind(payload)
-					}
-
-					let notifications = borrow
-						.stale_queue
-						.update_dependency_set(id, touched_dependencies);
-					let _ = ASignalRuntime::notify_all(&lock, notifications, borrow);
-				}
-			}
-		}
-		self.process_updates_if_ready();
+		let mut borrow = (*lock).borrow_mut();
+		todo!()
 	}
 
 	fn purge(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		if borrow
-			.context_stack
-			.iter()
-			.filter_map(|s| s.as_ref())
-			.any(|(symbol, _)| *symbol == id)
-		{
-			//TODO: Does this need to abort the process?
-			panic!("Can't stop symbol while it is executing on the same thread.");
-		}
-		if borrow.stale_queue.is_subscribed(id) {
-			let &(callback_table, data) = borrow
-				.callbacks
-				.get(&id)
-				.expect("Tried to stop callbacks for a symbol that wasn't started.");
-			{
-				if let &CallbackTable {
-					on_subscribed_change: Some(on_subscribed_change),
-					..
-				} = unsafe { &*callback_table }
-				{
-					unsafe { on_subscribed_change(data, false) }
-				}
-			}
-		}
-		let notifications = borrow.stale_queue.purge_id(id);
-		let mut borrow = ASignalRuntime::notify_all(&lock, notifications, borrow);
-		borrow.callbacks.remove(&id);
-
-		borrow
-			.update_queue
-			.borrow_mut()
-			.retain(|(item_id, _)| *item_id != id);
+		todo!()
 	}
 }
 
@@ -747,8 +557,14 @@ static GLOBAL_SIGNAL_RUNTIME: ASignalRuntime = ASignalRuntime::new();
 pub struct GlobalSignalRuntime;
 
 /// [`SignalRuntimeRef::Symbol`] for [`GlobalSignalRuntime`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GSRSymbol(ASymbol);
+
+impl Debug for GSRSymbol {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_tuple("GSRSymbol").field(&self.0 .0).finish()
+	}
+}
 
 /// [`SignalRuntimeRef::CallbackTableTypes`] for [`GlobalSignalRuntime`].
 #[repr(transparent)]
@@ -764,10 +580,6 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
 
 	fn next_id(&self) -> GSRSymbol {
 		GSRSymbol((&GLOBAL_SIGNAL_RUNTIME).next_id())
-	}
-
-	fn reentrant_critical<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
-		(&GLOBAL_SIGNAL_RUNTIME).reentrant_critical(id.0, f)
 	}
 
 	fn record_dependency(&self, id: Self::Symbol) {
