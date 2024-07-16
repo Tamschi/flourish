@@ -149,7 +149,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 			eager: Pin<&ForceSyncUnpin<Mutex<F>>>,
 			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Update,
 	> = None;
 }
 

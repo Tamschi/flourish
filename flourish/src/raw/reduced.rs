@@ -172,7 +172,7 @@ impl<
 			eager: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
 			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Update,
 	> = None;
 }
 

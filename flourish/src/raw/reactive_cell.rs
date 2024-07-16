@@ -18,7 +18,7 @@ use super::{Source, SourceCell, Subscribable};
 #[repr(transparent)]
 pub struct ReactiveCell<
 	T: ?Sized + Send,
-	HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+	HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 	SR: SignalRuntimeRef,
 > {
 	#[pin]
@@ -27,7 +27,7 @@ pub struct ReactiveCell<
 
 impl<
 		T: ?Sized + Send + Debug,
-		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) + Debug,
+		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update + Debug,
 		SR: SignalRuntimeRef + Debug,
 	> Debug for ReactiveCell<T, HandlerFnPin, SR>
 where
@@ -43,7 +43,7 @@ where
 /// TODO: Safety.
 unsafe impl<
 		T: ?Sized + Send,
-		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 		SR: SignalRuntimeRef + Sync,
 	> Sync for ReactiveCell<T, HandlerFnPin, SR>
 {
@@ -94,7 +94,8 @@ impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuardExclusive<'a, T> {
 
 impl<
 		T: ?Sized + Send,
-		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send
+			+ FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 		SR: SignalRuntimeRef,
 	> ReactiveCell<T, HandlerFnPin, SR>
 {
@@ -155,7 +156,8 @@ impl<
 enum E {}
 impl<
 		T: ?Sized + Send,
-		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send
+			+ FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 		SR: SignalRuntimeRef,
 	> Callbacks<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR> for E
 {
@@ -172,13 +174,13 @@ impl<
 			eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>,
 			lazy: Pin<&()>,
 			subscribed: <<SR as SignalRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Update,
 	> = {
 		fn on_subscribed_change_fn_pin<
 			T: ?Sized + Send,
-			HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+			HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 			SR: SignalRuntimeRef,
-		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus){
+		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>, eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update{
 			eager.0.0.lock().unwrap()(eager.0.1.read().unwrap().borrow(), status)
 		}
 
@@ -188,7 +190,7 @@ impl<
 
 impl<
 		T: ?Sized + Send,
-		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 		SR: SignalRuntimeRef,
 	> Source<SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
@@ -233,7 +235,7 @@ impl<
 
 impl<
 		T: ?Sized + Send,
-		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 		SR: SignalRuntimeRef,
 	> Subscribable<SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
@@ -258,7 +260,7 @@ impl<
 
 impl<
 		T: ?Sized + Send,
-		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+		HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
 	> SourceCell<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
 {

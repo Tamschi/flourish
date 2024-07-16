@@ -151,6 +151,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self: Pin<&Self>,
 		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
 	) -> (Pin<&Eager>, Pin<&Lazy>) {
+		self.handle.runtime.record_dependency(self.handle.id);
 		unsafe {
 			let eager = Pin::new_unchecked(&self.eager);
 			let lazy = (&*self.lazy.get()).get_or_init(|| {
@@ -228,7 +229,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 				>(
 					this: *const RawSignal<Eager, Lazy, SR>,
 					subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-				) {
+				) -> Update {
 					let this = &*this;
 					C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
 						Pin::new_unchecked(this),
@@ -240,7 +241,6 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 
 				lazy.assume_init()
 			});
-			self.handle.runtime.record_dependency(self.handle.id);
 			self.handle.refresh();
 			mem::transmute((eager, Pin::new_unchecked(lazy)))
 		}
@@ -270,6 +270,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self: Pin<&Self>,
 		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
 	) -> Option<(Pin<&Eager>, Pin<&Lazy>)> {
+		self.handle.runtime.record_dependency(self.handle.id);
 		unsafe {
 			let eager = Pin::new_unchecked(&self.eager);
 			let lazy = self.handle.set_subscription(true).then(|| {
@@ -350,7 +351,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 					>(
 						this: *const RawSignal<Eager, Lazy, SR>,
 						subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-					) {
+					) -> Update {
 						let this = &*this;
 						C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
 							Pin::new_unchecked(this),
@@ -362,7 +363,6 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 
 					lazy.assume_init()
 				});
-				self.handle.runtime.record_dependency(self.handle.id);
 				lazy
 			});
 			self.handle.refresh();
@@ -542,7 +542,7 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
 			eager: Pin<&Eager>,
 			lazy: Pin<&Lazy>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Update,
 	>;
 }
 
@@ -562,6 +562,6 @@ impl<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> Callbacks<Eager, La
 			eager: Pin<&Eager>,
 			lazy: Pin<&Lazy>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Update,
 	> = None;
 }

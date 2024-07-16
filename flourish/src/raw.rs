@@ -66,7 +66,7 @@ pub use crate::inert_cell_with_runtime;
 
 pub fn reactive_cell<
 	T: Send,
-	H: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+	H: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 	SR: SignalRuntimeRef,
 >(
 	initial_value: T,
@@ -99,7 +99,8 @@ pub use crate::reactive_cell_with_runtime;
 
 pub fn reactive_cell_mut<
 	T: Send,
-	H: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus),
+	H: Send
+		+ FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Update,
 	SR: SignalRuntimeRef,
 >(
 	initial_value: T,

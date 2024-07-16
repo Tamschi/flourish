@@ -5,7 +5,7 @@ use core::{
 	sync::atomic::{AtomicU64, Ordering},
 };
 use std::{
-	borrow::BorrowMut,
+	borrow::{Borrow, BorrowMut},
 	cell::{RefCell, RefMut},
 	collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
 	convert::identity,
@@ -17,6 +17,7 @@ use std::{
 };
 
 use async_lock::OnceCell;
+use ext_trait::extension;
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use scopeguard::{guard, ScopeGuard};
 
@@ -59,9 +60,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// If a touch causes a subscription change, the runtime **should** call that [`CallbackTable::on_subscribed_change`]
 	/// callback before returning from this function. (This helps more easily manage on-demand-only resources.)
 	///
-	/// # Panics
-	///
-	/// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
+	/// This method **must** function even for a unknown `id`.
 	fn record_dependency(&self, id: Self::Symbol);
 
 	/// Starts managed callback processing for `id`.
@@ -334,6 +333,53 @@ impl ASignalRuntime {
 			borrow,
 		)
 	}
+
+	fn subscribe_to_with<'a>(
+		&self,
+		dependency: ASymbol,
+		dependent: ASymbol,
+		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalRuntime_>>,
+		mut borrow: RefMut<'a, ASignalRuntime_>,
+	) -> RefMut<'a, ASignalRuntime_> {
+		let subscribers = borrow
+			.interdependencies
+			.subscribers_by_dependency
+			.entry(dependency)
+			.or_default();
+		if subscribers.insert(dependent) && subscribers.len() == 1 {
+			// First subscriber, so call handler and propagate upwards!
+
+			if let Some(&(callback_table, data)) = borrow.callbacks.get(&dependency) {
+				unsafe {
+					if let CallbackTable {
+						on_subscribed_change: Some(on_subscribed_change),
+						..
+					} = *callback_table
+					{
+						drop(borrow);
+						match self.run_detached(|| on_subscribed_change(data, true)) {
+							Update::Halt => (),
+							Update::Propagate => todo!(),
+						}
+						borrow = (**lock).borrow_mut();
+					}
+				}
+			}
+
+			for transitive_dependency in borrow
+				.interdependencies
+				.all_by_dependent
+				.entry(dependency)
+				.or_default()
+				.iter()
+				.copied()
+				.collect::<Vec<_>>()
+			{
+				borrow = self.subscribe_to_with(transitive_dependency, dependency, lock, borrow);
+			}
+		}
+		borrow
+	}
 }
 
 enum ACallbackTableTypes {}
@@ -357,11 +403,42 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 	fn record_dependency(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		if let Some(Some((context_id, touched))) = &mut borrow.context_stack.last_mut() {
-			if id >= *context_id {
+		if let Some(Some((ref context_id, recorded_dependencies))) =
+			&mut borrow.context_stack.last_mut()
+		{
+			let context_id = *context_id;
+
+			if id >= context_id {
 				panic!("Tried to depend on later-created signal. To prevent loops, this isn't possible for now.");
 			}
-			touched.insert(id);
+			recorded_dependencies.insert(id);
+
+			let added_a = borrow
+				.interdependencies
+				.all_by_dependency
+				.entry(id)
+				.or_default()
+				.insert(context_id);
+			let added_b = borrow
+				.interdependencies
+				.all_by_dependent
+				.entry(context_id)
+				.or_default()
+				.insert(id);
+			debug_assert_eq!(added_a, added_b);
+
+			if added_a
+				&& !borrow
+					.interdependencies
+					.subscribers_by_dependency
+					.entry(context_id)
+					.or_default()
+					.is_empty()
+			{
+				// Propagate subscription.
+
+				let _ = self.subscribe_to_with(id, context_id, &lock, borrow);
+			}
 		}
 	}
 
@@ -678,7 +755,7 @@ pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
 	/// The runtime **must** consider transitive subscriptions.  
 	/// The runtime **must** consider a signal's own inherent subscription.  
 	/// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
-	pub on_subscribed_change: Option<unsafe fn(*const T, status: CTT::SubscribedStatus)>,
+	pub on_subscribed_change: Option<unsafe fn(*const T, status: CTT::SubscribedStatus) -> Update>,
 }
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Debug for CallbackTable<T, CTT> {

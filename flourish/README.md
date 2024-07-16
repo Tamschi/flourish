@@ -34,10 +34,10 @@ use flourish::{SignalCell, Signal, Update, Subscription, Effect};
 
 let _ = SignalCell::new(());
 let _ = SignalCell::new_cyclic(|_weak| ());
-let _ = SignalCell::new_reactive((), |_value, _status| ());
-let _ = SignalCell::new_reactive_mut((), |_value, _status| ());
-let _ = SignalCell::new_cyclic_reactive(|_weak| ((), move |_value, _status| ()));
-let _ = SignalCell::new_cyclic_reactive_mut(|_weak| ((), move |_value, _status| ()));
+let _ = SignalCell::new_reactive((), |_value, _status| Update::Halt);
+let _ = SignalCell::new_reactive_mut((), |_value, _status| Update::Propagate);
+let _ = SignalCell::new_cyclic_reactive(|_weak| ((), move |_value, _status| Update::Halt));
+let _ = SignalCell::new_cyclic_reactive_mut(|_weak| ((), move |_value, _status| Update::Propagate));
 
 // The closure type is erased!
 // Not evaluated unless subscribed.
@@ -69,7 +69,7 @@ use flourish::{signals_helper, prelude::*, Update};
 
 signals_helper! {
   let inert_cell = inert_cell!(());
-  let reactive_cell = reactive_cell!((), |_value, _status| ());
+  let reactive_cell = reactive_cell!((), |_value, _status| Update::Halt);
 
   // The closure type is erased!
   // Not evaluated unless subscribed.

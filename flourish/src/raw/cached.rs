@@ -167,7 +167,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>
 			eager: Pin<&ForceSyncUnpin<S>>,
 			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Update,
 	> = None;
 }
 

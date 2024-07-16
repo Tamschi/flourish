@@ -1,4 +1,4 @@
-use flourish::{prelude::*, shadow_clone, Effect, SignalCell};
+use flourish::{prelude::*, shadow_clone, Effect, SignalCell, Update};
 mod _validator;
 use _validator::Validator;
 
@@ -9,6 +9,7 @@ fn cyclic() {
 	let p = SignalCell::new_cyclic_reactive(|weak_signal_cell| {
 		((), move |_value, status| {
 			v.push((weak_signal_cell.upgrade().is_some(), status));
+			Update::Halt
 		})
 	});
 

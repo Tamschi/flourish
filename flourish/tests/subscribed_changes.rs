@@ -1,4 +1,4 @@
-use flourish::{prelude::*, shadow_clone, Signal, SignalCell, Subscription};
+use flourish::{prelude::*, shadow_clone, Signal, SignalCell, Subscription, Update};
 mod _validator;
 use _validator::Validator;
 
@@ -6,7 +6,10 @@ use _validator::Validator;
 fn inherent() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |_value, status| v.push(status));
+	let a = SignalCell::new_reactive((), |_value, status| {
+		v.push(status);
+		Update::Halt
+	});
 	let s = a.to_signal();
 	drop(a);
 	v.expect([]);
@@ -22,7 +25,10 @@ fn inherent() {
 fn dependent() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |_value, status| v.push(status));
+	let a = SignalCell::new_reactive((), |_value, status| {
+		v.push(status);
+		Update::Halt
+	});
 	v.expect([]);
 
 	let s = Subscription::computed({
@@ -42,7 +48,10 @@ fn dependent() {
 fn dependent_reversed() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |_value, status| v.push(status));
+	let a = SignalCell::new_reactive((), |_value, status| {
+		v.push(status);
+		Update::Halt
+	});
 	v.expect([]);
 
 	let s = Subscription::computed({
@@ -62,8 +71,11 @@ fn dependent_reversed() {
 fn lifecycle() {
 	let v = &Validator::new();
 
-	let (s, _) =
-		SignalCell::new_reactive_mut(false, |value, status| *value = status).into_signal_and_self();
+	let (s, _) = SignalCell::new_reactive_mut(false, |value, status| {
+		*value = status;
+		Update::Propagate
+	})
+	.into_signal_and_self();
 	assert!(!s.get());
 
 	let s = Signal::computed(move || v.push(s.get()));
