@@ -670,9 +670,13 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 	fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		todo!();
+		borrow.context_stack.push(None);
+		drop(borrow);
+		let r = catch_unwind(AssertUnwindSafe(f));
+		borrow = (*lock).borrow_mut();
+		assert_eq!(borrow.context_stack.pop(), Some(None));
 		self.process_pending(&lock, borrow);
-		todo!()
+		r.unwrap_or_else(|p| resume_unwind(p))
 	}
 
 	fn refresh(&self, id: Self::Symbol) {
