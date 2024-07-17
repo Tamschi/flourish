@@ -377,6 +377,75 @@ impl ASignalRuntime {
 		borrow
 	}
 
+	fn unsubscribe_from_with<'a>(
+		&self,
+		dependency: ASymbol,
+		dependent: ASymbol,
+		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalRuntime_>>,
+		mut borrow: RefMut<'a, ASignalRuntime_>,
+	) -> RefMut<'a, ASignalRuntime_> {
+		let subscribers = &borrow
+			.interdependencies
+			.subscribers_by_dependency
+			.entry(dependency)
+			.or_default();
+		if subscribers.len() == 1 && subscribers.iter().all(|s| *s == dependent) {
+			// Only subscriber, so propagate upwards and then refresh first!
+
+			for transitive_dependency in borrow
+				.interdependencies
+				.all_by_dependent
+				.entry(dependency)
+				.or_default()
+				.iter()
+				.copied()
+				.collect::<Vec<_>>()
+			{
+				borrow =
+					self.unsubscribe_from_with(transitive_dependency, dependency, lock, borrow);
+			}
+
+			drop(borrow);
+			self.refresh(dependency);
+			borrow = (**lock).borrow_mut();
+		}
+
+		let subscribers = &mut borrow
+			.interdependencies
+			.subscribers_by_dependency
+			.entry(dependency)
+			.or_default();
+
+		if subscribers.remove(&dependent) && subscribers.is_empty() {
+			// Just removed last subscriber, so call the change handler (if there is one).
+
+			if let Some(&(callback_table, data)) = borrow.callbacks.get(&dependency) {
+				unsafe {
+					if let CallbackTable {
+						on_subscribed_change: Some(on_subscribed_change),
+						..
+					} = *callback_table
+					{
+						// Note: Subscribed status change handlers *may* see stale values!
+						// I think simpler/deduplicated propagation is likely worth that tradeoff.
+
+						drop(borrow);
+						self.run_detached(|| match on_subscribed_change(data, true) {
+							Propagation::Halt => (),
+							// Important: That this is within `run_detached` defers the refresh.
+							// The entry point will refresh all pending (queued updates + stale subscribed)
+							// in one go by calling `process_pending`.
+							Propagation::Propagate => self.propagate_from(dependency),
+						});
+						return (**lock).borrow_mut();
+					}
+				}
+			}
+		}
+
+		borrow
+	}
+
 	fn process_pending<'a>(
 		&self,
 		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalRuntime_>>,
@@ -530,10 +599,25 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 
 	fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool {
 		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
-		todo!();
-		self.process_pending(&lock, borrow);
-		todo!()
+		let borrow = (*lock).borrow_mut();
+
+		let is_inherently_subscribed = borrow
+			.interdependencies
+			.subscribers_by_dependency
+			.get(&id)
+			.is_some_and(|subs| subs.contains(&id));
+
+		match (enabled, is_inherently_subscribed) {
+			(true, false) => {
+				self.subscribe_to_with(id, id, &lock, borrow);
+				true
+			}
+			(false, true) => {
+				self.unsubscribe_from_with(id, id, &lock, borrow);
+				true
+			}
+			(true, true) | (false, false) => false,
+		}
 	}
 
 	fn update_or_enqueue(
