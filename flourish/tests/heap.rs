@@ -1,4 +1,4 @@
-use flourish::{prelude::*, shadow_clone, Signal, SignalCell, Subscription};
+use flourish::{prelude::*, shadow_clone, GlobalSignalRuntime, Signal, SignalCell, Subscription};
 mod _validator;
 use _validator::Validator;
 
@@ -40,6 +40,7 @@ fn use_constructors() {
 	v.expect([2]);
 	x.expect(["sub_aa", "aa", "c", "d"]);
 
+	dbg!(GlobalSignalRuntime);
 	b_cell.replace_blocking(2);
 	v.expect([2]);
 	x.expect(["c", "d", "sub_aa", "aa"]);

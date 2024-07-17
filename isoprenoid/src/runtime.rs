@@ -228,6 +228,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	fn purge(&self, id: Self::Symbol);
 }
 
+#[derive(Debug)]
 struct ASignalRuntime {
 	source_counter: AtomicU64,
 	critical_mutex: ReentrantMutex<RefCell<ASignalRuntime_>>,
@@ -244,6 +245,19 @@ struct ASignalRuntime_ {
 	interdependencies: Interdependencies,
 }
 
+impl Debug for ASignalRuntime_ {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ASignalRuntime_")
+			.field("context_stack", &self.context_stack)
+			.field("callbacks", &self.callbacks)
+			.field("update_queue", &self.update_queue.keys())
+			.field("stale_queue", &self.stale_queue)
+			.field("interdependencies", &self.interdependencies)
+			.finish()
+	}
+}
+
+#[derive(Debug)]
 struct Interdependencies {
 	/// Note: While a symbol is flagged as subscribed explicitly,
 	///       it is present as its own subscriber here (by not in `all_by_dependency`!).
@@ -661,6 +675,10 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		drop(borrow);
 		let r = catch_unwind(AssertUnwindSafe(f));
 		borrow = (*lock).borrow_mut();
+
+		// This is a bit of a patch-fix against double-calls when subscribing to a stale signal.
+		borrow.stale_queue.remove(&id);
+
 		let Some(Some((popped_id, recorded_dependencies))) = borrow.context_stack.pop() else {
 			unreachable!()
 		};
@@ -910,7 +928,9 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 	fn refresh(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
+		dbg!(id);
 		if borrow.stale_queue.remove(&id) {
+			dbg!(id);
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&id) {
 				if let &CallbackTable {
 					update: Some(update),
@@ -928,6 +948,10 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 						}
 						Propagation::Halt => borrow,
 					}
+				} else {
+					// If there's no callback, then always mark dependencies as stale!
+					// (This happens with uncached signals, for example.)
+					borrow = self.mark_direct_dependencies_stale(id, &lock, borrow);
 				}
 			} else {
 				// If there's no callback, then always mark dependencies as stale!
@@ -1011,8 +1035,14 @@ static GLOBAL_SIGNAL_RUNTIME: ASignalRuntime = ASignalRuntime::new();
 /// **may** cause the [`GlobalSignalRuntime`] not to settle until they are dropped.)
 ///
 /// Otherwise, it makes no additional guarantees over those specified in [`SignalRuntimeRef`]'s documentation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GlobalSignalRuntime;
+
+impl Debug for GlobalSignalRuntime {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		Debug::fmt(&GLOBAL_SIGNAL_RUNTIME, f)
+	}
+}
 
 /// [`SignalRuntimeRef::Symbol`] for [`GlobalSignalRuntime`].
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
