@@ -481,11 +481,13 @@ impl ASignalRuntime {
 			}
 
 			let stale;
-			(stale, borrow) = self.pop_stale(borrow);
+			(stale, borrow) = self.peek_stale(borrow);
 			if let Some(stale) = stale {
+				borrow.context_stack.push(None);
 				drop(borrow);
 				self.refresh(stale);
 				borrow = (**lock).borrow_mut();
+				assert_eq!(borrow.context_stack.pop(), Some(None));
 			} else {
 				break;
 			}
@@ -721,9 +723,23 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		todo!();
+
+		borrow.context_stack.push(Some((id, BTreeSet::new())));
+		drop(borrow);
+		let r = catch_unwind(AssertUnwindSafe(f));
+		borrow = (*lock).borrow_mut();
+		let Some(Some((popped_id, recorded_dependencies))) = borrow.context_stack.pop() else {
+			unreachable!()
+		};
+		assert_eq!(popped_id, id);
+		let t = match r {
+			Ok(t) => t,
+			Err(p) => resume_unwind(p),
+		};
+		borrow = self.shrink_dependencies(id, recorded_dependencies, &lock, borrow);
+
 		self.process_pending(&lock, borrow);
-		todo!()
+		t
 	}
 
 	fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool {
@@ -894,16 +910,18 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 	fn refresh(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		if borrow.stale_queue.contains(&id) {
+		if borrow.stale_queue.remove(&id) {
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&id) {
 				if let &CallbackTable {
 					update: Some(update),
 					..
 				} = unsafe { &*callback_table }
 				{
+					borrow.context_stack.push(None);
 					drop(borrow);
 					let propagation = self.update_dependency_set(id, || unsafe { update(data) });
 					borrow = (*lock).borrow_mut();
+					assert_eq!(borrow.context_stack.pop(), Some(None));
 					borrow = match propagation {
 						Propagation::Propagate => {
 							self.mark_direct_dependencies_stale(id, &lock, borrow)
@@ -911,8 +929,11 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 						Propagation::Halt => borrow,
 					}
 				}
+			} else {
+				// If there's no callback, then always mark dependencies as stale!
+				// (This happens with uncached signals, for example.)
+				borrow = self.mark_direct_dependencies_stale(id, &lock, borrow);
 			}
-			assert!(borrow.stale_queue.remove(&id));
 		}
 		self.process_pending(&lock, borrow);
 	}
