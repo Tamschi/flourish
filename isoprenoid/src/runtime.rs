@@ -694,6 +694,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 			assert_eq!(popped_id, id);
 
 			// This is a bit of a patch-fix against double-calls when subscribing to a stale signal.
+			//TODO: Instead, add the dependency after subscribing when recording it!
 			borrow.stale_queue.remove(&id);
 			assert_eq!(
 				borrow.callbacks.insert(
