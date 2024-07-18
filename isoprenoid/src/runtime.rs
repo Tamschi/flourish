@@ -370,21 +370,21 @@ impl ASignalRuntime {
 						// Note: Subscribed status change handlers *may* see stale values!
 						// I think simpler/deduplicated propagation is likely worth that tradeoff.
 
+						borrow.context_stack.push(None);
 						drop(borrow);
-						self.run_detached(|| {
-							let propagation = on_subscribed_change(data, true);
-							match propagation {
-								Propagation::Halt => (),
-								// Important: That this is within `run_detached` defers the refresh.
-								// The entry point will refresh all pending (queued updates + stale subscribed)
-								// in one go by calling `process_pending`.
-								Propagation::Propagate => {
-									let borrow = (**lock).borrow_mut();
-									self.mark_direct_dependencies_stale(dependency, &lock, borrow);
-								}
-							}
-						});
+						let propagation =
+							try_eval(|| on_subscribed_change(data, true)).finally(|()| {
+								let mut borrow = (**lock).borrow_mut();
+								assert_eq!(borrow.context_stack.pop(), Some(None));
+							});
 						borrow = (**lock).borrow_mut();
+						match propagation {
+							Propagation::Halt => (),
+							Propagation::Propagate => {
+								borrow =
+									self.mark_direct_dependencies_stale(dependency, &lock, borrow);
+							}
+						}
 					}
 				}
 			}
@@ -419,10 +419,6 @@ impl ASignalRuntime {
 				borrow =
 					self.unsubscribe_from_with(transitive_dependency, dependency, lock, borrow);
 			}
-
-			drop(borrow);
-			self.refresh(dependency);
-			borrow = (**lock).borrow_mut();
 		}
 
 		let subscribers = &mut borrow
@@ -444,24 +440,37 @@ impl ASignalRuntime {
 						// Note: Subscribed status change handlers *may* see stale values!
 						// I think simpler/deduplicated propagation is likely worth that tradeoff.
 
+						borrow.context_stack.push(None);
 						drop(borrow);
-						self.run_detached(|| {
-							let propagation = on_subscribed_change(data, false);
-							let borrow = (**lock).borrow_mut();
-							match propagation {
-								Propagation::Halt => (),
-								// Important: That this is within `run_detached` defers the refresh.
-								// The entry point will refresh all pending (queued updates + stale subscribed)
-								// in one go by calling `process_pending`.
-								Propagation::Propagate => {
-									self.mark_direct_dependencies_stale(dependency, &lock, borrow);
-								}
-							}
-						});
+						let propagation =
+							try_eval(|| on_subscribed_change(data, false)).finally(|()| {
+								let mut borrow = (**lock).borrow_mut();
+								assert_eq!(borrow.context_stack.pop(), Some(None));
+							});
 						borrow = (**lock).borrow_mut();
+						match propagation {
+							Propagation::Halt => (),
+							Propagation::Propagate => {
+								borrow =
+									self.mark_direct_dependencies_stale(dependency, &lock, borrow);
+							}
+						}
 					}
 				}
 			}
+
+			// `dependency` is now unsubscribed, but should still refresh one final time
+			// to ensure e.g. a reference-counted resource is properly flushed.
+			borrow.context_stack.push(None);
+			drop(borrow);
+			//FIXME: This here is wrapped like this because `self.refresh` would otherwise process pending changes
+			// (which shouldn't happen here because the dependent may just so still be subscribed). It's possible
+			// to (overall) organise this better and avoid a bunch of extra work here.
+			try_eval(|| self.refresh(dependency)).finally(|()| {
+				let mut borrow = (**lock).borrow_mut();
+				assert_eq!(borrow.context_stack.pop(), Some(None));
+			});
+			borrow = (**lock).borrow_mut();
 		}
 
 		borrow

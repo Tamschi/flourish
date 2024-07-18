@@ -30,14 +30,14 @@ use flourish::prelude::*;
 You can put signals on the heap:
 
 ```rust
-use flourish::{SignalCell, Signal, Update, Subscription, Effect};
+use flourish::{SignalCell, Propagation, Signal, Subscription, Effect};
 
 let _ = SignalCell::new(());
 let _ = SignalCell::new_cyclic(|_weak| ());
-let _ = SignalCell::new_reactive((), |_value, _status| Update::Halt);
-let _ = SignalCell::new_reactive_mut((), |_value, _status| Update::Propagate);
-let _ = SignalCell::new_cyclic_reactive(|_weak| ((), move |_value, _status| Update::Halt));
-let _ = SignalCell::new_cyclic_reactive_mut(|_weak| ((), move |_value, _status| Update::Propagate));
+let _ = SignalCell::new_reactive((), |_value, _status| Propagation::Halt);
+let _ = SignalCell::new_reactive_mut((), |_value, _status| Propagation::Propagate);
+let _ = SignalCell::new_cyclic_reactive(|_weak| ((), move |_value, _status| Propagation::Halt));
+let _ = SignalCell::new_cyclic_reactive_mut(|_weak| ((), move |_value, _status| Propagation::Propagate));
 
 // The closure type is erased!
 // Not evaluated unless subscribed.
@@ -45,13 +45,13 @@ let _ = Signal::computed(|| ());
 let _ = Signal::debounced(|| ());
 let _ = Signal::computed_uncached(|| ()); // `Fn` closure. The others take `FnMut`s.
 let _ = Signal::computed_uncached_mut(|| ());
-let _ = Signal::folded((), |_value| Update::Propagate);
-let _ = Signal::reduced(|| (), |_value, _next| Update::Propagate);
+let _ = Signal::folded((), |_value| Propagation::Propagate);
+let _ = Signal::reduced(|| (), |_value, _next| Propagation::Propagate);
 
 // The closure type is erased!
 let _ = Subscription::computed(|| ());
-let _ = Subscription::folded((), |_value| Update::Propagate);
-let _ = Subscription::reduced(|| (), |_value, _next| Update::Propagate);
+let _ = Subscription::folded((), |_value| Propagation::Propagate);
+let _ = Subscription::reduced(|| (), |_value, _next| Propagation::Propagate);
 
 // The closure and value type are erased!
 // Runs `drop` *before* computing the new value.
@@ -65,11 +65,11 @@ let (_signal, _type_erased_cell) = SignalCell::new(()).into_signal_and_erased();
 You can also put signals on the stack:
 
 ```rust
-use flourish::{signals_helper, prelude::*, Update};
+use flourish::{signals_helper, prelude::*, Propagation};
 
 signals_helper! {
   let inert_cell = inert_cell!(());
-  let reactive_cell = reactive_cell!((), |_value, _status| Update::Halt);
+  let reactive_cell = reactive_cell!((), |_value, _status| Propagation::Halt);
 
   // The closure type is erased!
   // Not evaluated unless subscribed.
@@ -77,8 +77,8 @@ signals_helper! {
   let _source = debounced!(|| ());
   let _source = computed_uncached!(|| ());
   let _source = computed_uncached_mut!(|| ());
-  let _source = folded!((), |_value| Update::Propagate);
-  let _source = reduced!(|| (), |_value, _next| Update::Propagate);
+  let _source = folded!((), |_value| Propagation::Propagate);
+  let _source = reduced!(|| (), |_value, _next| Propagation::Propagate);
 
   // The closure type is erased!
   let _source = subscription!(|| ());
@@ -151,15 +151,15 @@ The default `GlobalSignalRuntime` notifies signals iteratively from earlier to l
 You can use a different [`isoprenoid`] runtime with the included types and macros (but ideally, alias these items for your own use):
 
 ```rust
-use flourish::{signals_helper, GlobalSignalRuntime, SignalSR, SignalCell, SubscriptionSR, Update};
+use flourish::{signals_helper, GlobalSignalRuntime, SignalSR, SignalCell, SubscriptionSR, Propagation};
 
 let _ = SignalCell::with_runtime((), GlobalSignalRuntime);
 
 let _ = SignalSR::computed_with_runtime(|| (), GlobalSignalRuntime);
 let _ = SignalSR::computed_uncached_with_runtime(|| (), GlobalSignalRuntime);
 let _ = SignalSR::computed_uncached_mut_with_runtime(|| (), GlobalSignalRuntime);
-let _ = SignalSR::folded_with_runtime((), |_value| Update::Propagate, GlobalSignalRuntime);
-let _ = SignalSR::reduced_with_runtime(|| (), |_value, _next| Update::Propagate, GlobalSignalRuntime);
+let _ = SignalSR::folded_with_runtime((), |_value| Propagation::Propagate, GlobalSignalRuntime);
+let _ = SignalSR::reduced_with_runtime(|| (), |_value, _next| Propagation::Propagate, GlobalSignalRuntime);
 
 let _ = SubscriptionSR::computed_with_runtime(|| (), GlobalSignalRuntime);
 
@@ -169,8 +169,8 @@ signals_helper! {
   let _source = computed_with_runtime!(|| (), GlobalSignalRuntime);
   let _source = computed_uncached_with_runtime!(|| (), GlobalSignalRuntime);
   let _source = computed_uncached_mut_with_runtime!(|| (), GlobalSignalRuntime);
-  let _source = folded_with_runtime!((), |_value| Update::Propagate, GlobalSignalRuntime);
-  let _source = reduced_with_runtime!(|| (), |_value, _next| Update::Propagate, GlobalSignalRuntime);
+  let _source = folded_with_runtime!((), |_value| Propagation::Propagate, GlobalSignalRuntime);
+  let _source = reduced_with_runtime!(|| (), |_value, _next| Propagation::Propagate, GlobalSignalRuntime);
 
   let _source = subscription_with_runtime!(|| (), GlobalSignalRuntime);
 
