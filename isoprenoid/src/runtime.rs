@@ -812,9 +812,12 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 	) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		todo!();
+		borrow
+			.update_queue
+			.entry(id)
+			.or_default()
+			.push_back(Box::new(f));
 		self.process_pending(&lock, borrow);
-		todo!()
 	}
 
 	async fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
