@@ -7,14 +7,16 @@ use core::{
 };
 use std::{
 	any::TypeId,
-	cell::UnsafeCell,
+	cell::{self, UnsafeCell},
 	collections::{btree_map::Entry, BTreeMap},
 	mem::{self, MaybeUninit},
 	sync::{Mutex, OnceLock},
 };
 
+use once_slot::OnceSlot;
+
 use crate::{
-	runtime::{CallbackTable, CallbackTableTypes, SignalRuntimeRef, Update},
+	runtime::{CallbackTable, CallbackTableTypes, Propagation, SignalRuntimeRef},
 	slot::{Slot, Token},
 };
 
@@ -30,13 +32,6 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 			id: runtime.next_id(),
 			runtime,
 		}
-	}
-
-	fn mark<T>(&self, f: impl FnOnce() -> T) -> T {
-		self.runtime.reentrant_critical(self.id, || {
-			self.runtime.touch(self.id);
-			f()
-		})
 	}
 
 	fn update_dependency_set<T>(&self, f: impl FnOnce() -> T) -> T {
@@ -63,15 +58,18 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 	/// # Panics
 	///
 	/// **May** panic iff called *not* between `self.project_or_init(…)` and `self.stop_and(…)`.
-	fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce() -> Update) {
+	fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce() -> Propagation) {
 		self.runtime.update_or_enqueue(self.id, f);
 	}
 
-	async fn update_async<T: Send, F: Send + FnOnce() -> (T, Update)>(&self, f: F) -> Result<T, F> {
+	async fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
+		&self,
+		f: F,
+	) -> Result<T, F> {
 		self.runtime.update_async(self.id, f).await
 	}
 
-	fn update_blocking<T>(&self, f: impl FnOnce() -> (T, Update)) -> T {
+	fn update_blocking<T>(&self, f: impl FnOnce() -> (Propagation, T)) -> T {
 		self.runtime.update_blocking(self.id, f)
 	}
 
@@ -79,17 +77,19 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 		self.runtime.refresh(self.id);
 	}
 
-	fn stop(&self) {
-		self.runtime.stop(self.id)
+	fn purge(&self) {
+		self.runtime.purge(self.id)
 	}
 }
+
+mod once_slot;
 
 /// A slightly higher-level signal primitive than using a runtime's [`SignalRuntimeRef::Symbol`] directly.
 /// This type comes with some lifecycle management to ensure orderly callbacks and safe data access.
 pub struct RawSignal<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> {
 	handle: SignalId<SR>,
 	_pinned: PhantomPinned,
-	lazy: UnsafeCell<OnceLock<Lazy>>,
+	lazy: OnceSlot<Lazy>,
 	eager: Eager,
 }
 
@@ -131,8 +131,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		Self {
 			handle: SignalId::with_runtime(runtime),
 			_pinned: PhantomPinned,
-			lazy: OnceLock::new().into(),
-			eager: eager.into(),
+			lazy: OnceSlot::new(),
+			eager,
 		}
 	}
 
@@ -140,24 +140,37 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		&mut self.eager
 	}
 
+	/// Initialises this [`RawSignal`]'s lazy state is initialised if necessary, recording dependencies in the process.
+	///
+	/// This may cause [`C::ON_SUBSCRIBED_CHANGE`](`Callbacks::ON_SUBSCRIBED_CHANGE`) to be called after `init` if a subscription to this instance already exists.
+	///
+	/// This [`RawSignal`] is marked as dependency of the surrounding context, iff any, which may also cause callbacks to be called.
+	///
 	/// # Safety Notes
 	///
 	/// `init` is called exactly once with `receiver` before this function returns for the first time for this instance.
 	///
-	/// After `init` returns, `E::eval` may be called any number of times with the state initialised by `init`, but at most once at a time.
+	/// After `init` returns, [`E::UPDATE`](`Callbacks::UPDATE`) and [`E::ON_SUBSCRIBED_CHANGE`](`Callbacks::ON_SUBSCRIBED_CHANGE`)
+	/// may be called any number of times with the state initialised by `init`, but at most once at a time.
 	///
 	/// [`RawSignal`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
 	pub fn project_or_init<C: Callbacks<Eager, Lazy, SR>>(
 		self: Pin<&Self>,
 		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
 	) -> (Pin<&Eager>, Pin<&Lazy>) {
+		self.handle.runtime.record_dependency(self.handle.id);
 		unsafe {
 			let eager = Pin::new_unchecked(&self.eager);
-			let lazy = self.handle.mark(|| {
-				(&*self.lazy.get()).get_or_init(|| {
-					let mut lazy = MaybeUninit::uninit();
-					let init = || drop(init(eager, Slot::new(&mut lazy)));
-					let callback_table = {
+			let lazy = self.lazy.get_or_write(|cell| {
+				self.handle.start(
+					|| {
+						let mut lazy = MaybeUninit::uninit();
+						init(eager, Slot::new(&mut lazy));
+						cell.set(lazy.assume_init())
+							.map_err(|_| ())
+							.expect("Assured by `OnceSlot` synchronisation.");
+					},
+					{
 						let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
 						match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
 							Entry::Vacant(vacant) => vacant.insert(AssertSend(
@@ -193,10 +206,132 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 							}
 							Entry::Occupied(o) => &**o.get() as *const _,
 						}
-					};
+					},
+					(Pin::into_inner_unchecked(self) as *const Self).cast(),
+				);
+
+				struct AssertSend<T>(T);
+				unsafe impl<T> Send for AssertSend<T> {}
+
+				static CALLBACK_TABLES: Mutex<
+					//BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
+					BTreeMap<TypeId, AssertSend<*mut ()>>,
+				> = Mutex::new(BTreeMap::new());
+
+				unsafe fn update<
+					Eager: Sync + ?Sized,
+					Lazy: Sync,
+					SR: SignalRuntimeRef,
+					C: Callbacks<Eager, Lazy, SR>,
+				>(
+					this: *const RawSignal<Eager, Lazy, SR>,
+				) -> Propagation {
+					let this = &*this;
+					C::UPDATE.expect("unreachable")(
+						Pin::new_unchecked(&this.eager),
+						Pin::new_unchecked(this.lazy.get().expect("unreachable")),
+					)
+				}
+
+				unsafe fn on_subscribed_change<
+					Eager: Sync + ?Sized,
+					Lazy: Sync,
+					SR: SignalRuntimeRef,
+					C: Callbacks<Eager, Lazy, SR>,
+				>(
+					this: *const RawSignal<Eager, Lazy, SR>,
+					subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+				) -> Propagation {
+					let this = &*this;
+					C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
+						Pin::new_unchecked(this),
+						Pin::new_unchecked(&this.eager),
+						Pin::new_unchecked(this.lazy.get().expect("unreachable")),
+						subscribed,
+					)
+				}
+			});
+			self.handle.refresh();
+			mem::transmute((eager, Pin::new_unchecked(lazy)))
+		}
+	}
+
+	/// Tries to newly inherently subscribe this [`RawSignal`].
+	///
+	/// Iff an inherent subscription already exists, this method returns [`None`] and has no logic side-effects.
+	///
+	/// Otherwise (iff the inherent subscription is new), this [`RawSignal`]'s lazy state is initialised if necessary,
+	/// recording dependencies in the process. This also causes [`C::ON_SUBSCRIBED_CHANGE`](`Callbacks::ON_SUBSCRIBED_CHANGE`)
+	/// to be called after `init` due to the already-present subscription, but without recording dependencies.
+	///
+	/// (Iff the subscription is new but initialisation is not necessary, then the previously-configured [`Callbacks::ON_SUBSCRIBED_CHANGE`] is used.)
+	///
+	/// This [`RawSignal`] is marked as dependency of the surrounding context, iff any.
+	///
+	/// # Safety Notes
+	///
+	/// `init` is called exactly once with `receiver` before this function returns for the first time for this instance.
+	///
+	/// After `init` returns, [`E::UPDATE`](`Callbacks::UPDATE`) and [`E::ON_SUBSCRIBED_CHANGE`](`Callbacks::ON_SUBSCRIBED_CHANGE`)
+	/// may be called any number of times with the state initialised by `init`, but at most once at a time.
+	///
+	/// [`RawSignal`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
+	pub fn subscribe_inherently_or_init<C: Callbacks<Eager, Lazy, SR>>(
+		self: Pin<&Self>,
+		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
+	) -> Option<(Pin<&Eager>, Pin<&Lazy>)> {
+		self.handle.runtime.record_dependency(self.handle.id);
+		unsafe {
+			let eager = Pin::new_unchecked(&self.eager);
+			let lazy = self.handle.set_subscription(true).then(|| {
+				let lazy = self.lazy.get_or_write(|cell| {
 					self.handle.start(
-						init,
-						callback_table,
+						|| {
+							let mut lazy = MaybeUninit::uninit();
+							init(eager, Slot::new(&mut lazy));
+							cell.set(lazy.assume_init())
+								.map_err(|_| ())
+								.expect("Assured by `OnceSlot` synchronisation.");
+						},
+						{
+							let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
+							match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
+								Entry::Vacant(vacant) => vacant.insert(AssertSend(
+									(Box::leak(Box::new(BTreeMap::<
+										CallbackTable<(), SR::CallbackTableTypes>,
+										Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+									>::new()))
+										as *mut BTreeMap<
+											CallbackTable<(), SR::CallbackTableTypes>,
+											Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+										>)
+										.cast::<()>(),
+								)),
+								Entry::Occupied(cached) => cached.into_mut(),
+							} {
+								AssertSend(ptr) => &mut *ptr.cast::<BTreeMap<
+									CallbackTable<(), SR::CallbackTableTypes>,
+									Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+								>>(),
+							}
+							.entry(
+								CallbackTable {
+									update: C::UPDATE
+										.is_some()
+										.then_some(update::<Eager, Lazy, SR, C>),
+									on_subscribed_change: C::ON_SUBSCRIBED_CHANGE
+										.is_some()
+										.then_some(on_subscribed_change::<Eager, Lazy, SR, C>),
+								}
+								.into_erased(),
+							) {
+								Entry::Vacant(v) => {
+									let table = v.key().clone();
+									&**v.insert(Box::pin(table)) as *const _
+								}
+								Entry::Occupied(o) => &**o.get() as *const _,
+							}
+						},
 						(Pin::into_inner_unchecked(self) as *const Self).cast(),
 					);
 
@@ -215,11 +350,11 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 						C: Callbacks<Eager, Lazy, SR>,
 					>(
 						this: *const RawSignal<Eager, Lazy, SR>,
-					) -> Update {
+					) -> Propagation {
 						let this = &*this;
 						C::UPDATE.expect("unreachable")(
 							Pin::new_unchecked(&this.eager),
-							Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
+							Pin::new_unchecked(this.lazy.get().expect("unreachable")),
 						)
 					}
 
@@ -231,44 +366,21 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 					>(
 						this: *const RawSignal<Eager, Lazy, SR>,
 						subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-					) {
+					) -> Propagation {
 						let this = &*this;
 						C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
 							Pin::new_unchecked(this),
 							Pin::new_unchecked(&this.eager),
-							Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
+							Pin::new_unchecked(this.lazy.get().expect("unreachable")),
 							subscribed,
 						)
 					}
-
-					lazy.assume_init()
-				})
+				});
+				lazy
 			});
 			self.handle.refresh();
-			mem::transmute((eager, Pin::new_unchecked(lazy)))
+			lazy.map(|lazy| mem::transmute((eager, Pin::new_unchecked(lazy))))
 		}
-	}
-
-	/// Acts as [`Self::project_or_init`], but also marks this [`RawSignal`] indefinitely as subscribed (until dropped or [`.unsubscribe()`](`RawSignal::unsubscribe`) is called). Idempotent.
-	///
-	/// # Logic
-	///
-	/// Iff this function is called in parallel,
-	/// initialising and newly subscribing thread **may** differ!
-	///
-	/// # Returns
-	///
-	/// [`Some`] iff the inherent subscription is new, otherwise [`None`].
-	///
-	/// # Safety Notes
-	///
-	/// This function has the same safety assurances as [`Self::project_or_init`].
-	pub fn subscribe_inherently<E: Callbacks<Eager, Lazy, SR>>(
-		self: Pin<&Self>,
-		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
-	) -> Option<(Pin<&Eager>, Pin<&Lazy>)> {
-		let projected = self.project_or_init::<E>(init);
-		self.handle.set_subscription(true).then_some(projected)
 	}
 
 	/// Unsubscribes this [`RawSignal`] (only regarding innate subscription!).
@@ -291,31 +403,29 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	/// **May** panic iff called *not* between `self.start(…)` and `self.stop(…)`.
 	pub fn update(
 		self: Pin<&Self>,
-		f: impl 'static + Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> Update,
+		f: impl 'static + Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> Propagation,
 	) where
 		SR::Symbol: Sync,
 	{
 		let this = Pin::clone(&self);
-		let update: Box<dyn Send + FnOnce() -> Update> = Box::new(move || unsafe {
+		let update: Box<dyn Send + FnOnce() -> Propagation> = Box::new(move || unsafe {
 			f(
 				this.map_unchecked(|this| &this.eager),
-				(&*this.lazy.get())
-					.get()
-					.map(|lazy| Pin::new_unchecked(lazy)),
+				this.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		});
-		let update: Box<dyn 'static + Send + FnOnce() -> Update> =
+		let update: Box<dyn 'static + Send + FnOnce() -> Propagation> =
 			unsafe { mem::transmute(update) };
 		self.handle.update_or_enqueue(update);
 	}
 
 	pub async fn update_async<T: Send>(
 		&self,
-		f: impl Send + FnOnce(&Eager, Option<&Lazy>) -> (T, Update),
+		f: impl Send + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
 	) -> T {
-		let update: Box<dyn Send + FnOnce() -> (T, Update)> =
-			Box::new(move || f(&self.eager, unsafe { &*self.lazy.get() }.get()));
-		let update: Box<dyn 'static + Send + FnOnce() -> (T, Update)> =
+		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> =
+			Box::new(move || f(&self.eager, self.lazy.get()));
+		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
 			unsafe { mem::transmute(update) };
 		self.handle
             .update_async(update)
@@ -326,18 +436,16 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 
 	pub async fn update_async_pin<T: Send>(
 		self: Pin<&Self>,
-		f: impl Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (T, Update),
+		f: impl Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
 	) -> T {
 		let this = Pin::clone(&self);
-		let update: Box<dyn Send + FnOnce() -> (T, Update)> = Box::new(move || unsafe {
+		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> = Box::new(move || unsafe {
 			f(
 				this.map_unchecked(|this| &this.eager),
-				(&*this.lazy.get())
-					.get()
-					.map(|lazy| Pin::new_unchecked(lazy)),
+				this.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		});
-		let update: Box<dyn 'static + Send + FnOnce() -> (T, Update)> =
+		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
 			unsafe { mem::transmute(update) };
 		self.handle
             .update_async(update)
@@ -346,21 +454,22 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
             .expect("Cancelling the update in a way this here would be reached would require calling `.stop()`, which isn't possible here because that requires an exclusive/`mut` reference.")
 	}
 
-	pub fn update_blocking<T>(&self, f: impl FnOnce(&Eager, Option<&Lazy>) -> (T, Update)) -> T {
+	pub fn update_blocking<T>(
+		&self,
+		f: impl FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
+	) -> T {
 		self.handle
-			.update_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }.get()))
+			.update_blocking(move || f(&self.eager, self.lazy.get()))
 	}
 
 	pub fn update_blocking_pin<T>(
 		self: Pin<&Self>,
-		f: impl FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (T, Update),
+		f: impl FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
 	) -> T {
 		self.handle.update_blocking(move || unsafe {
 			f(
 				self.map_unchecked(|this| &this.eager),
-				(&*self.lazy.get())
-					.get()
-					.map(|lazy| Pin::new_unchecked(lazy)),
+				self.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		})
 	}
@@ -372,7 +481,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self.handle.update_dependency_set(move || unsafe {
 			f(
 				Pin::new_unchecked(&self.eager),
-				Pin::new_unchecked(match (&*self.lazy.get()).get() {
+				Pin::new_unchecked(match self.lazy.get() {
 					Some(lazy) => lazy,
 					None => panic!("`RawSignal::track` may only be used after initialisation."),
 				}),
@@ -387,16 +496,17 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self.handle.runtime.clone()
 	}
 
-	pub fn stop_and<T>(
+	pub fn deinit_and<T>(
 		self: Pin<&mut Self>,
 		f: impl FnOnce(Pin<&Eager>, Pin<&mut Lazy>) -> T,
 	) -> Option<T> {
-		if unsafe { &*self.lazy.get() }.get().is_some() {
-			self.handle.stop();
-			let t = f(unsafe { Pin::new_unchecked(&self.eager) }, unsafe {
-				Pin::new_unchecked((&mut *self.lazy.get()).get_mut().expect("unreachable"))
+		let this = unsafe { Pin::into_inner_unchecked(self) };
+		if this.lazy.get().is_some() {
+			this.handle.purge();
+			let t = f(unsafe { Pin::new_unchecked(&this.eager) }, unsafe {
+				Pin::new_unchecked(this.lazy.get_mut().expect("unreachable"))
 			});
-			unsafe { *self.lazy.get() = OnceLock::new() };
+			this.lazy = OnceSlot::new();
 			Some(t)
 		} else {
 			None
@@ -406,8 +516,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 
 impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
 	fn drop(&mut self) {
-		if unsafe { &*self.lazy.get() }.get().is_some() {
-			self.handle.stop()
+		if self.lazy.get().is_some() {
+			self.handle.purge()
 		}
 	}
 }
@@ -424,7 +534,7 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
 	/// # Safety
 	///
 	/// Only called once at a time for each initialised [`RawSignal`].
-	const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update>;
+	const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Propagation>;
 
 	/// A subscription change notification callback.
 	///
@@ -443,7 +553,7 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
 			eager: Pin<&Eager>,
 			lazy: Pin<&Lazy>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Propagation,
 	>;
 }
 
@@ -456,13 +566,13 @@ pub enum NoCallbacks {}
 impl<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> Callbacks<Eager, Lazy, SR>
 	for NoCallbacks
 {
-	const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Update> = None;
+	const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Propagation> = None;
 	const ON_SUBSCRIBED_CHANGE: Option<
 		fn(
 			source: Pin<&RawSignal<Eager, Lazy, SR>>,
 			eager: Pin<&Eager>,
 			lazy: Pin<&Lazy>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Propagation,
 	> = None;
 }

@@ -8,7 +8,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
+	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -22,7 +22,7 @@ use super::Source;
 pub(crate) struct Reduced<
 	T: Send,
 	S: Send + FnMut() -> T,
-	M: Send + FnMut(&mut T, T) -> Update,
+	M: Send + FnMut(&mut T, T) -> Propagation,
 	SR: SignalRuntimeRef,
 >(#[pin] RawSignal<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>);
 
@@ -49,7 +49,7 @@ impl<'a, T: ?Sized> Borrow<T> for ReducedGuardExclusive<'a, T> {
 unsafe impl<
 		T: Send,
 		S: Send + FnMut() -> T,
-		M: Send + FnMut(&mut T, T) -> Update,
+		M: Send + FnMut(&mut T, T) -> Propagation,
 		SR: SignalRuntimeRef + Sync,
 	> Sync for Reduced<T, S, M, SR>
 {
@@ -58,7 +58,7 @@ unsafe impl<
 impl<
 		T: Send,
 		S: Send + FnMut() -> T,
-		M: Send + FnMut(&mut T, T) -> Update,
+		M: Send + FnMut(&mut T, T) -> Propagation,
 		SR: SignalRuntimeRef,
 	> Reduced<T, S, M, SR>
 {
@@ -125,7 +125,7 @@ impl<
 			mem::transmute::<ReducedGuard<T>, ReducedGuard<T>>(ReducedGuard(
 				self.project_ref()
 					.0
-					.subscribe_inherently::<E>(|f, cache| Self::init(f, cache))?
+					.subscribe_inherently_or_init::<E>(|f, cache| Self::init(f, cache))?
 					.1
 					 .0
 					.read()
@@ -139,7 +139,7 @@ enum E {}
 impl<
 		T: Send,
 		S: Send + FnMut() -> T,
-		M: Send + ?Sized + FnMut(&mut T, T) -> Update,
+		M: Send + ?Sized + FnMut(&mut T, T) -> Propagation,
 		SR: SignalRuntimeRef,
 	> Callbacks<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
@@ -147,12 +147,16 @@ impl<
 		fn(
 			eager: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
 			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
-		) -> Update,
+		) -> Propagation,
 	> = {
-		fn eval<T: Send, S: Send + FnMut() -> T, M: Send + ?Sized + FnMut(&mut T, T) -> Update>(
+		fn eval<
+			T: Send,
+			S: Send + FnMut() -> T,
+			M: Send + ?Sized + FnMut(&mut T, T) -> Propagation,
+		>(
 			state: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
 			cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
-		) -> Update {
+		) -> Propagation {
 			let (select_fn_pin, reduce_fn_pin) = unsafe {
 				//SAFETY: This function has exclusive access to `state`.
 				&mut *state.0.get()
@@ -172,7 +176,7 @@ impl<
 			eager: Pin<&ForceSyncUnpin<UnsafeCell<(S, M)>>>,
 			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Propagation,
 	> = None;
 }
 
@@ -183,7 +187,7 @@ impl<
 impl<
 		T: Send,
 		S: Send + FnMut() -> T,
-		M: Send + FnMut(&mut T, T) -> Update,
+		M: Send + FnMut(&mut T, T) -> Propagation,
 		SR: SignalRuntimeRef,
 	> Reduced<T, S, M, SR>
 {
@@ -198,7 +202,7 @@ impl<
 impl<
 		T: Send,
 		S: Send + FnMut() -> T,
-		M: Send + FnMut(&mut T, T) -> Update,
+		M: Send + FnMut(&mut T, T) -> Propagation,
 		SR: SignalRuntimeRef,
 	> Source<SR> for Reduced<T, S, M, SR>
 {
@@ -258,7 +262,7 @@ impl<
 impl<
 		T: Send,
 		S: Send + FnMut() -> T,
-		M: Send + FnMut(&mut T, T) -> Update,
+		M: Send + FnMut(&mut T, T) -> Propagation,
 		SR: SignalRuntimeRef,
 	> Subscribable<SR> for Reduced<T, S, M, SR>
 {

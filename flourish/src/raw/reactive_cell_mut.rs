@@ -1,5 +1,5 @@
 use std::{
-	borrow::Borrow,
+	borrow::{Borrow, BorrowMut},
 	fmt::{self, Debug, Formatter},
 	mem,
 	pin::Pin,
@@ -16,10 +16,13 @@ use super::{Source, SourceCell, Subscribable};
 
 #[pin_project]
 #[repr(transparent)]
-pub struct ReactiveCell<
+pub struct ReactiveCellMut<
 	T: ?Sized + Send,
 	HandlerFnPin: Send
-		+ FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
+		+ FnMut(
+			&mut T,
+			<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+		) -> Propagation,
 	SR: SignalRuntimeRef,
 > {
 	#[pin]
@@ -30,17 +33,17 @@ impl<
 		T: ?Sized + Send + Debug,
 		HandlerFnPin: Send
 			+ FnMut(
-				&T,
+				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation
 			+ Debug,
 		SR: SignalRuntimeRef + Debug,
-	> Debug for ReactiveCell<T, HandlerFnPin, SR>
+	> Debug for ReactiveCellMut<T, HandlerFnPin, SR>
 where
 	SR::Symbol: Debug,
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("ReactiveCell")
+		f.debug_struct("ReactiveCellMut")
 			.field("signal", &&self.signal)
 			.finish()
 	}
@@ -51,11 +54,11 @@ unsafe impl<
 		T: ?Sized + Send,
 		HandlerFnPin: Send
 			+ FnMut(
-				&T,
+				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalRuntimeRef + Sync,
-	> Sync for ReactiveCell<T, HandlerFnPin, SR>
+	> Sync for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 }
 
@@ -87,16 +90,16 @@ impl<T: Debug + ?Sized, HandlerFnPin: Debug> Debug
 	}
 }
 
-struct ReactiveCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct ReactiveCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+struct ReactiveCellMutGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+struct ReactiveCellMutGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuard<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for ReactiveCellMutGuard<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuardExclusive<'a, T> {
+impl<'a, T: ?Sized> Borrow<T> for ReactiveCellMutGuardExclusive<'a, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -106,11 +109,11 @@ impl<
 		T: ?Sized + Send,
 		HandlerFnPin: Send
 			+ FnMut(
-				&T,
+				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalRuntimeRef,
-	> ReactiveCell<T, HandlerFnPin, SR>
+	> ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	pub(crate) fn new(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
 	where
@@ -144,12 +147,12 @@ impl<
 		T: Sync,
 	{
 		let this = &self;
-		ReactiveCellGuard(this.touch().read().unwrap())
+		ReactiveCellMutGuard(this.touch().read().unwrap())
 	}
 
 	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
 		let this = &self;
-		ReactiveCellGuardExclusive(this.touch().write().unwrap())
+		ReactiveCellMutGuardExclusive(this.touch().write().unwrap())
 	}
 
 	fn touch(self: Pin<&Self>) -> &RwLock<T> {
@@ -171,7 +174,7 @@ impl<
 		T: ?Sized + Send,
 		HandlerFnPin: Send
 			+ FnMut(
-				&T,
+				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalRuntimeRef,
@@ -194,10 +197,10 @@ impl<
 	> = {
 		fn on_subscribed_change_fn_pin<
 			T: ?Sized + Send,
-			HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
+			HandlerFnPin: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 			SR: SignalRuntimeRef,
-		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>, eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation{
-			eager.0.0.lock().unwrap()(eager.0.1.read().unwrap().borrow(), status)
+		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation{
+			eager.0.0.lock().unwrap()(eager.0.1.write().unwrap().borrow_mut(), status)
 		}
 
 		Some(on_subscribed_change_fn_pin::<T,HandlerFnPin,SR>)
@@ -208,11 +211,11 @@ impl<
 		T: ?Sized + Send,
 		HandlerFnPin: Send
 			+ FnMut(
-				&T,
+				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalRuntimeRef,
-	> Source<SR> for ReactiveCell<T, HandlerFnPin, SR>
+	> Source<SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	type Output = T;
 
@@ -257,11 +260,11 @@ impl<
 		T: ?Sized + Send,
 		HandlerFnPin: Send
 			+ FnMut(
-				&T,
+				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalRuntimeRef,
-	> Subscribable<SR> for ReactiveCell<T, HandlerFnPin, SR>
+	> Subscribable<SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
 		//FIXME: This is inefficient.
@@ -286,11 +289,11 @@ impl<
 		T: ?Sized + Send,
 		HandlerFnPin: Send
 			+ FnMut(
-				&T,
+				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
-	> SourceCell<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
+	> SourceCell<T, SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	fn change(self: Pin<&Self>, new_value: T)
 	where

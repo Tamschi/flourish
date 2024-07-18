@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, future::Future, mem, pin::Pin};
 
-use isoprenoid::runtime::{SignalRuntimeRef, Update};
+use isoprenoid::runtime::{Propagation, SignalRuntimeRef};
 
 pub unsafe trait EnableValuePinAPI {}
 
@@ -225,7 +225,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update)
+	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
 		SR::Symbol: Sync;
@@ -256,9 +256,9 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	{
 		self.update_async(|value| {
 			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Update::Propagate)
+				(Ok(mem::replace(value, new_value)), Propagation::Propagate)
 			} else {
-				(Err(new_value), Update::Halt)
+				(Err(new_value), Propagation::Halt)
 			}
 		})
 	}
@@ -285,7 +285,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 		Self: Sized,
 		T: Sized,
 	{
-		self.update_async(|value| (mem::replace(value, new_value), Update::Propagate))
+		self.update_async(|value| (mem::replace(value, new_value), Propagation::Propagate))
 	}
 
 	/// Modifies the current value using the given closure.
@@ -309,7 +309,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (U, Update),
+		update: impl Send + FnOnce(&mut T) -> (U, Propagation),
 	) -> impl Send + Future<Output = U>
 	where
 		Self: Sized;
@@ -363,7 +363,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Propagation)) -> U
 	where
 		Self: Sized;
 
@@ -416,7 +416,7 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	fn update(&self, update: impl 'static + Send + FnOnce(Pin<&mut T>) -> Update)
+	fn update(&self, update: impl 'static + Send + FnOnce(Pin<&mut T>) -> Propagation)
 	where
 		Self: Sized,
 		SR::Symbol: Sync;
@@ -447,9 +447,9 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	{
 		self.update_async(|mut value| {
 			if *value != new_value {
-				(Ok(value.set(new_value)), Update::Propagate)
+				(Ok(value.set(new_value)), Propagation::Propagate)
 			} else {
-				(Err(new_value), Update::Halt)
+				(Err(new_value), Propagation::Halt)
 			}
 		})
 	}
@@ -472,7 +472,7 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 		Self: Sized,
 		T: Sized,
 	{
-		self.update_async(|mut value| (value.set(new_value), Update::Propagate))
+		self.update_async(|mut value| (value.set(new_value), Propagation::Propagate))
 	}
 
 	/// Modifies the current value using the given closure.
@@ -496,7 +496,7 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(Pin<&mut T>) -> (U, Update),
+		update: impl Send + FnOnce(Pin<&mut T>) -> (U, Propagation),
 	) -> impl Send + Future<Output = U>
 	where
 		Self: Sized;
@@ -546,7 +546,7 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn update_blocking<U>(&self, update: impl FnOnce(Pin<&mut T>) -> (U, Update)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(Pin<&mut T>) -> (U, Propagation)) -> U
 	where
 		Self: Sized;
 }

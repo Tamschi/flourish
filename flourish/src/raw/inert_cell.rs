@@ -8,7 +8,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{NoCallbacks, RawSignal},
-	runtime::{SignalRuntimeRef, Update},
+	runtime::{Propagation, SignalRuntimeRef},
 };
 use pin_project::pin_project;
 
@@ -153,7 +153,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Subscribable<SR> for Inert
 		if self
 			.project_ref()
 			.signal
-			.subscribe_inherently::<NoCallbacks>(|_, slot| slot.write(()))
+			.subscribe_inherently_or_init::<NoCallbacks>(|_, slot| slot.write(()))
 			.is_some()
 		{
 			Some(Source::read_exclusive(self))
@@ -178,9 +178,9 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 		self.update(|value| {
 			if *value != new_value {
 				*value = new_value;
-				Update::Propagate
+				Propagation::Propagate
 			} else {
-				Update::Halt
+				Propagation::Halt
 			}
 		});
 	}
@@ -192,11 +192,11 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 	{
 		self.update(|value| {
 			*value = new_value;
-			Update::Propagate
+			Propagation::Propagate
 		});
 	}
 
-	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Update) {
+	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Propagation) {
 		self.signal
 			.clone_runtime_ref()
 			.run_detached(|| self.touch());
@@ -205,7 +205,10 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 			.update(|value, _| update(&mut value.0.write().unwrap()))
 	}
 
-	async fn update_async<U: Send>(&self, update: impl Send + FnOnce(&mut T) -> (U, Update)) -> U {
+	async fn update_async<U: Send>(
+		&self,
+		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
+	) -> U {
 		self.signal
 			.update_async(|value, _| update(&mut value.0.write().unwrap()))
 			.await
@@ -217,9 +220,9 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 	{
 		self.update_blocking(|value| {
 			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Update::Propagate)
+				(Propagation::Propagate, Ok(mem::replace(value, new_value)))
 			} else {
-				(Err(new_value), Update::Halt)
+				(Propagation::Halt, Err(new_value))
 			}
 		})
 	}
@@ -228,10 +231,10 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 	where
 		T: Sized,
 	{
-		self.update_blocking(|value| (mem::replace(value, new_value), Update::Propagate))
+		self.update_blocking(|value| (Propagation::Propagate, mem::replace(value, new_value)))
 	}
 
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Update)) -> U {
+	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U {
 		self.signal
 			.update_blocking(|value, _| update(&mut value.0.write().unwrap()))
 	}

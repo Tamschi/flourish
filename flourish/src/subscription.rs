@@ -6,7 +6,7 @@ use std::{
 	sync::Arc,
 };
 
-use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef, Update};
+use isoprenoid::runtime::{GlobalSignalRuntime, Propagation, SignalRuntimeRef};
 
 use crate::{
 	raw::{computed, folded, reduced},
@@ -151,7 +151,7 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
 	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
 	///
 	/// Wraps [`folded`](`folded()`).
-	pub fn folded(init: T, fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update) -> Self
+	pub fn folded(init: T, fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation) -> Self
 	where
 		SR: Default,
 	{
@@ -163,7 +163,7 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
 	/// Wraps [`folded`](`folded()`).
 	pub fn folded_with_runtime(
 		init: T,
-		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Update,
+		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
 		runtime: SR,
 	) -> Self {
 		Self::new(folded(init, fold_fn_pin, runtime))
@@ -175,7 +175,7 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
 	) -> Self
 	where
 		SR: Default,
@@ -189,7 +189,7 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced_with_runtime(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Update,
+		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
 		runtime: SR,
 	) -> Self {
 		Self::new(reduced(select_fn_pin, reduce_fn_pin, runtime))

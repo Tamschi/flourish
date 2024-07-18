@@ -7,7 +7,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
+	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -113,7 +113,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
 			mem::transmute::<ComputedGuard<T>, ComputedGuard<T>>(ComputedGuard(
 				self.project_ref()
 					.0
-					.subscribe_inherently::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
+					.subscribe_inherently_or_init::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
 					.1
 					.project_ref()
 					.0
@@ -129,16 +129,19 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 	Callbacks<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
 	const UPDATE: Option<
-		fn(eager: Pin<&ForceSyncUnpin<Mutex<F>>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Update,
+		fn(
+			eager: Pin<&ForceSyncUnpin<Mutex<F>>>,
+			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
+		) -> Propagation,
 	> = {
 		fn eval<T: Send, F: Send + FnMut() -> T>(
 			fn_pin: Pin<&ForceSyncUnpin<Mutex<F>>>,
 			cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
-		) -> Update {
+		) -> Propagation {
 			//FIXME: This is externally synchronised already.
 			let new_value = fn_pin.project_ref().0.try_lock().expect("unreachable")();
 			*cache.project_ref().0.write().unwrap() = new_value;
-			Update::Propagate
+			Propagation::Propagate
 		}
 		Some(eval)
 	};
@@ -149,7 +152,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 			eager: Pin<&ForceSyncUnpin<Mutex<F>>>,
 			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Propagation,
 	> = None;
 }
 

@@ -8,7 +8,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, SignalRuntimeRef, Update},
+	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -131,7 +131,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cac
 			mem::transmute::<CachedGuard<T>, CachedGuard<T>>(CachedGuard(
 				self.project_ref()
 					.0
-					.subscribe_inherently::<E>(|source, cache| Self::init(source, cache))?
+					.subscribe_inherently_or_init::<E>(|source, cache| Self::init(source, cache))?
 					.1
 					.project_ref()
 					.0
@@ -147,16 +147,16 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>
 	Callbacks<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
 	const UPDATE: Option<
-		fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Update,
+		fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Propagation,
 	> = {
 		fn eval<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>(
 			source: Pin<&ForceSyncUnpin<S>>,
 			cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
-		) -> Update {
+		) -> Propagation {
 			//FIXME: This can be split up to avoid congestion where not necessary.
 			let new_value = source.project_ref().0.get_clone_exclusive();
 			*cache.project_ref().0.write().unwrap() = new_value;
-			Update::Propagate
+			Propagation::Propagate
 		}
 		Some(eval)
 	};
@@ -167,7 +167,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>
 			eager: Pin<&ForceSyncUnpin<S>>,
 			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-		),
+		) -> Propagation,
 	> = None;
 }
 
