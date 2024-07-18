@@ -443,17 +443,17 @@ impl ASignalRuntime {
 						// Note: Subscribed status change handlers *may* see stale values!
 						// I think simpler/deduplicated propagation is likely worth that tradeoff.
 
-						borrow = self.run_detached(|| {
-							drop(borrow);
+						drop(borrow);
+						self.run_detached(|| {
 							let propagation = on_subscribed_change(data, true);
-							borrow = (**lock).borrow_mut();
+							let borrow = (**lock).borrow_mut();
 							match propagation {
-								Propagation::Halt => borrow,
+								Propagation::Halt => (),
 								// Important: That this is within `run_detached` defers the refresh.
 								// The entry point will refresh all pending (queued updates + stale subscribed)
 								// in one go by calling `process_pending`.
 								Propagation::Propagate => {
-									self.mark_direct_dependencies_stale(dependency, &lock, borrow)
+									self.mark_direct_dependencies_stale(dependency, &lock, borrow);
 								}
 							}
 						})
@@ -462,6 +462,7 @@ impl ASignalRuntime {
 			}
 		}
 
+		borrow = (**lock).borrow_mut();
 		borrow
 	}
 
