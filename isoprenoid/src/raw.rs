@@ -7,11 +7,13 @@ use core::{
 };
 use std::{
 	any::TypeId,
-	cell::UnsafeCell,
+	cell::{self, UnsafeCell},
 	collections::{btree_map::Entry, BTreeMap},
 	mem::{self, MaybeUninit},
 	sync::{Mutex, OnceLock},
 };
+
+use once_slot::OnceSlot;
 
 use crate::{
 	runtime::{CallbackTable, CallbackTableTypes, Propagation, SignalRuntimeRef},
@@ -80,12 +82,14 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 	}
 }
 
+mod once_slot;
+
 /// A slightly higher-level signal primitive than using a runtime's [`SignalRuntimeRef::Symbol`] directly.
 /// This type comes with some lifecycle management to ensure orderly callbacks and safe data access.
 pub struct RawSignal<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> {
 	handle: SignalId<SR>,
 	_pinned: PhantomPinned,
-	lazy: UnsafeCell<OnceLock<Lazy>>,
+	lazy: OnceSlot<Lazy>,
 	eager: Eager,
 }
 
@@ -127,8 +131,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		Self {
 			handle: SignalId::with_runtime(runtime),
 			_pinned: PhantomPinned,
-			lazy: OnceLock::new().into(),
-			eager: eager.into(),
+			lazy: OnceSlot::new(),
+			eager,
 		}
 	}
 
@@ -157,10 +161,15 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self.handle.runtime.record_dependency(self.handle.id);
 		unsafe {
 			let eager = Pin::new_unchecked(&self.eager);
-			let lazy = (&*self.lazy.get()).get_or_init(|| {
-				let mut lazy = MaybeUninit::uninit();
+			let lazy = self.lazy.get_or_write(|cell| {
 				self.handle.start(
-					|| drop(init(eager, Slot::new(&mut lazy))),
+					|| {
+						let mut lazy = MaybeUninit::uninit();
+						init(eager, Slot::new(&mut lazy));
+						cell.set(lazy.assume_init())
+							.map_err(|_| ())
+							.expect("Assured by `OnceSlot` synchronisation.");
+					},
 					{
 						let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
 						match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
@@ -220,7 +229,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 					let this = &*this;
 					C::UPDATE.expect("unreachable")(
 						Pin::new_unchecked(&this.eager),
-						Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
+						Pin::new_unchecked(this.lazy.get().expect("unreachable")),
 					)
 				}
 
@@ -237,12 +246,10 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 					C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
 						Pin::new_unchecked(this),
 						Pin::new_unchecked(&this.eager),
-						Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
+						Pin::new_unchecked(this.lazy.get().expect("unreachable")),
 						subscribed,
 					)
 				}
-
-				lazy.assume_init()
 			});
 			self.handle.refresh();
 			mem::transmute((eager, Pin::new_unchecked(lazy)))
@@ -277,10 +284,15 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		unsafe {
 			let eager = Pin::new_unchecked(&self.eager);
 			let lazy = self.handle.set_subscription(true).then(|| {
-				let lazy = (&*self.lazy.get()).get_or_init(|| {
-					let mut lazy = MaybeUninit::uninit();
+				let lazy = self.lazy.get_or_write(|cell| {
 					self.handle.start(
-						|| drop(init(eager, Slot::new(&mut lazy))),
+						|| {
+							let mut lazy = MaybeUninit::uninit();
+							init(eager, Slot::new(&mut lazy));
+							cell.set(lazy.assume_init())
+								.map_err(|_| ())
+								.expect("Assured by `OnceSlot` synchronisation.");
+						},
 						{
 							let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
 							match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
@@ -342,7 +354,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 						let this = &*this;
 						C::UPDATE.expect("unreachable")(
 							Pin::new_unchecked(&this.eager),
-							Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
+							Pin::new_unchecked(this.lazy.get().expect("unreachable")),
 						)
 					}
 
@@ -359,12 +371,10 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 						C::ON_SUBSCRIBED_CHANGE.expect("unreachable")(
 							Pin::new_unchecked(this),
 							Pin::new_unchecked(&this.eager),
-							Pin::new_unchecked((&*this.lazy.get()).get().expect("unreachable")),
+							Pin::new_unchecked(this.lazy.get().expect("unreachable")),
 							subscribed,
 						)
 					}
-
-					lazy.assume_init()
 				});
 				lazy
 			});
@@ -401,9 +411,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		let update: Box<dyn Send + FnOnce() -> Propagation> = Box::new(move || unsafe {
 			f(
 				this.map_unchecked(|this| &this.eager),
-				(&*this.lazy.get())
-					.get()
-					.map(|lazy| Pin::new_unchecked(lazy)),
+				this.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		});
 		let update: Box<dyn 'static + Send + FnOnce() -> Propagation> =
@@ -416,7 +424,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		f: impl Send + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
 	) -> T {
 		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> =
-			Box::new(move || f(&self.eager, unsafe { &*self.lazy.get() }.get()));
+			Box::new(move || f(&self.eager, self.lazy.get()));
 		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
 			unsafe { mem::transmute(update) };
 		self.handle
@@ -434,9 +442,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> = Box::new(move || unsafe {
 			f(
 				this.map_unchecked(|this| &this.eager),
-				(&*this.lazy.get())
-					.get()
-					.map(|lazy| Pin::new_unchecked(lazy)),
+				this.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		});
 		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
@@ -453,7 +459,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		f: impl FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
 	) -> T {
 		self.handle
-			.update_blocking(move || f(&self.eager, unsafe { &*self.lazy.get() }.get()))
+			.update_blocking(move || f(&self.eager, self.lazy.get()))
 	}
 
 	pub fn update_blocking_pin<T>(
@@ -463,9 +469,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self.handle.update_blocking(move || unsafe {
 			f(
 				self.map_unchecked(|this| &this.eager),
-				(&*self.lazy.get())
-					.get()
-					.map(|lazy| Pin::new_unchecked(lazy)),
+				self.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		})
 	}
@@ -477,7 +481,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self.handle.update_dependency_set(move || unsafe {
 			f(
 				Pin::new_unchecked(&self.eager),
-				Pin::new_unchecked(match (&*self.lazy.get()).get() {
+				Pin::new_unchecked(match self.lazy.get() {
 					Some(lazy) => lazy,
 					None => panic!("`RawSignal::track` may only be used after initialisation."),
 				}),
@@ -496,12 +500,13 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self: Pin<&mut Self>,
 		f: impl FnOnce(Pin<&Eager>, Pin<&mut Lazy>) -> T,
 	) -> Option<T> {
-		if unsafe { &*self.lazy.get() }.get().is_some() {
-			self.handle.purge();
-			let t = f(unsafe { Pin::new_unchecked(&self.eager) }, unsafe {
-				Pin::new_unchecked((&mut *self.lazy.get()).get_mut().expect("unreachable"))
+		let this = unsafe { Pin::into_inner_unchecked(self) };
+		if this.lazy.get().is_some() {
+			this.handle.purge();
+			let t = f(unsafe { Pin::new_unchecked(&this.eager) }, unsafe {
+				Pin::new_unchecked(this.lazy.get_mut().expect("unreachable"))
 			});
-			unsafe { *self.lazy.get() = OnceLock::new() };
+			this.lazy = OnceSlot::new();
 			Some(t)
 		} else {
 			None
@@ -511,7 +516,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 
 impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
 	fn drop(&mut self) {
-		if unsafe { &*self.lazy.get() }.get().is_some() {
+		if self.lazy.get().is_some() {
 			self.handle.purge()
 		}
 	}
