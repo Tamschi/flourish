@@ -20,6 +20,7 @@ use std::{
 use async_lock::OnceCell;
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use scopeguard::{guard, ScopeGuard};
+use unwind_safe::try_eval;
 
 /// Trait for handles that let signals refer to a specific runtime (instance).
 ///
@@ -480,28 +481,37 @@ impl ASignalRuntime {
 				next_update
 			} {
 				// Detach without recursion.
-				borrow.context_stack.push(None);
-				drop(borrow);
-				let r = catch_unwind(AssertUnwindSafe(update));
+				let propagation = try_eval(|| {
+					borrow.context_stack.push(None);
+					drop(borrow);
+					update()
+				})
+				.finally(|()| {
+					let mut borrow = (**lock).borrow_mut();
+					assert_eq!(borrow.context_stack.pop(), Some(None));
+				});
 				borrow = (**lock).borrow_mut();
-				if let Ok(Propagation::Propagate) = &r {
-					// Must run with something on `context_stack` to avoid recursion.
-					borrow = self.mark_direct_dependencies_stale(symbol, &lock, borrow);
-				}
-				assert_eq!(borrow.context_stack.pop(), Some(None));
-				if let Err(p) = r {
-					resume_unwind(p)
+				match propagation {
+					Propagation::Propagate => {
+						borrow = self.mark_direct_dependencies_stale(symbol, &lock, borrow)
+					}
+					Propagation::Halt => (),
 				}
 			}
 
 			let stale;
 			(stale, borrow) = self.peek_stale(borrow);
 			if let Some(stale) = stale {
-				borrow.context_stack.push(None);
-				drop(borrow);
-				self.refresh(stale);
+				try_eval(|| {
+					borrow.context_stack.push(None);
+					drop(borrow);
+					self.refresh(stale)
+				})
+				.finally(|()| {
+					let mut borrow = (**lock).borrow_mut();
+					assert_eq!(borrow.context_stack.pop(), Some(None));
+				});
 				borrow = (**lock).borrow_mut();
-				assert_eq!(borrow.context_stack.pop(), Some(None));
 			} else {
 				break;
 			}
@@ -671,33 +681,33 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 			panic!("Tried to `start` `id` twice.")
 		}
 
-		borrow.context_stack.push(Some((id, BTreeSet::new())));
-		drop(borrow);
-		let r = catch_unwind(AssertUnwindSafe(f));
+		let t = try_eval(|| {
+			borrow.context_stack.push(Some((id, BTreeSet::new())));
+			drop(borrow);
+			f()
+		})
+		.finally(|()| {
+			let mut borrow = (*lock).borrow_mut();
+			let Some(Some((popped_id, recorded_dependencies))) = borrow.context_stack.pop() else {
+				unreachable!()
+			};
+			assert_eq!(popped_id, id);
+
+			// This is a bit of a patch-fix against double-calls when subscribing to a stale signal.
+			borrow.stale_queue.remove(&id);
+			assert_eq!(
+				borrow.callbacks.insert(
+					id,
+					(
+						CallbackTable::into_erased_ptr(callback_table),
+						callback_data.cast::<()>()
+					)
+				),
+				None
+			);
+			let _ = self.shrink_dependencies(id, recorded_dependencies, &lock, borrow);
+		});
 		borrow = (*lock).borrow_mut();
-
-		// This is a bit of a patch-fix against double-calls when subscribing to a stale signal.
-		borrow.stale_queue.remove(&id);
-
-		let Some(Some((popped_id, recorded_dependencies))) = borrow.context_stack.pop() else {
-			unreachable!()
-		};
-		assert_eq!(popped_id, id);
-		let t = match r {
-			Ok(t) => t,
-			Err(p) => resume_unwind(p),
-		};
-		assert_eq!(
-			borrow.callbacks.insert(
-				id,
-				(
-					CallbackTable::into_erased_ptr(callback_table),
-					callback_data.cast::<()>()
-				)
-			),
-			None
-		);
-		borrow = self.shrink_dependencies(id, recorded_dependencies, &lock, borrow);
 
 		if borrow
 			.interdependencies
@@ -706,26 +716,32 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 			.is_some_and(|subs| !subs.is_empty())
 		{
 			// Subscribed, so run the callback for that.
-			borrow.context_stack.push(None);
-			let propagation = unsafe {
-				if let &CallbackTable {
-					on_subscribed_change: Some(on_subscribed_change),
-					..
-				} = &*callback_table
-				{
-					drop(borrow);
-					let propagation = on_subscribed_change(callback_data, true);
-					borrow = (*lock).borrow_mut();
-					propagation
-				} else {
-					Propagation::Halt
+			let propagation = try_eval(|| {
+				borrow.context_stack.push(None);
+				drop(borrow);
+				unsafe {
+					if let &CallbackTable {
+						on_subscribed_change: Some(on_subscribed_change),
+						..
+					} = &*callback_table
+					{
+						let propagation = on_subscribed_change(callback_data, true);
+						propagation
+					} else {
+						Propagation::Halt
+					}
 				}
-			};
+			})
+			.finally(|()| {
+				let mut borrow = (*lock).borrow_mut();
+				assert_eq!(borrow.context_stack.pop(), Some(None));
+			});
+
+			borrow = (*lock).borrow_mut();
 			borrow = match propagation {
 				Propagation::Propagate => self.mark_direct_dependencies_stale(id, &lock, borrow),
 				Propagation::Halt => borrow,
 			};
-			assert_eq!(borrow.context_stack.pop(), Some(None));
 		}
 
 		self.process_pending(&lock, borrow);
@@ -742,20 +758,21 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
 
-		borrow.context_stack.push(Some((id, BTreeSet::new())));
-		drop(borrow);
-		let r = catch_unwind(AssertUnwindSafe(f));
-		borrow = (*lock).borrow_mut();
-		let Some(Some((popped_id, recorded_dependencies))) = borrow.context_stack.pop() else {
-			unreachable!()
-		};
-		assert_eq!(popped_id, id);
-		let t = match r {
-			Ok(t) => t,
-			Err(p) => resume_unwind(p),
-		};
-		borrow = self.shrink_dependencies(id, recorded_dependencies, &lock, borrow);
+		let t = try_eval(|| {
+			borrow.context_stack.push(Some((id, BTreeSet::new())));
+			drop(borrow);
+			f()
+		})
+		.finally(|()| {
+			let mut borrow = (*lock).borrow_mut();
+			let Some(Some((popped_id, recorded_dependencies))) = borrow.context_stack.pop() else {
+				unreachable!()
+			};
+			assert_eq!(popped_id, id);
+			let _ = self.shrink_dependencies(id, recorded_dependencies, &lock, borrow);
+		});
 
+		borrow = (*lock).borrow_mut();
 		self.process_pending(&lock, borrow);
 		t
 	}
@@ -916,13 +933,18 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 	fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		borrow.context_stack.push(None);
-		drop(borrow);
-		let r = catch_unwind(AssertUnwindSafe(f));
+		let t = try_eval(|| {
+			borrow.context_stack.push(None);
+			drop(borrow);
+			f()
+		})
+		.finally(|()| {
+			let mut borrow = (*lock).borrow_mut();
+			assert_eq!(borrow.context_stack.pop(), Some(None));
+		});
 		borrow = (*lock).borrow_mut();
-		assert_eq!(borrow.context_stack.pop(), Some(None));
 		self.process_pending(&lock, borrow);
-		r.unwrap_or_else(|p| resume_unwind(p))
+		t
 	}
 
 	fn refresh(&self, id: Self::Symbol) {
@@ -937,16 +959,21 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 					..
 				} = unsafe { &*callback_table }
 				{
-					borrow.context_stack.push(None);
-					drop(borrow);
-					let propagation = self.update_dependency_set(id, || unsafe { update(data) });
+					let propagation = try_eval(|| {
+						borrow.context_stack.push(None);
+						drop(borrow);
+						self.update_dependency_set(id, || unsafe { update(data) })
+					})
+					.finally(|()| {
+						let mut borrow = (*lock).borrow_mut();
+						assert_eq!(borrow.context_stack.pop(), Some(None));
+					});
 					borrow = (*lock).borrow_mut();
-					assert_eq!(borrow.context_stack.pop(), Some(None));
-					borrow = match propagation {
+					match propagation {
 						Propagation::Propagate => {
-							self.mark_direct_dependencies_stale(id, &lock, borrow)
+							borrow = self.mark_direct_dependencies_stale(id, &lock, borrow)
 						}
-						Propagation::Halt => borrow,
+						Propagation::Halt => (),
 					}
 				} else {
 					// If there's no callback, then always mark dependencies as stale!
