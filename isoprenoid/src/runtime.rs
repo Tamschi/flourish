@@ -445,7 +445,7 @@ impl ASignalRuntime {
 
 						drop(borrow);
 						self.run_detached(|| {
-							let propagation = on_subscribed_change(data, true);
+							let propagation = on_subscribed_change(data, false);
 							let borrow = (**lock).borrow_mut();
 							match propagation {
 								Propagation::Halt => (),
@@ -456,13 +456,13 @@ impl ASignalRuntime {
 									self.mark_direct_dependencies_stale(dependency, &lock, borrow);
 								}
 							}
-						})
+						});
+						borrow = (**lock).borrow_mut();
 					}
 				}
 			}
 		}
 
-		borrow = (**lock).borrow_mut();
 		borrow
 	}
 
