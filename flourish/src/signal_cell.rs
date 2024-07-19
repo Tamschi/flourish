@@ -119,6 +119,7 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				Arc::decrement_strong_count(ptr);
 				ptr
 			}
 			.into(),
@@ -159,6 +160,7 @@ impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, S
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				Arc::decrement_strong_count(ptr);
 				ptr
 			}
 			.into(),
@@ -213,6 +215,7 @@ impl<
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				Arc::decrement_strong_count(ptr);
 				ptr
 			}
 			.into(),
@@ -261,6 +264,7 @@ impl<
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				Arc::decrement_strong_count(ptr);
 				ptr
 			}
 			.into(),
@@ -319,6 +323,7 @@ impl<
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				Arc::decrement_strong_count(ptr);
 				ptr
 			}
 			.into(),
@@ -367,6 +372,7 @@ impl<
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<SR, Output = T>);
+				Arc::decrement_strong_count(ptr);
 				ptr
 			}
 			.into(),
