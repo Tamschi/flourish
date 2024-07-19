@@ -167,13 +167,10 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Subscribable<SR> for Inert
 	}
 }
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T, SR>
-	for InertCell<T, SR>
-{
+impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> SourceCell<T, SR> for InertCell<T, SR> {
 	fn change(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized + PartialEq,
-		SR::Symbol: Sync,
 	{
 		self.update(|value| {
 			if *value != new_value {
@@ -188,7 +185,6 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 	fn replace(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized,
-		SR::Symbol: Sync,
 	{
 		self.update(|value| {
 			*value = new_value;

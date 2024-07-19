@@ -44,7 +44,6 @@ pub fn inert_cell<T: Send, SR: SignalRuntimeRef>(
 	runtime: SR,
 ) -> impl SourceCell<T, SR>
 where
-	SR::Symbol: Sync,
 {
 	InertCell::with_runtime(initial_value, runtime)
 }
@@ -78,7 +77,6 @@ pub fn reactive_cell<
 	runtime: SR,
 ) -> impl SourceCell<T, SR>
 where
-	SR::Symbol: Sync,
 {
 	ReactiveCell::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 }
@@ -115,7 +113,6 @@ pub fn reactive_cell_mut<
 	runtime: SR,
 ) -> impl SourceCell<T, SR>
 where
-	SR::Symbol: Sync,
 {
 	ReactiveCellMut::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 }

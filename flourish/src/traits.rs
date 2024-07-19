@@ -162,7 +162,7 @@ pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Source<SR> 
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>>:
+pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef>:
 	Send + Sync + Subscribable<SR, Output = T>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -353,7 +353,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>>:
+pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef>:
 	Send + Sync + SourcePin<SR, Output = T>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -392,6 +392,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		SR::Symbol: Sync;
 
 	//TODO: `_dyn` methods?
+	//TODO: Detach async method lifetimes! (Making them fallible.)
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///

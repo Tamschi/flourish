@@ -292,13 +292,12 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+		SR: ?Sized + SignalRuntimeRef,
 	> SourceCell<T, SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	fn change(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized + PartialEq,
-		SR::Symbol: Sync,
 	{
 		self.update(|value| {
 			if *value != new_value {
@@ -313,7 +312,6 @@ impl<
 	fn replace(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized,
-		SR::Symbol: Sync,
 	{
 		self.update(|value| {
 			*value = new_value;

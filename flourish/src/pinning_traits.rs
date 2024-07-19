@@ -14,7 +14,10 @@ mod private {
 }
 use private::Sealed;
 
-use crate::traits::Source;
+use crate::{
+	traits::{Source, SourceCell},
+	SourceCellPin, SourcePin,
+};
 
 /// **Combinators should implement this.** Interface for "raw" (stack-pinnable) signals that have an accessible value.
 ///
@@ -84,48 +87,6 @@ pub trait PinningSource<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Sealed {
 		SR: Sized;
 }
 
-impl<SR: ?Sized + SignalRuntimeRef, S: Source<SR> + EnableValuePinAPI> PinningSource<SR>
-	for Pin<S>
-{
-	type Output = S::Output;
-
-	fn touch(self: Pin<&Self>) {
-		unsafe { self.map_unchecked(|r| mem::transmute::<&Pin<S>, &S>(r)) }.touch()
-	}
-
-	fn get_clone(self: Pin<&Self>) -> Self::Output
-	where
-		Self::Output: Sync + Clone,
-	{
-		unsafe { self.map_unchecked(|r| mem::transmute::<&Pin<S>, &S>(r)) }.get_clone()
-	}
-
-	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
-	where
-		Self::Output: Clone,
-	{
-		unsafe { self.map_unchecked(|r| mem::transmute::<&Pin<S>, &S>(r)) }.get_clone_exclusive()
-	}
-
-	fn read<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>>
-	where
-		Self::Output: Sync,
-	{
-		todo!()
-	}
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
-		todo!()
-	}
-
-	fn clone_runtime_ref(&self) -> SR
-	where
-		SR: Sized,
-	{
-		unsafe { mem::transmute::<&Pin<S>, &S>(self) }.clone_runtime_ref()
-	}
-}
-
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
 pub trait PinningSourcePin<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Sealed {
 	/// The type of value presented by the [`SourcePin`].
@@ -192,7 +153,7 @@ pub trait PinningSourcePin<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Sealed 
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>>:
+pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef>:
 	Send + Sync + PinningSource<SR, Output = T> + Sealed
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -213,7 +174,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	fn replace(self: Pin<&Self>, new_value: T)
+	fn set(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized;
 
@@ -225,10 +186,9 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
+	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(Pin<&mut T>) -> Propagation)
 	where
-		Self: Sized,
-		SR::Symbol: Sync;
+		Self: Sized;
 
 	//TODO: `_dyn` methods?
 
@@ -249,16 +209,16 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn change_async(&self, new_value: T) -> impl Send + Future<Output = Result<T, T>>
+	fn change_async(&self, new_value: T) -> impl Send + Future<Output = Result<(), T>>
 	where
 		Self: Sized,
 		T: Sized + PartialEq,
 	{
-		self.update_async(|value| {
+		self.update_async(|mut value| {
 			if *value != new_value {
-				(Ok(mem::replace(value, new_value)), Propagation::Propagate)
+				(Propagation::Propagate, Ok(value.set(new_value)))
 			} else {
-				(Err(new_value), Propagation::Halt)
+				(Propagation::Halt, Err(new_value))
 			}
 		})
 	}
@@ -280,12 +240,12 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn replace_async(&self, new_value: T) -> impl Send + Future<Output = T>
+	fn set_async(&self, new_value: T) -> impl Send + Future<Output = ()>
 	where
 		Self: Sized,
 		T: Sized,
 	{
-		self.update_async(|value| (mem::replace(value, new_value), Propagation::Propagate))
+		self.update_async(|mut value| (Propagation::Propagate, value.set(new_value)))
 	}
 
 	/// Modifies the current value using the given closure.
@@ -309,7 +269,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (U, Propagation),
+		update: impl Send + FnOnce(Pin<&mut T>) -> (Propagation, U),
 	) -> impl Send + Future<Output = U>
 	where
 		Self: Sized;
@@ -327,7 +287,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	fn change_blocking(&self, new_value: T) -> Result<(), T>
 	where
 		T: Sized + PartialEq;
 
@@ -344,7 +304,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn replace_blocking(&self, new_value: T) -> T
+	fn set_blocking(&self, new_value: T) -> ()
 	where
 		T: Sized;
 
@@ -363,7 +323,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (U, Propagation)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(Pin<&mut T>) -> (Propagation, U)) -> U
 	where
 		Self: Sized;
 
@@ -383,7 +343,7 @@ pub trait PinningSourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symb
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>>:
+pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef>:
 	Send + Sync + PinningSourcePin<SR, Output = T> + Sealed
 {
 	/// Iff `new_value` differs from the current value, overwrites it and signals dependents.
@@ -404,7 +364,7 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	fn replace(&self, new_value: T)
+	fn set(&self, new_value: T)
 	where
 		T: 'static + Sized;
 
@@ -418,10 +378,10 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	/// This method **may** defer its effect.
 	fn update(&self, update: impl 'static + Send + FnOnce(Pin<&mut T>) -> Propagation)
 	where
-		Self: Sized,
-		SR::Symbol: Sync;
+		Self: Sized;
 
 	//TODO: `_dyn` methods?
+	//TODO: Detach async method lifetimes! (Making them fallible.)
 
 	/// Iff `new_value` differs from the current value, overwrites it and signals dependents.
 	///
@@ -447,9 +407,9 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	{
 		self.update_async(|mut value| {
 			if *value != new_value {
-				(Ok(value.set(new_value)), Propagation::Propagate)
+				(Propagation::Propagate, Ok(value.set(new_value)))
 			} else {
-				(Err(new_value), Propagation::Halt)
+				(Propagation::Halt, Err(new_value))
 			}
 		})
 	}
@@ -467,12 +427,12 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn replace_async(&self, new_value: T) -> impl Send + Future<Output = ()>
+	fn set_async(&self, new_value: T) -> impl Send + Future<Output = ()>
 	where
 		Self: Sized,
 		T: Sized,
 	{
-		self.update_async(|mut value| (value.set(new_value), Propagation::Propagate))
+		self.update_async(|mut value| (Propagation::Propagate, value.set(new_value)))
 	}
 
 	/// Modifies the current value using the given closure.
@@ -496,7 +456,7 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
 	fn update_async<U: Send>(
 		&self,
-		update: impl Send + FnOnce(Pin<&mut T>) -> (U, Propagation),
+		update: impl Send + FnOnce(Pin<&mut T>) -> (Propagation, U),
 	) -> impl Send + Future<Output = U>
 	where
 		Self: Sized;
@@ -527,7 +487,7 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn replace_blocking(&self, new_value: T) -> ()
+	fn set_blocking(&self, new_value: T) -> ()
 	where
 		T: Sized;
 
@@ -546,7 +506,269 @@ pub trait PinningSourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<S
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn update_blocking<U>(&self, update: impl FnOnce(Pin<&mut T>) -> (U, Propagation)) -> U
+	fn update_blocking<U>(&self, update: impl FnOnce(Pin<&mut T>) -> (Propagation, U)) -> U
 	where
 		Self: Sized;
+}
+
+unsafe fn as_inner<T>(pin: &Pin<T>) -> &T {
+	unsafe { mem::transmute::<&'_ Pin<T>, &'_ T>(pin) }
+}
+
+unsafe fn as_inner_pin<T>(pin_pin: Pin<&Pin<T>>) -> Pin<&T> {
+	unsafe { mem::transmute::<Pin<&'_ Pin<T>>, Pin<&'_ T>>(pin_pin) }
+}
+
+impl<S: Source<SR>, SR: ?Sized + SignalRuntimeRef> PinningSource<SR> for Pin<S>
+where
+	S: EnableValuePinAPI,
+{
+	type Output = S::Output;
+
+	fn touch(self: Pin<&Self>) {
+		unsafe { as_inner_pin(self) }.touch()
+	}
+
+	fn get_clone(self: Pin<&Self>) -> Self::Output
+	where
+		Self::Output: Sync + Clone,
+	{
+		unsafe { as_inner_pin(self) }.get_clone()
+	}
+
+	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
+	where
+		Self::Output: Clone,
+	{
+		unsafe { as_inner_pin(self) }.get_clone_exclusive()
+	}
+
+	fn read<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>>
+	where
+		Self::Output: Sync,
+	{
+		unsafe { as_inner_pin(self) }.read()
+	}
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>> {
+		unsafe { as_inner_pin(self) }.read_exclusive()
+	}
+
+	fn clone_runtime_ref(&self) -> SR
+	where
+		SR: Sized,
+	{
+		unsafe { as_inner(self) }.clone_runtime_ref()
+	}
+}
+
+impl<S: SourceCell<T, SR>, T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef> PinningSourceCell<T, SR>
+	for Pin<S>
+where
+	S: EnableValuePinAPI,
+{
+	fn change(self: Pin<&Self>, new_value: T)
+	where
+		T: 'static + Sized + PartialEq,
+	{
+		self.update(|mut value| {
+			if *value == new_value {
+				Propagation::Halt
+			} else {
+				value.set(new_value);
+				Propagation::Propagate
+			}
+		})
+	}
+
+	fn set(self: Pin<&Self>, new_value: T)
+	where
+		T: 'static + Sized,
+	{
+		self.update(|mut value| {
+			value.set(new_value);
+			Propagation::Propagate
+		})
+	}
+
+	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(Pin<&mut T>) -> Propagation)
+	where
+		Self: Sized,
+	{
+		todo!()
+	}
+
+	fn update_async<U: Send>(
+		&self,
+		update: impl Send + FnOnce(Pin<&mut T>) -> (Propagation, U),
+	) -> impl Send + Future<Output = U>
+	where
+		Self: Sized,
+	{
+		todo!();
+		async { todo!() }
+	}
+
+	fn change_blocking(&self, new_value: T) -> Result<(), T>
+	where
+		T: Sized + PartialEq,
+	{
+		self.update_blocking(|mut value| {
+			if *value != new_value {
+				(Propagation::Propagate, Ok(value.set(new_value)))
+			} else {
+				(Propagation::Halt, Err(new_value))
+			}
+		})
+	}
+
+	fn set_blocking(&self, new_value: T) -> ()
+	where
+		T: Sized,
+	{
+		self.update_blocking(|mut value| (Propagation::Propagate, value.set(new_value)))
+	}
+
+	fn update_blocking<U>(&self, update: impl FnOnce(Pin<&mut T>) -> (Propagation, U)) -> U
+	where
+		Self: Sized,
+	{
+		unsafe { as_inner(self) }
+			.update_blocking(|value| unsafe { update(Pin::new_unchecked(value)) })
+	}
+}
+
+impl<S: SourcePin<SR>, SR: ?Sized + SignalRuntimeRef> PinningSourcePin<SR> for Pin<S>
+where
+	S: EnableValuePinAPI,
+{
+	type Output = S::Output;
+
+	fn touch(&self) {
+		unsafe { as_inner(self) }.touch()
+	}
+
+	fn get(&self) -> Self::Output
+	where
+		Self::Output: Sync + Copy,
+	{
+		unsafe { as_inner(self) }.get()
+	}
+
+	fn get_exclusive(&self) -> Self::Output
+	where
+		Self::Output: Copy,
+	{
+		unsafe { as_inner(self) }.get_exclusive()
+	}
+
+	fn get_clone(&self) -> Self::Output
+	where
+		Self::Output: Sync + Clone,
+	{
+		unsafe { as_inner(self) }.get_clone()
+	}
+
+	fn get_clone_exclusive(&self) -> Self::Output
+	where
+		Self::Output: Clone,
+	{
+		unsafe { as_inner(self) }.get_clone_exclusive()
+	}
+
+	fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
+	where
+		Self::Output: 'r + Sync,
+	{
+		unsafe { as_inner(self) }.read()
+	}
+
+	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
+		unsafe { as_inner(self) }.read_exclusive()
+	}
+
+	fn clone_runtime_ref(&self) -> SR
+	where
+		SR: Sized,
+	{
+		unsafe { as_inner(self) }.clone_runtime_ref()
+	}
+}
+
+/// Note that the '`change`' and '`replace`' methods do not call the non-pinning methods
+/// of the same name, as those would move the value. They are implemented through
+/// `update` instead.
+impl<S: SourceCellPin<T, SR>, T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef>
+	PinningSourceCellPin<T, SR> for Pin<S>
+where
+	S: EnableValuePinAPI,
+{
+	fn change(&self, new_value: T)
+	where
+		T: 'static + Sized + PartialEq,
+	{
+		self.update(|mut value| {
+			if *value == new_value {
+				Propagation::Halt
+			} else {
+				value.set(new_value);
+				Propagation::Propagate
+			}
+		})
+	}
+
+	fn set(&self, new_value: T)
+	where
+		T: 'static + Sized,
+	{
+		self.update(|mut value| {
+			value.set(new_value);
+			Propagation::Propagate
+		})
+	}
+
+	fn update(&self, update: impl 'static + Send + FnOnce(Pin<&mut T>) -> Propagation)
+	where
+		Self: Sized,
+	{
+		unsafe { as_inner(self) }.update(|value| unsafe { update(Pin::new_unchecked(value)) })
+	}
+
+	fn update_async<U: Send>(
+		&self,
+		update: impl Send + FnOnce(Pin<&mut T>) -> (Propagation, U),
+	) -> impl Send + Future<Output = U>
+	where
+		Self: Sized,
+	{
+		unsafe { as_inner(self) }.update_async(|value| unsafe { update(Pin::new_unchecked(value)) })
+	}
+
+	fn change_blocking(&self, new_value: T) -> Result<(), T>
+	where
+		T: Sized + PartialEq,
+	{
+		self.update_blocking(|mut value| {
+			if *value != new_value {
+				(Propagation::Propagate, Ok(value.set(new_value)))
+			} else {
+				(Propagation::Halt, Err(new_value))
+			}
+		})
+	}
+
+	fn set_blocking(&self, new_value: T) -> ()
+	where
+		T: Sized,
+	{
+		self.update_blocking(|mut value| (Propagation::Propagate, value.set(new_value)))
+	}
+
+	fn update_blocking<U>(&self, update: impl FnOnce(Pin<&mut T>) -> (Propagation, U)) -> U
+	where
+		Self: Sized,
+	{
+		unsafe { as_inner(self) }
+			.update_blocking(|value| unsafe { update(Pin::new_unchecked(value)) })
+	}
 }

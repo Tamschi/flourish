@@ -28,7 +28,7 @@ pub type ErasedWeakSignalCell<'a, T, SR> = WeakSignalCell<T, dyn 'a + SourceCell
 pub struct WeakSignalCell<
 	T: ?Sized + Send,
 	S: ?Sized + SourceCell<T, SR>,
-	SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+	SR: ?Sized + SignalRuntimeRef,
 > {
 	source_cell: Weak<S>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
@@ -36,11 +36,8 @@ pub struct WeakSignalCell<
 	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
 }
 
-impl<
-		T: ?Sized + Send,
-		S: ?Sized + SourceCell<T, SR>,
-		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
-	> WeakSignalCell<T, S, SR>
+impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef>
+	WeakSignalCell<T, S, SR>
 {
 	#[must_use]
 	pub fn upgrade(&self) -> Option<SignalCellSR<T, S, SR>> {
@@ -54,7 +51,7 @@ impl<
 pub struct SignalCellSR<
 	T: ?Sized + Send,
 	S: ?Sized + SourceCell<T, SR>,
-	SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+	SR: ?Sized + SignalRuntimeRef,
 > {
 	source_cell: Pin<Arc<S>>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
@@ -62,11 +59,8 @@ pub struct SignalCellSR<
 	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
 }
 
-impl<
-		T: ?Sized + Send,
-		S: ?Sized + SourceCell<T, SR>,
-		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
-	> Clone for SignalCellSR<T, S, SR>
+impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef> Clone
+	for SignalCellSR<T, S, SR>
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -76,11 +70,8 @@ impl<
 	}
 }
 
-impl<
-		T: ?Sized + Debug + Send,
-		S: ?Sized + SourceCell<T, SR>,
-		SR: SignalRuntimeRef<Symbol: Sync> + Debug,
-	> Debug for SignalCellSR<T, S, SR>
+impl<T: ?Sized + Debug + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef + Debug> Debug
+	for SignalCellSR<T, S, SR>
 where
 	S: Debug,
 {
@@ -102,7 +93,7 @@ impl<T> From<T> for AssertSendSync<T> {
 	}
 }
 
-impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, SR>, SR> {
+impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, InertCell<T, SR>, SR> {
 	pub fn new(initial_value: T) -> Self
 	where
 		SR: Default,
@@ -186,7 +177,7 @@ impl<
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef<Symbol: Sync>,
+		SR: SignalRuntimeRef,
 	> SignalCellSR<T, ReactiveCell<T, HandlerFnPin, SR>, SR>
 {
 	pub fn new_reactive(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
@@ -288,7 +279,7 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef<Symbol: Sync>,
+		SR: SignalRuntimeRef,
 	> SignalCellSR<T, ReactiveCellMut<T, HandlerFnPin, SR>, SR>
 {
 	pub fn new_reactive_mut(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
@@ -386,9 +377,7 @@ impl<
 	}
 }
 
-impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
-	SignalCellSR<T, S, SR>
-{
+impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef> SignalCellSR<T, S, SR> {
 	//TODO: `as_ref`/`SignalCellRef`?
 
 	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
@@ -441,11 +430,8 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
 }
 
 //TODO: Clean up `Sync: Sync`… everywhere.
-impl<
-		T: Send + Sized + ?Sized,
-		S: ?Sized + SourceCell<T, SR>,
-		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
-	> SourcePin<SR> for SignalCellSR<T, S, SR>
+impl<T: Send + Sized + ?Sized, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef>
+	SourcePin<SR> for SignalCellSR<T, S, SR>
 {
 	type Output = T;
 
@@ -488,8 +474,6 @@ impl<
 
 impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef>
 	SourceCellPin<T, SR> for SignalCellSR<T, S, SR>
-where
-	<SR as SignalRuntimeRef>::Symbol: Sync,
 {
 	fn change(&self, new_value: T)
 	where
@@ -508,7 +492,6 @@ where
 	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
-		<SR as SignalRuntimeRef>::Symbol: Sync,
 	{
 		self.source_cell.as_ref().update(update)
 	}
@@ -550,8 +533,6 @@ struct Private<T>(T);
 
 impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR>
 	for Private<SignalCellSR<T, dyn SourceCell<T, SR>, SR>>
-where
-	<SR as SignalRuntimeRef>::Symbol: Sync,
 {
 	type Output = T;
 
@@ -595,8 +576,6 @@ where
 /// This unfortunately must be private/via-`dyn`-only until the non-dispatchable items can be implemented.
 impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourceCellPin<T, SR>
 	for Private<SignalCellSR<T, dyn SourceCell<T, SR>, SR>>
-where
-	<SR as SignalRuntimeRef>::Symbol: Sync,
 {
 	fn change(&self, new_value: T)
 	where
@@ -615,7 +594,6 @@ where
 	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
-		<SR as SignalRuntimeRef>::Symbol: Sync,
 	{
 		unreachable!()
 	}
@@ -655,8 +633,6 @@ where
 
 impl<'a: 'static, T: 'a + Send + Sized + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Deref
 	for ErasedSignalCell<'a, T, SR>
-where
-	<SR as SignalRuntimeRef>::Symbol: Sync,
 {
 	type Target = dyn 'a + SourceCellPin<T, SR>;
 

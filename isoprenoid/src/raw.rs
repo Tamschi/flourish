@@ -404,9 +404,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	pub fn update(
 		self: Pin<&Self>,
 		f: impl 'static + Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> Propagation,
-	) where
-		SR::Symbol: Sync,
-	{
+	) {
 		let this = Pin::clone(&self);
 		let update: Box<dyn Send + FnOnce() -> Propagation> = Box::new(move || unsafe {
 			f(
