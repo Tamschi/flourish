@@ -9,7 +9,7 @@ use std::{
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
 	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
-	slot::{Slot, Token},
+	slot::{Slot, Written},
 };
 use pin_project::pin_project;
 
@@ -168,7 +168,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef> Fold
 	unsafe fn init<'a>(
 		state: Pin<&'a (ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
 		lazy: Slot<'a, ()>,
-	) -> Token<'a> {
+	) -> Written<'a, ()> {
 		let mut guard = state.0 .0.try_write().expect("unreachable");
 		let _ = (&mut *state.1 .0.get())(guard.borrow_mut());
 		lazy.write(())

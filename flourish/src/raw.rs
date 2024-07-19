@@ -34,6 +34,9 @@ pub(crate) mod raw_subscription;
 pub(crate) mod raw_effect;
 pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 
+pub(crate) mod raw_pinning_effect;
+pub(crate) use raw_pinning_effect::new_raw_unsubscribed_pinning_effect;
+
 //TODO: Can these individual macros still communicate their eventual return type?
 
 pub fn inert_cell<T: Send, SR: SignalRuntimeRef>(

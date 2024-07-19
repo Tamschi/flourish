@@ -2,7 +2,7 @@ use std::{marker::PhantomData, pin::Pin};
 
 use isoprenoid::runtime::{GlobalSignalRuntime, SignalRuntimeRef};
 
-use crate::raw::new_raw_unsubscribed_effect;
+use crate::raw::{new_raw_unsubscribed_effect, new_raw_unsubscribed_pinning_effect};
 
 /// Type inference helper alias for [`EffectSR`] (using [`GlobalSignalRuntime`]).
 pub type Effect<'a> = EffectSR<'a, GlobalSignalRuntime>;
@@ -57,25 +57,25 @@ impl<'a, SR: SignalRuntimeRef> EffectSR<'a, SR> {
 	/// *Both* closures are part of the dependency detection scope.
 	pub fn pin<T: 'a + Send, ActivateFnPin: 'a + Send + FnMut(Pin<&mut T>)>(
 		fn_pin: impl 'a + Send + FnMut() -> (T, ActivateFnPin),
-		drop_fn_pin: impl 'a + Send + FnMut(Pin<&mut T>),
+		before_drop_fn_pin: impl 'a + Send + FnMut(Pin<&mut T>),
 	) -> Self
 	where
 		SR: Default,
 	{
-		Self::pin_with_runtime(fn_pin, drop_fn_pin, SR::default())
+		Self::pin_with_runtime(fn_pin, before_drop_fn_pin, SR::default())
 	}
 
 	/// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on notification and drop.
 	///
 	/// *Both* closures are part of the dependency detection scope.
-	pub fn pin_with_runtime<T: 'a + Send, ActivateFnPin: 'a + Send + FnMut(Pin<&mut T>)>(
+	pub fn pin_with_runtime<T: 'a + Send, ActivateFnPin: 'a + Send + FnOnce(Pin<&mut T>)>(
 		fn_pin: impl 'a + Send + FnMut() -> (T, ActivateFnPin),
-		drop_fn_pin: impl 'a + Send + FnMut(Pin<&mut T>),
+		before_drop_fn_pin: impl 'a + Send + FnMut(Pin<&mut T>),
 		runtime: SR,
 	) -> Self {
 		let box_ = Box::pin(new_raw_unsubscribed_pinning_effect(
 			fn_pin,
-			drop_fn_pin,
+			before_drop_fn_pin,
 			runtime,
 		));
 		box_.as_ref().pull();

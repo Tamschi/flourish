@@ -3,7 +3,7 @@ use std::{borrow::Borrow, pin::Pin};
 use isoprenoid::{
 	raw::{NoCallbacks, RawSignal},
 	runtime::SignalRuntimeRef,
-	slot::{Slot, Token},
+	slot::{Slot, Written},
 };
 use pin_project::pin_project;
 
@@ -75,7 +75,7 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> ComputedUncached
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
 impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalRuntimeRef> ComputedUncached<T, F, SR> {
-	unsafe fn init<'a>(_: Pin<&'a ForceSyncUnpin<F>>, lazy: Slot<'a, ()>) -> Token<'a> {
+	unsafe fn init<'a>(_: Pin<&'a ForceSyncUnpin<F>>, lazy: Slot<'a, ()>) -> Written<'a, ()> {
 		lazy.write(())
 	}
 }

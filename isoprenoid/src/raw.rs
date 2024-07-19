@@ -17,7 +17,7 @@ use once_slot::OnceSlot;
 
 use crate::{
 	runtime::{CallbackTable, CallbackTableTypes, Propagation, SignalRuntimeRef},
-	slot::{Slot, Token},
+	slot::{Slot, Written},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -156,7 +156,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	/// [`RawSignal`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
 	pub fn project_or_init<C: Callbacks<Eager, Lazy, SR>>(
 		self: Pin<&Self>,
-		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
+		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Written<'b, Lazy>,
 	) -> (Pin<&Eager>, Pin<&Lazy>) {
 		self.handle.runtime.record_dependency(self.handle.id);
 		unsafe {
@@ -278,7 +278,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	/// [`RawSignal`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
 	pub fn subscribe_inherently_or_init<C: Callbacks<Eager, Lazy, SR>>(
 		self: Pin<&Self>,
-		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
+		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Written<'b, Lazy>,
 	) -> Option<(Pin<&Eager>, Pin<&Lazy>)> {
 		self.handle.runtime.record_dependency(self.handle.id);
 		unsafe {
@@ -549,7 +549,7 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
 	/// Only called once at a time for each initialised [`RawSignal`], and not concurrently with [`Self::UPDATE`].
 	const ON_SUBSCRIBED_CHANGE: Option<
 		fn(
-			source: Pin<&RawSignal<Eager, Lazy, SR>>,
+			signal: Pin<&RawSignal<Eager, Lazy, SR>>,
 			eager: Pin<&Eager>,
 			lazy: Pin<&Lazy>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,

@@ -9,7 +9,7 @@ use std::{
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
 	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
-	slot::{Slot, Token},
+	slot::{Slot, Written},
 };
 use pin_project::pin_project;
 
@@ -179,7 +179,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cac
 	unsafe fn init<'a>(
 		source: Pin<&'a ForceSyncUnpin<S>>,
 		cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
-	) -> Token<'a> {
+	) -> Written<'a, ForceSyncUnpin<RwLock<T>>> {
 		cache.write(ForceSyncUnpin(
 			//FIXME: This can be split up to avoid congestion where not necessary.
 			source.project_ref().0.get_clone_exclusive().into(),

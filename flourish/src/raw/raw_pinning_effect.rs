@@ -9,9 +9,13 @@ use pin_project::pin_project;
 
 #[must_use = "Effects are cancelled when dropped."]
 #[repr(transparent)]
-pub struct RawEffect<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>(
-	RawSignal<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
-);
+pub struct RawPinningEffect<
+	T: Send,
+	S: Send + FnMut() -> (T, A),
+	A: Send + FnOnce(Pin<&mut T>),
+	D: Send + FnMut(Pin<&mut T>),
+	SR: SignalRuntimeRef,
+>(RawSignal<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>);
 
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
@@ -21,41 +25,52 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 //TODO: Turn some of these functions into methods.
 
 #[doc(hidden)]
-pub fn new_raw_unsubscribed_effect<
+pub fn new_raw_unsubscribed_pinning_effect<
 	T: Send,
-	S: Send + FnMut() -> T,
-	D: Send + FnMut(T),
+	S: Send + FnMut() -> (T, A),
+	A: Send + FnOnce(Pin<&mut T>),
+	D: Send + FnMut(Pin<&mut T>),
 	SR: SignalRuntimeRef,
 >(
 	fn_pin: S,
-	drop_fn_pin: D,
+	before_drop_fn_pin: D,
 	runtime: SR,
-) -> RawEffect<T, S, D, SR> {
-	RawEffect(RawSignal::with_runtime(
-		ForceSyncUnpin((fn_pin, drop_fn_pin).into()),
+) -> RawPinningEffect<T, S, A, D, SR> {
+	RawPinningEffect(RawSignal::with_runtime(
+		ForceSyncUnpin((fn_pin, before_drop_fn_pin).into()),
 		runtime,
 	))
 }
 
-impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef> Drop
-	for RawEffect<T, S, D, SR>
+impl<
+		T: Send,
+		S: Send + FnMut() -> (T, A),
+		A: Send + FnOnce(Pin<&mut T>),
+		D: Send + FnMut(Pin<&mut T>),
+		SR: SignalRuntimeRef,
+	> Drop for RawPinningEffect<T, S, A, D, SR>
 {
 	fn drop(&mut self) {
 		unsafe { Pin::new_unchecked(&mut self.0) }.deinit_and(|eager, lazy| {
-			let drop = &mut eager.0.try_lock().unwrap().1;
+			let before_drop = &mut eager.0.try_lock().unwrap().1;
 			lazy.0
 				.try_lock()
 				.unwrap()
 				.borrow_mut()
-				.take()
-				.map(|value| drop(value));
+				.as_mut()
+				.map(|value| unsafe { before_drop(Pin::new_unchecked(value)) });
 		});
 	}
 }
 
 enum E {}
-impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
-	Callbacks<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR> for E
+impl<
+		T: Send,
+		S: Send + FnMut() -> (T, A),
+		A: Send + FnOnce(Pin<&mut T>),
+		D: Send + FnMut(Pin<&mut T>),
+		SR: SignalRuntimeRef,
+	> Callbacks<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR> for E
 {
 	const UPDATE: Option<
 		fn(
@@ -63,14 +78,23 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
 			lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
 		) -> isoprenoid::runtime::Propagation,
 	> = {
-		fn eval<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T)>(
+		fn eval<
+			T: Send,
+			S: Send + FnMut() -> (T, A),
+			A: Send + FnOnce(Pin<&mut T>),
+			D: Send + FnMut(Pin<&mut T>),
+		>(
 			callbacks: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
 			cache: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
 		) -> Propagation {
-			let (init, drop) = &mut *callbacks.0.lock().expect("unreachable");
+			let (init, before_drop) = &mut *callbacks.0.lock().expect("unreachable");
 			let cache = &mut *cache.0.lock().expect("unreachable");
-			cache.take().map(drop);
-			*cache = Some(init());
+			cache
+				.as_mut()
+				.map(|value| unsafe { before_drop(Pin::new_unchecked(value)) });
+			let (t, a) = init();
+			*cache = Some(t);
+			unsafe { a(Pin::new_unchecked(cache.as_mut().expect("unreachable"))) }
 			Propagation::Halt
 		}
 		Some(eval)
@@ -92,22 +116,32 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
-	RawEffect<T, S, D, SR>
+impl<
+		T: Send,
+		S: Send + FnMut() -> (T, A),
+		A: Send + FnOnce(Pin<&mut T>),
+		D: Send + FnMut(Pin<&mut T>),
+		SR: SignalRuntimeRef,
+	> RawPinningEffect<T, S, A, D, SR>
 {
 	unsafe fn init<'a>(
 		callbacks: Pin<&'a ForceSyncUnpin<Mutex<(S, D)>>>,
 		cache: Slot<'a, ForceSyncUnpin<Mutex<Option<T>>>>,
 	) -> Written<'a, ForceSyncUnpin<Mutex<Option<T>>>> {
-		cache.write(ForceSyncUnpin(
-			Some(callbacks.project_ref().0.lock().expect("unreachable").0()).into(),
-		))
+		let (t, a) = callbacks.project_ref().0.lock().expect("unreachable").0();
+		let token = cache.write(ForceSyncUnpin(Some(t).into()));
+		unsafe {
+			a(Pin::new_unchecked(
+				&mut *token.0.lock().unwrap().as_mut().expect("unreachable"),
+			))
+		};
+		token
 	}
 
-	pub fn pull(self: Pin<&RawEffect<T, S, D, SR>>) {
+	pub fn pull(self: Pin<&RawPinningEffect<T, S, A, D, SR>>) {
 		self.0.clone_runtime_ref().run_detached(|| unsafe {
 			Pin::new_unchecked(&self.0).subscribe_inherently_or_init::<E>(|callbacks, cache| {
-				RawEffect::<T, S, D, SR>::init(callbacks, cache)
+				RawPinningEffect::<T, S, A, D, SR>::init(callbacks, cache)
 			});
 		})
 	}

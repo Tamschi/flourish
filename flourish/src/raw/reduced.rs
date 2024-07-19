@@ -9,7 +9,7 @@ use std::{
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
 	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
-	slot::{Slot, Token},
+	slot::{Slot, Written},
 };
 use pin_project::pin_project;
 
@@ -194,7 +194,7 @@ impl<
 	unsafe fn init<'a>(
 		state: Pin<&'a ForceSyncUnpin<UnsafeCell<(S, M)>>>,
 		cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
-	) -> Token<'a> {
+	) -> Written<'a, ForceSyncUnpin<RwLock<T>>> {
 		cache.write(ForceSyncUnpin((&mut *state.0.get()).0().into()))
 	}
 }

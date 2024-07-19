@@ -8,7 +8,7 @@ use std::{
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
 	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
-	slot::{Slot, Token},
+	slot::{Slot, Written},
 };
 use pin_project::pin_project;
 
@@ -164,7 +164,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
 	unsafe fn init<'a>(
 		fn_pin: Pin<&'a ForceSyncUnpin<Mutex<F>>>,
 		cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
-	) -> Token<'a> {
+	) -> Written<'a, ForceSyncUnpin<RwLock<T>>> {
 		cache.write(ForceSyncUnpin(
 			//FIXME: This is technically already externally synchronised.
 			fn_pin.project_ref().0.try_lock().expect("unreachable")().into(),
