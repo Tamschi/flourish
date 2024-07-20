@@ -401,8 +401,53 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		Self: Sized,
 		SR::Symbol: Sync;
 
-	//TODO: Async methods that don't hold a strong reference.
 	//TODO: `_dyn` methods?
+
+	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`SourceCellPin::change_eager`) when polled.
+	///
+	/// # Logic
+	///
+	/// The [`Future`] **should not** hold a strong reference to `self`.
+	fn change_async<'f>(self: Pin<&Self>, new_value: T) -> Self::ChangeAsync<'f>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + PartialEq;
+
+	type ChangeAsync<'f>: 'f + Send + Future<Output = Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	/// Cheaply creates a [`Future`] that has the effect of [`replace_eager`](`SourceCellPin::replace_eager`) when polled.
+	///
+	/// # Logic
+	///
+	/// The [`Future`] **should not** hold a strong reference to `self`.
+	fn replace_async<'f>(self: Pin<&Self>, new_value: T) -> Self::ReplaceAsync<'f>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	type ReplaceAsync<'f>: 'f + Send + Future<Output = Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`SourceCellPin::update_eager`) when polled.
+	///
+	/// # Logic
+	///
+	/// The [`Future`] **should not** hold a strong reference to `self`.
+	fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		self: Pin<&Self>,
+		update: F,
+	) -> Self::UpdateAsync<'f, U, F>
+	where
+		Self: 'f + Sized;
+
+	type UpdateAsync<'f, U: 'f, F: 'f>: 'f + Send + Future<Output = Result<U, F>>
+	where
+		Self: 'f + Sized;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///

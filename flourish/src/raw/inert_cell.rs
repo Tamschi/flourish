@@ -365,6 +365,7 @@ mod private {
 
 	use futures_lite::FutureExt;
 
+	#[must_use = "Eager futures may still cancel their effect iff dropped."]
 	pub struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 	);
