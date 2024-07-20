@@ -185,6 +185,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 		id: Self::Symbol,
 		f: F,
 	) -> Self::UpdateEager<'f, T, F>;
+
 	type UpdateEager<'f, T: 'f, F: 'f>: 'f + Send + Future<Output = Result<T, F>>;
 
 	/// Runs `f` exclusively for `id` outside of recording dependencies.
@@ -887,7 +888,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		let borrow = (*lock).borrow_mut();
 		self.process_pending(&lock, borrow);
 
-		private::UpdateEager(Box::pin(async move {
+		private::DetachedFuture(Box::pin(async move {
 			match once
 				.wait()
 				.await
@@ -905,7 +906,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		}))
 	}
 
-	type UpdateEager<'f, T: 'f, F: 'f> = UpdateEager<'f, T, F>;
+	type UpdateEager<'f, T: 'f, F: 'f> = private::DetachedFuture<'f, Result<T, F>>;
 
 	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (Propagation, T)) -> T {
 		// This is indirected because the nested function's text size may be relatively large.
@@ -1155,7 +1156,7 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
 		(&GLOBAL_SIGNAL_RUNTIME).update_eager(id.0, f)
 	}
 
-	type UpdateEager<'f, T: 'f, F: 'f> = UpdateEager<'f, T, F>;
+	type UpdateEager<'f, T: 'f, F: 'f> = private::DetachedFuture<'f, Result<T, F>>;
 
 	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (Propagation, T)) -> T {
 		(&GLOBAL_SIGNAL_RUNTIME).update_blocking(id.0, f)
@@ -1289,9 +1290,6 @@ pub enum Propagation {
 	Halt,
 }
 
-//FIXME: Turn this into a type alias `impl Trait` when that's stable.
-pub type UpdateEager<'f, T, F> = private::UpdateEager<'f, T, F>;
-
 mod private {
 	use std::{
 		future::Future,
@@ -1301,12 +1299,12 @@ mod private {
 
 	use futures_lite::FutureExt;
 
-	pub struct UpdateEager<'f, T: 'f, F: 'f>(
-		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Result<T, F>>>>,
+	pub struct DetachedFuture<'f, Output: 'f>(
+		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 	);
 
-	impl<'f, T: 'f, F: 'f> Future for UpdateEager<'f, T, F> {
-		type Output = Result<T, F>;
+	impl<'f, Output: 'f> Future for DetachedFuture<'f, Output> {
+		type Output = Output;
 
 		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 			self.0.poll(cx)

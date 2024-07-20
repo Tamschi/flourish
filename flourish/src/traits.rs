@@ -226,45 +226,15 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn change_eager<'f>(
-		self: Pin<&Self>,
-		new_value: T,
-	) -> impl 'f + Send + Future<Output = Result<Result<T, T>, T>>
+	fn change_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::ChangeEager<'f>
 	where
-		Self: Sized,
-		T: 'f + Sized + PartialEq,
-	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
-		let f = self.update_eager({
-			let r = Arc::downgrade(&r);
-			move |value| {
-				let Some(r) = r.upgrade() else {
-					return (Propagation::Halt, ());
-				};
-				let mut r = r.try_lock().unwrap();
-				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
-				if *value != new_value {
-					*r = Some(Ok(Ok(mem::replace(value, new_value))));
-					(Propagation::Propagate, ())
-				} else {
-					*r = Some(Ok(Err(new_value)));
-					(Propagation::Halt, ())
-				}
-			}
-		});
+		Self: 'f + Sized,
+		T: 'f + Sized + PartialEq;
 
-		async move {
-			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
-			use futures::FutureExt;
-			f.boxed().await.ok();
-			Arc::try_unwrap(r)
-				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
-				.into_inner()
-				.expect("unreachable")
-				.expect("unreachable")
-		}
-	}
+	type ChangeEager<'f>: 'f + Send + Future<Output = Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.
 	///
@@ -284,40 +254,15 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn replace_eager<'f>(
-		self: Pin<&Self>,
-		new_value: T,
-	) -> impl 'f + Send + Future<Output = Result<T, T>>
+	fn replace_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::ReplaceEager<'f>
 	where
-		Self: Sized,
-		T: 'f + Sized,
-	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
-		let f = self.update_eager({
-			let r = Arc::downgrade(&r);
-			move |value| {
-				let Some(r) = r.upgrade() else {
-					return (Propagation::Halt, ());
-				};
-				let mut r = r.try_lock().unwrap();
-				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
-				*r = Some(Ok(mem::replace(value, new_value)));
-				(Propagation::Propagate, ())
-			}
-		});
+		Self: 'f + Sized,
+		T: 'f + Sized;
 
-		async move {
-			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
-			use futures::FutureExt;
-			f.boxed().await.ok();
-			Arc::try_unwrap(r)
-				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
-				.into_inner()
-				.expect("unreachable")
-				.expect("unreachable")
-		}
-	}
+	type ReplaceEager<'f>: 'f + Send + Future<Output = Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
 
 	/// Modifies the current value using the given closure.
 	///
@@ -338,12 +283,16 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn update_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+	fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		self: Pin<&Self>,
 		update: F,
-	) -> impl 'f + Send + Future<Output = Result<U, F>>
+	) -> Self::UpdateEager<'f, U, F>
 	where
-		Self: Sized;
+		Self: 'f + Sized;
+
+	type UpdateEager<'f, U: 'f, F: 'f>: 'f + Send + Future<Output = Result<U, F>>
+	where
+		Self: 'f + Sized;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -452,8 +401,8 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		Self: Sized,
 		SR::Symbol: Sync;
 
+	//TODO: Async methods that don't hold a strong reference.
 	//TODO: `_dyn` methods?
-	//TODO* `_eager` methods (where the lifetime is attached to only `T`/`F`/`U`)?
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -468,18 +417,20 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	/// # Logic
 	///
 	/// This method **must not** block *indefinitely*.  
-	/// This method **should not** apply its effect unless the returned [`Future`] is polled.  
-	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn change_async<'f>(
-		&self,
-		new_value: T,
-	) -> impl 'f + Send + Future<Output = Result<Result<T, T>, T>>
+	fn change_eager<'f>(&self, new_value: T) -> Self::ChangeEager<'f>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq;
+
+	type ChangeEager<'f>: 'f + Send + Future<Output = Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.
 	///
@@ -494,12 +445,17 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	/// # Logic
 	///
 	/// This method **must not** block *indefinitely*.  
-	/// This method **should not** apply its effect unless the returned [`Future`] is polled.  
-	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn replace_async<'f>(&self, new_value: T) -> impl 'f + Send + Future<Output = Result<T, T>>
+	fn replace_eager<'f>(&self, new_value: T) -> Self::ReplaceEager<'f>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	type ReplaceEager<'f>: 'f + Send + Future<Output = Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -519,14 +475,19 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	/// # Logic
 	///
 	/// This method **must not** block *indefinitely*.  
-	/// This method **should not** apply its effect unless the returned [`Future`] is polled.  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn update_async<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+	fn update_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
-	) -> impl 'f + Send + Future<Output = Result<U, F>>
+	) -> Self::UpdateEager<'f, U, F>
+	where
+		Self: 'f + Sized;
+
+	type UpdateEager<'f, U: 'f, F: 'f>: 'f + Send + Future<Output = Result<U, F>>
 	where
 		Self: 'f + Sized;
 

@@ -1,6 +1,7 @@
 use std::{
 	borrow::Borrow,
 	fmt::Debug,
+	future::Future,
 	marker::PhantomData,
 	mem,
 	ops::Deref,
@@ -528,10 +529,7 @@ where
 		self.source_cell.as_ref().update(update)
 	}
 
-	fn change_async<'f>(
-		&self,
-		new_value: T,
-	) -> impl 'f + Send + futures::Future<Output = Result<Result<T, T>, T>>
+	fn change_eager<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<Result<T, T>, T>>
 	where
 		Self: 'f + Sized,
 		T: Sized + PartialEq,
@@ -570,10 +568,12 @@ where
 		}
 	}
 
-	fn replace_async<'f>(
-		&self,
-		new_value: T,
-	) -> impl 'f + Send + futures::Future<Output = Result<T, T>>
+	type ChangeEager<'f> = private::DetachedFuture<'f, Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn replace_eager<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: Sized,
@@ -607,10 +607,16 @@ where
 		}
 	}
 
-	fn update_async<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+	type ReplaceEager<'f> = private::DetachedFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	//TODO: Turn this into an eager method too.
+	fn update_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
-	) -> impl 'f + Send + futures::Future<Output = Result<U, F>>
+	) -> private::DetachedFuture<'f, Result<U, F>>
 	where
 		Self: 'f + Sized,
 	{
@@ -618,7 +624,7 @@ where
 		async move {
 			let r = Arc::new(Mutex::new(Some(Err(update))));
 			if let Some(this) = this.upgrade() {
-				let f = this.update_async({
+				let f = this.source_cell.as_ref().update_eager({
 					let r = Arc::downgrade(&r);
 					move |value| {
 						let Some(r) = r.upgrade() else {
@@ -643,6 +649,10 @@ where
 				.expect("unreachable")
 		}
 	}
+
+	type UpdateEager<'f, U: 'f, F: 'f> = private::DetachedFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized;
 
 	fn change_blocking(&self, new_value: T) -> Result<T, T>
 	where
@@ -744,7 +754,7 @@ where
 	fn change_async<'f>(
 		&self,
 		new_value: T,
-	) -> impl 'f + Send + futures::Future<Output = Result<Result<T, T>, T>>
+	) -> impl 'f + Send + Future<Output = Result<Result<T, T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
@@ -753,10 +763,7 @@ where
 		async { unreachable!() }
 	}
 
-	fn replace_async<'f>(
-		&self,
-		new_value: T,
-	) -> impl 'f + Send + futures::Future<Output = Result<T, T>>
+	fn replace_async<'f>(&self, new_value: T) -> impl 'f + Send + Future<Output = Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized,
@@ -768,7 +775,7 @@ where
 	fn update_async<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
-	) -> impl 'f + Send + futures::Future<Output = Result<U, F>>
+	) -> impl 'f + Send + Future<Output = Result<U, F>>
 	where
 		Self: 'f + Sized,
 	{
@@ -809,6 +816,29 @@ where
 		unsafe {
 			&*(mem::transmute::<*const Self, &'a Private<Self>>(self as *const _)
 				as *const (dyn 'a + SourceCellPin<T, SR>))
+		}
+	}
+}
+
+/// Duplicated to avoid identities.
+mod private {
+	use std::{
+		future::Future,
+		pin::Pin,
+		task::{Context, Poll},
+	};
+
+	use futures_lite::FutureExt;
+
+	pub struct DetachedFuture<'f, Output: 'f>(
+		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+	);
+
+	impl<'f, Output: 'f> Future for DetachedFuture<'f, Output> {
+		type Output = Output;
+
+		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.0.poll(cx)
 		}
 	}
 }
