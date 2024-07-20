@@ -2,6 +2,8 @@
 
 Convenient and composable signals for Rust.
 
+The API design emphasises efficient resource management and performance-aware code without compromising on ease of use at near-zero boilerplate.
+
 🚧 This is a(n optimisable) proof of concept! 🚧  
 🚧 The API is full-featured, but the code is not (much at all) optimised. 🚧
 

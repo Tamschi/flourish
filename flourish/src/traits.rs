@@ -206,7 +206,10 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 		Self: Sized,
 		SR::Symbol: Sync;
 
-	//TODO: `_dyn` methods?
+	/// The same as [`update`](`SourceCell::update`), but object-safe.
+	fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
+	where
+		SR::Symbol: Sync;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -294,6 +297,36 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	where
 		Self: 'f + Sized;
 
+	/// The same as [`change_eager`](`SourceCell::change_eager`), but object-safe.
+	fn change_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	where
+		Self: 'f,
+		T: 'f + Sized + PartialEq;
+
+	/// The same as [`replace_eager`](`SourceCell::replace_eager`), but object-safe.
+	fn replace_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	where
+		Self: 'f,
+		T: 'f + Sized;
+
+	/// The same as [`update_eager`](`SourceCell::update_eager`), but object-safe.
+	fn update_eager_dyn<'f>(
+		self: Pin<&Self>,
+		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
+	>
+	where
+		Self: 'f;
+
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Returns
@@ -346,6 +379,11 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U
 	where
 		Self: Sized;
+
+	/// The same as [`update_blocking`](`SourceCell::update_blocking`), but object-safe.
+	fn update_blocking_dyn(&self, update: Box<dyn FnOnce(&mut T) -> Propagation>)
+	where
+		SR::Symbol: Sync;
 
 	fn as_source_and_cell(
 		self: Pin<&Self>,
@@ -401,14 +439,18 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		Self: Sized,
 		SR::Symbol: Sync;
 
-	//TODO: `_dyn` methods?
+	/// The same as [`update`](`SourceCellPin::update`), but object-safe.
+	fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
+	where
+		T: 'static,
+		SR::Symbol: Sync;
 
 	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`SourceCellPin::change_eager`) when polled.
 	///
 	/// # Logic
 	///
 	/// The [`Future`] **should not** hold a strong reference to `self`.
-	fn change_async<'f>(self: Pin<&Self>, new_value: T) -> Self::ChangeAsync<'f>
+	fn change_async<'f>(&self, new_value: T) -> Self::ChangeAsync<'f>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq;
@@ -423,7 +465,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	/// # Logic
 	///
 	/// The [`Future`] **should not** hold a strong reference to `self`.
-	fn replace_async<'f>(self: Pin<&Self>, new_value: T) -> Self::ReplaceAsync<'f>
+	fn replace_async<'f>(&self, new_value: T) -> Self::ReplaceAsync<'f>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -439,7 +481,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	///
 	/// The [`Future`] **should not** hold a strong reference to `self`.
 	fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
-		self: Pin<&Self>,
+		&self,
 		update: F,
 	) -> Self::UpdateAsync<'f, U, F>
 	where
@@ -448,6 +490,36 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	type UpdateAsync<'f, U: 'f, F: 'f>: 'f + Send + Future<Output = Result<U, F>>
 	where
 		Self: 'f + Sized;
+
+	/// The same as [`change_async`](`SourceCellPin::change_async`), but object-safe.
+	fn change_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	where
+		Self: 'f,
+		T: 'f + Sized + PartialEq;
+
+	/// The same as [`replace_async`](`SourceCellPin::replace_async`), but object-safe.
+	fn replace_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	where
+		Self: 'f,
+		T: 'f + Sized;
+
+	/// The same as [`update_async`](`SourceCellPin::update_async`), but object-safe.
+	fn update_async_dyn<'f>(
+		&self,
+		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
+	>
+	where
+		Self: 'f;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -536,6 +608,36 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	where
 		Self: 'f + Sized;
 
+	/// The same as [`change_eager`](`SourceCellPin::change_eager`), but object-safe.
+	fn change_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	where
+		Self: 'f,
+		T: 'f + Sized + PartialEq;
+
+	/// The same as [`replace_eager`](`SourceCellPin::replace_eager`), but object-safe.
+	fn replace_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	where
+		Self: 'f,
+		T: 'f + Sized;
+
+	/// The same as [`update_eager`](`SourceCellPin::update_eager`), but object-safe.
+	fn update_eager_dyn<'f>(
+		&self,
+		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
+	>
+	where
+		Self: 'f;
+
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Returns
@@ -588,4 +690,9 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U
 	where
 		Self: Sized;
+
+	/// The same as [`update_blocking`](`SourceCellPin::update_blocking`), but object-safe.
+	fn update_blocking_dyn(&self, update: Box<dyn FnOnce(&mut T) -> Propagation>)
+	where
+		SR::Symbol: Sync;
 }

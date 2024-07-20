@@ -329,6 +329,37 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 	where
 		Self: 'f + Sized;
 
+	fn change_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<Result<T, T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		Box::new(self.change_eager(new_value))
+	}
+
+	fn replace_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<T, T>>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized,
+	{
+		todo!()
+	}
+
+	fn update_eager_dyn<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		self: Pin<&Self>,
+		update: F,
+	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<U, F>>>
+	where
+		Self: 'f + Sized,
+	{
+		todo!()
+	}
+
 	fn change_blocking(&self, new_value: T) -> Result<T, T>
 	where
 		T: Sized + PartialEq,
