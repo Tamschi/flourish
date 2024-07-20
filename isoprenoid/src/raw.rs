@@ -11,7 +11,8 @@ use std::{
 	collections::{btree_map::Entry, BTreeMap},
 	future::Future,
 	mem::{self, MaybeUninit},
-	sync::{Mutex, OnceLock},
+	ops::Deref,
+	sync::{Arc, Mutex, OnceLock},
 };
 
 use once_slot::OnceSlot;
@@ -61,13 +62,6 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 	/// **May** panic iff called *not* between `self.project_or_init(…)` and `self.stop_and(…)`.
 	fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce() -> Propagation) {
 		self.runtime.update_or_enqueue(self.id, f);
-	}
-
-	async fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
-		&self,
-		f: F,
-	) -> Result<T, F> {
-		self.runtime.update_async(self.id, f).await
 	}
 
 	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
@@ -427,78 +421,103 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self.handle.update_or_enqueue(update);
 	}
 
-	//TODO: Turn into/add `update_eager` with detached lifetime.
-	pub async fn update_async<T: Send>(
-		&self,
-		f: impl Send + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
-	) -> T {
-		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> =
-			Box::new(move || f(&self.eager, self.lazy.get()));
-		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
-			unsafe { mem::transmute(update) };
-		self.handle
-            .update_async(update)
-            .await
-            .map_err(|_| ())
-            .expect("Cancelling the update in a way this here would be reached would require calling `.purge()`, which isn't possible here because that requires an exclusive/`mut` reference.")
-	}
-
-	pub async fn update_async_pin<T: Send>(
-		self: Pin<&Self>,
-		f: impl Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
-	) -> T {
-		let this = Pin::clone(&self);
-		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> = Box::new(move || unsafe {
-			f(
-				this.map_unchecked(|this| &this.eager),
-				this.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
-			)
-		});
-		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
-			unsafe { mem::transmute(update) };
-		self.handle
-            .update_async(update)
-            .await
-            .map_err(|_| ())
-            .expect("Cancelling the update in a way this here would be reached would require calling `.purge()`, which isn't possible here because that requires an exclusive/`mut` reference.")
-	}
-
-	//TODO: Turn into/add `update_eager` with detached lifetime.
 	pub fn update_eager<
 		'f,
-		T: Send,
+		T: 'f + Send,
 		F: 'f + Send + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
 	>(
-		&self,
+		self: Pin<&Self>,
 		f: F,
-	) -> impl 'f + Send + Future<Output = Result<T, F>> {
-		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> =
-			Box::new(move || f(&self.eager, self.lazy.get()));
-		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
-			unsafe { mem::transmute(update) };
-		let f = self.handle.update_eager(update);
-		async move { f.await.map_err(|_| ()) }
+	) -> impl 'f + Send + Future<Output = Result<T, F>>
+	where
+		Eager: 'f,
+		Lazy: 'f,
+		SR: 'f,
+	{
+		let this = AssertSend(&*self as *const Self);
+		let f = Arc::new(Mutex::new(Some(f)));
+
+		struct AssertSend<T: ?Sized>(*const T);
+		unsafe impl<T: ?Sized> Send for AssertSend<T> {}
+		impl<T: ?Sized> AssertSend<T> {
+			unsafe fn get(&self) -> &T {
+				&*self.0
+			}
+		}
+
+		let future = self.handle.update_eager({
+			let f = Arc::clone(&f);
+			move || {
+				let f = f
+					.try_lock()
+					.expect("unreachable")
+					.take()
+					.expect("unreachable");
+				unsafe { f(&this.get().eager, this.get().lazy.get()) }
+			}
+		});
+		async move {
+			future.await.map_err(move |_| {
+				Arc::try_unwrap(f)
+					.map_err(|_| ())
+					.expect("must be exclusive now")
+					.into_inner()
+					.expect("can't be poisoned")
+					.expect("must be Some")
+			})
+		}
 	}
 
 	pub fn update_eager_pin<
 		'f,
-		T: Send,
+		T: 'f + Send,
 		F: 'f + Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
 	>(
 		self: Pin<&Self>,
-		f: impl Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
-	) -> impl 'f + Send + Future<Output = Result<T, F>> {
-		let this = Pin::clone(&self);
-		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> = Box::new(move || unsafe {
-			f(
-				this.map_unchecked(|this| &this.eager),
-				this.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
-			)
+		f: F,
+	) -> impl 'f + Send + Future<Output = Result<T, F>>
+	where
+		Eager: 'f,
+		Lazy: 'f,
+		SR: 'f,
+	{
+		let this = AssertSend(&*self as *const Self);
+		let f = Arc::new(Mutex::new(Some(f)));
+
+		struct AssertSend<T: ?Sized>(*const T);
+		unsafe impl<T: ?Sized> Send for AssertSend<T> {}
+		impl<T: ?Sized> AssertSend<T> {
+			unsafe fn get(&self) -> &T {
+				&*self.0
+			}
+		}
+
+		let future = self.handle.update_eager({
+			let f = Arc::clone(&f);
+			move || {
+				let f = f
+					.try_lock()
+					.expect("unreachable")
+					.take()
+					.expect("unreachable");
+				unsafe {
+					f(
+						Pin::new_unchecked(&this.get().eager),
+						this.get().lazy.get().map(|r| Pin::new_unchecked(r)),
+					)
+				}
+			}
 		});
-		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
-			unsafe { mem::transmute(update) };
-		let f = self.handle.update_eager(update);
-		async move { f.await.map_err(|_| ()) }
+		async move {
+			future.await.map_err(move |_| {
+				Arc::try_unwrap(f)
+					.map_err(|_| ())
+					.expect("must be exclusive now")
+					.into_inner()
+					.expect("can't be poisoned")
+					.expect("must be Some")
+			})
+		}
 	}
 
 	pub fn update_blocking<T>(
