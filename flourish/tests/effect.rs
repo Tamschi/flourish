@@ -26,3 +26,5 @@ fn heap() {
 	drop(a_cell);
 	v.expect([]);
 }
+
+//TODO: Ensure that flushing doesn't cause issues when dropping an Effect!
