@@ -9,6 +9,7 @@ use std::{
 	any::TypeId,
 	cell::{self, UnsafeCell},
 	collections::{btree_map::Entry, BTreeMap},
+	future::Future,
 	mem::{self, MaybeUninit},
 	sync::{Mutex, OnceLock},
 };
@@ -67,6 +68,13 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 		f: F,
 	) -> Result<T, F> {
 		self.runtime.update_async(self.id, f).await
+	}
+
+	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
+		&self,
+		f: F,
+	) -> impl 'f + Send + Future<Output = Result<T, F>> {
+		self.runtime.update_eager(self.id, f)
 	}
 
 	fn update_blocking<T>(&self, f: impl FnOnce() -> (Propagation, T)) -> T {
@@ -419,6 +427,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 		self.handle.update_or_enqueue(update);
 	}
 
+	//TODO: Turn into/add `update_eager` with detached lifetime.
 	pub async fn update_async<T: Send>(
 		&self,
 		f: impl Send + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
@@ -431,7 +440,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
             .update_async(update)
             .await
             .map_err(|_| ())
-            .expect("Cancelling the update in a way this here would be reached would require calling `.stop()`, which isn't possible here because that requires an exclusive/`mut` reference.")
+            .expect("Cancelling the update in a way this here would be reached would require calling `.purge()`, which isn't possible here because that requires an exclusive/`mut` reference.")
 	}
 
 	pub async fn update_async_pin<T: Send>(
@@ -451,7 +460,45 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
             .update_async(update)
             .await
             .map_err(|_| ())
-            .expect("Cancelling the update in a way this here would be reached would require calling `.stop()`, which isn't possible here because that requires an exclusive/`mut` reference.")
+            .expect("Cancelling the update in a way this here would be reached would require calling `.purge()`, which isn't possible here because that requires an exclusive/`mut` reference.")
+	}
+
+	//TODO: Turn into/add `update_eager` with detached lifetime.
+	pub fn update_eager<
+		'f,
+		T: Send,
+		F: 'f + Send + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
+	>(
+		&self,
+		f: F,
+	) -> impl 'f + Send + Future<Output = Result<T, F>> {
+		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> =
+			Box::new(move || f(&self.eager, self.lazy.get()));
+		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
+			unsafe { mem::transmute(update) };
+		let f = self.handle.update_eager(update);
+		async move { f.await.map_err(|_| ()) }
+	}
+
+	pub fn update_eager_pin<
+		'f,
+		T: Send,
+		F: 'f + Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
+	>(
+		self: Pin<&Self>,
+		f: impl Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
+	) -> impl 'f + Send + Future<Output = Result<T, F>> {
+		let this = Pin::clone(&self);
+		let update: Box<dyn Send + FnOnce() -> (Propagation, T)> = Box::new(move || unsafe {
+			f(
+				this.map_unchecked(|this| &this.eager),
+				this.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
+			)
+		});
+		let update: Box<dyn 'static + Send + FnOnce() -> (Propagation, T)> =
+			unsafe { mem::transmute(update) };
+		let f = self.handle.update_eager(update);
+		async move { f.await.map_err(|_| ()) }
 	}
 
 	pub fn update_blocking<T>(

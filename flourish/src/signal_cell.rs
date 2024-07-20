@@ -5,7 +5,7 @@ use std::{
 	mem,
 	ops::Deref,
 	pin::Pin,
-	sync::{Arc, Weak},
+	sync::{Arc, Mutex, Weak},
 };
 
 use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, Propagation, SignalRuntimeRef};
@@ -431,6 +431,15 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
 		}
 	}
 
+	pub fn downgrade(&self) -> WeakSignalCell<T, S, SR> {
+		WeakSignalCell {
+			source_cell: Arc::downgrade(unsafe {
+				&Pin::into_inner_unchecked(Pin::clone(&self.source_cell))
+			}),
+			upcast: self.upcast,
+		}
+	}
+
 	pub fn into_signal_and_self<'a>(self) -> (SignalSR<'a, T, SR>, Self)
 	where
 		S: 'a + Sized,
@@ -519,14 +528,120 @@ where
 		self.source_cell.as_ref().update(update)
 	}
 
-	fn update_async<U: Send>(
+	fn change_async<'f>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
-	) -> impl Send + std::future::Future<Output = U>
+		new_value: T,
+	) -> impl 'f + Send + futures::Future<Output = Result<Result<T, T>, T>>
 	where
-		Self: Sized,
+		Self: 'f + Sized,
+		T: Sized + PartialEq,
 	{
-		self.source_cell.update_async(update)
+		let this = self.downgrade();
+		async move {
+			let r = Arc::new(Mutex::new(Some(Err(new_value))));
+			if let Some(this) = this.upgrade() {
+				let f = this.update_async({
+					let r = Arc::downgrade(&r);
+					move |value| {
+						let Some(r) = r.upgrade() else {
+							return (Propagation::Halt, ());
+						};
+						let mut r = r.try_lock().unwrap();
+						let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+						if *value != new_value {
+							*r = Some(Ok(Ok(mem::replace(value, new_value))));
+							(Propagation::Propagate, ())
+						} else {
+							*r = Some(Ok(Err(new_value)));
+							(Propagation::Halt, ())
+						}
+					}
+				});
+				drop(this);
+				f.await.ok();
+			};
+
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		}
+	}
+
+	fn replace_async<'f>(
+		&self,
+		new_value: T,
+	) -> impl 'f + Send + futures::Future<Output = Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: Sized,
+	{
+		let this = self.downgrade();
+		async move {
+			let r = Arc::new(Mutex::new(Some(Err(new_value))));
+			if let Some(this) = this.upgrade() {
+				let f = this.update_async({
+					let r = Arc::downgrade(&r);
+					move |value| {
+						let Some(r) = r.upgrade() else {
+							return (Propagation::Halt, ());
+						};
+						let mut r = r.try_lock().unwrap();
+						let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+						*r = Some(Ok(mem::replace(value, new_value)));
+						(Propagation::Propagate, ())
+					}
+				});
+				drop(this);
+				f.await.ok();
+			};
+
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		}
+	}
+
+	fn update_async<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		&self,
+		update: F,
+	) -> impl 'f + Send + futures::Future<Output = Result<U, F>>
+	where
+		Self: 'f + Sized,
+	{
+		let this = self.downgrade();
+		async move {
+			let r = Arc::new(Mutex::new(Some(Err(update))));
+			if let Some(this) = this.upgrade() {
+				let f = this.update_async({
+					let r = Arc::downgrade(&r);
+					move |value| {
+						let Some(r) = r.upgrade() else {
+							return (Propagation::Halt, ());
+						};
+						let mut r = r.try_lock().unwrap();
+						let update = r.take().unwrap().map(|_| ()).unwrap_err();
+						let (propagation, u) = update(value);
+						*r = Some(Ok(u));
+						(propagation, ())
+					}
+				});
+				drop(this);
+				f.await.ok();
+			};
+
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		}
 	}
 
 	fn change_blocking(&self, new_value: T) -> Result<T, T>
@@ -626,12 +741,36 @@ where
 		unreachable!()
 	}
 
-	fn update_async<U: Send>(
+	fn change_async<'f>(
 		&self,
-		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
-	) -> impl Send + std::future::Future<Output = U>
+		new_value: T,
+	) -> impl 'f + Send + futures::Future<Output = Result<Result<T, T>, T>>
 	where
-		Self: Sized,
+		Self: 'f + Sized,
+		T: 'f + Sized + PartialEq,
+	{
+		unreachable!();
+		async { unreachable!() }
+	}
+
+	fn replace_async<'f>(
+		&self,
+		new_value: T,
+	) -> impl 'f + Send + futures::Future<Output = Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized,
+	{
+		unreachable!();
+		async { unreachable!() }
+	}
+
+	fn update_async<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		&self,
+		update: F,
+	) -> impl 'f + Send + futures::Future<Output = Result<U, F>>
+	where
+		Self: 'f + Sized,
 	{
 		unreachable!();
 		async { unreachable!() }

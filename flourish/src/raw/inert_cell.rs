@@ -3,7 +3,7 @@ use std::{
 	fmt::{self, Debug, Formatter},
 	mem,
 	pin::Pin,
-	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+	sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use isoprenoid::{
@@ -205,13 +205,28 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 			.update(|value, _| update(&mut value.0.write().unwrap()))
 	}
 
-	async fn update_async<U: Send>(
-		&self,
-		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
-	) -> U {
-		self.signal
-			.update_async(|value, _| update(&mut value.0.write().unwrap()))
-			.await
+	async fn update_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		self: Pin<&Self>,
+		update: F,
+	) -> impl 'f + Send + futures::Future<Output = Result<U, F>>
+	where
+		Self: Sized,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(update))));
+		let f = self
+			.signal
+			.update_async(|value, _| update(&mut value.0.write().unwrap()));
+		async move {
+			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
+			use futures::FutureExt;
+			f.boxed().await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		}
 	}
 
 	fn change_blocking(&self, new_value: T) -> Result<T, T>

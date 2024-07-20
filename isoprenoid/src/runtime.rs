@@ -5,19 +5,20 @@ use core::{
 	sync::atomic::{AtomicU64, Ordering},
 };
 use std::{
-	borrow::{Borrow, BorrowMut},
+	borrow::BorrowMut,
 	cell::{RefCell, RefMut},
-	collections::{btree_map::Entry, BTreeMap, BTreeSet, VecDeque},
-	convert::identity,
+	collections::{BTreeMap, BTreeSet, VecDeque},
 	fmt::Debug,
 	future::Future,
 	mem,
 	ops::Deref,
-	panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+	pin::Pin,
 	sync::{Arc, Mutex, Weak},
+	task::{Context, Poll},
 };
 
 use async_lock::OnceCell;
+use futures_lite::FutureExt;
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use scopeguard::{guard, ScopeGuard};
 use unwind_safe::try_eval;
@@ -162,24 +163,29 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// `f` **must** be dropped or consumed before the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.
 	fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce() -> Propagation);
 
-	/// **Iff polled**, submits `f` to run exclusively for `id` outside of recording dependencies.
-	///
-	/// The runtime **should** run `f` eventually, but **may** instead cancel and return it in response to
-	/// a [`.stop(id)`](`SignalRuntimeRef::stop`) call with the same `id``.
+	/// **Immediately** submits `f` to run exclusively for `id` outside of recording dependencies.
 	///
 	/// # Logic
 	///
+	/// The runtime **should** run `f` eventually, but **may** instead cancel and return it in response to
+	/// a [`.stop(id)`](`SignalRuntimeRef::stop`) or [`.purge(id)`](`SignalRuntimeRef::purge`) call with the same `id`.  
+	/// This method **must not** block indefinitely *as long as `f` doesn't*, regardless of context.  
 	/// Calling [`.stop(id)`](`SignalRuntimeRef::stop`) with matching `id` **should** cancel the update and return the [`Err`] variant.
 	///
 	/// # Safety
 	///
 	/// `f` **must not** be dropped or run after the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.  
 	/// `f` **must not** be dropped or run after the [`Future`] returned by this function is dropped.
-	fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
+	///
+	/// The hidden type returned from this method **must not** capture the elided lifetime of `&self`.  
+	/// The overcapturing here appears to be a compiler limitation that can be fixed once
+	/// precise capturing in RPITIT or (not quite as nicely) TAITIT lands.
+	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
-	) -> impl Send + Future<Output = Result<T, F>>;
+	) -> Self::UpdateEager<'f, T, F>;
+	type UpdateEager<'f, T: 'f, F: 'f>: 'f + Send + Future<Output = Result<T, F>>;
 
 	/// Runs `f` exclusively for `id` outside of recording dependencies.
 	///
@@ -830,11 +836,11 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		self.process_pending(&lock, borrow);
 	}
 
-	async fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
+	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
-	) -> Result<T, F> {
+	) -> Self::UpdateEager<'f, T, F> {
 		let f = Arc::new(Mutex::new(Some(f)));
 		let _f_guard = guard(Arc::clone(&f), |f| drop(f.lock().unwrap().take()));
 
@@ -877,43 +883,29 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 			>(update)
 		});
 
-		let t = match identity(once)
-			.wait()
-			.await
-			.lock()
-			.expect("unreachable")
-			.borrow_mut()
-			.take()
-		{
-			Some(Ok(t)) => t,
-			Some(Err(f)) => {
-				return Err(f.expect("`_f_guard` didn't destroy `f` yet at this point."))
-			}
-			None => unreachable!(),
-		};
-
-		// Wait again so that propagation also completes first.
-		let once = Arc::new(OnceCell::<()>::new());
-		self.update_or_enqueue(id, {
-			let guard = guard(Arc::downgrade(&once), |c| {
-				if let Some(c) = c.upgrade() {
-					c.set_blocking(()).expect("unreachable");
-				}
-			});
-			move || {
-				drop(guard);
-				Propagation::Halt
-			}
-		});
-
-		once.wait().await;
-
 		let lock = self.critical_mutex.lock();
 		let borrow = (*lock).borrow_mut();
 		self.process_pending(&lock, borrow);
 
-		Ok(t)
+		private::UpdateEager(Box::pin(async move {
+			match once
+				.wait()
+				.await
+				.lock()
+				.expect("unreachable")
+				.borrow_mut()
+				.take()
+			{
+				Some(Ok(t)) => return Ok(t),
+				Some(Err(f)) => {
+					return Err(f.expect("`_f_guard` didn't destroy `f` yet at this point."))
+				}
+				None => unreachable!(),
+			};
+		}))
 	}
+
+	type UpdateEager<'f, T: 'f, F: 'f> = UpdateEager<'f, T, F>;
 
 	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (Propagation, T)) -> T {
 		// This is indirected because the nested function's text size may be relatively large.
@@ -1155,13 +1147,15 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
 		(&GLOBAL_SIGNAL_RUNTIME).update_or_enqueue(id.0, f)
 	}
 
-	async fn update_async<T: Send, F: Send + FnOnce() -> (Propagation, T)>(
+	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
-	) -> Result<T, F> {
-		(&GLOBAL_SIGNAL_RUNTIME).update_async(id.0, f).await
+	) -> Self::UpdateEager<'f, T, F> {
+		(&GLOBAL_SIGNAL_RUNTIME).update_eager(id.0, f)
 	}
+
+	type UpdateEager<'f, T: 'f, F: 'f> = UpdateEager<'f, T, F>;
 
 	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (Propagation, T)) -> T {
 		(&GLOBAL_SIGNAL_RUNTIME).update_blocking(id.0, f)
@@ -1293,4 +1287,29 @@ pub enum Propagation {
 	Propagate,
 	/// Do not mark dependent signals as stale, except through other (parallel) dependency relationships.
 	Halt,
+}
+
+//FIXME: Turn this into a type alias `impl Trait` when that's stable.
+pub type UpdateEager<'f, T, F> = private::UpdateEager<'f, T, F>;
+
+mod private {
+	use std::{
+		future::Future,
+		pin::Pin,
+		task::{Context, Poll},
+	};
+
+	use futures_lite::FutureExt;
+
+	pub struct UpdateEager<'f, T: 'f, F: 'f>(
+		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Result<T, F>>>>,
+	);
+
+	impl<'f, T: 'f, F: 'f> Future for UpdateEager<'f, T, F> {
+		type Output = Result<T, F>;
+
+		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.0.poll(cx)
+		}
+	}
 }

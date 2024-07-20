@@ -330,7 +330,7 @@ impl<
 			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
 	}
 
-	async fn update_async<U: Send>(
+	async fn update_eager<U: Send>(
 		&self,
 		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
 	) -> U {
