@@ -1,6 +1,6 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, Effect, SignalCell};
+use flourish::{prelude::*, Effect, Propagation, SignalCell};
 mod _validator;
 use _validator::Validator;
 
@@ -29,4 +29,20 @@ fn heap() {
 	v.expect([]);
 }
 
-//TODO: Ensure that flushing doesn't cause issues when dropping an Effect!
+#[test]
+fn effect_drop_is_debounced() {
+	let constructions = &Validator::new();
+	let destructions = &Validator::new();
+
+	let a = SignalCell::new_reactive((), |_value, _status| Propagation::Propagate);
+	let e = Effect::new(
+		|| constructions.push(a.get()),
+		|value| destructions.push(value),
+	);
+	constructions.expect([()]);
+	destructions.expect([]);
+
+	drop(e);
+	constructions.expect([]);
+	destructions.expect([()]);
+}

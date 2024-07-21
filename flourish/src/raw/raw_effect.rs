@@ -41,7 +41,8 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
 	for RawEffect<T, S, D, SR>
 {
 	fn drop(&mut self) {
-		unsafe { Pin::new_unchecked(&mut self.0) }.deinit_and(|eager, lazy| {
+		let raw_signal = unsafe { Pin::new_unchecked(&mut self.0) };
+		raw_signal.purge_deinit_and(|eager, lazy| {
 			let drop = &mut eager.0.try_lock().unwrap().1;
 			lazy.0
 				.try_lock()

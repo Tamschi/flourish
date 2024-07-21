@@ -85,6 +85,10 @@ impl<SR: SignalsRuntimeRef> SignalId<SR> {
 		self.runtime.refresh(self.id);
 	}
 
+	fn stop(&self) {
+		self.runtime.stop(self.id)
+	}
+
 	fn purge(&self) {
 		self.runtime.purge(self.id)
 	}
@@ -553,7 +557,11 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		self.handle.runtime.clone()
 	}
 
-	pub fn deinit_and<T>(
+	pub fn stop(&self) {
+		self.handle.stop();
+	}
+
+	pub fn purge_deinit_and<T>(
 		self: Pin<&mut Self>,
 		f: impl FnOnce(Pin<&Eager>, Pin<&mut Lazy>) -> T,
 	) -> Option<T> {

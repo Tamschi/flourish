@@ -42,7 +42,6 @@ fn use_constructors() {
 	v.expect([2]);
 	x.expect(["sub_aa", "aa", "c", "d"]);
 
-	dbg!(GlobalSignalsRuntime);
 	b_cell.replace_blocking(2);
 	v.expect([2]);
 	x.expect(["c", "d", "sub_aa", "aa"]);

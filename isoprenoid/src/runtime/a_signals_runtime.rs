@@ -44,6 +44,7 @@ impl Debug for ASignalsRuntime_ {
 			.field("callbacks", &self.callbacks)
 			.field("update_queue", &self.update_queue.keys())
 			.field("stale_queue", &self.stale_queue)
+			//FIXME: This could be a lot nicer, for example by printing a dependency graph (if a feature to do so is enabled).
 			.field("interdependencies", &self.interdependencies)
 			.finish()
 	}
@@ -755,9 +756,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 	fn refresh(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		dbg!(id);
 		if borrow.stale_queue.remove(&id) {
-			dbg!(id);
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&id) {
 				if let &CallbackTable {
 					update: Some(update),
