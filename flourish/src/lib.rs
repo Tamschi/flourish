@@ -57,7 +57,7 @@ pub mod __ {
 ///
 /// ```
 /// # {
-/// #![cfg(feature = "global_signals_runtime")]
+/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 /// use flourish::{prelude::*, shadow_clone, SignalCell, Signal};
 ///
 /// let a = SignalCell::new(1);

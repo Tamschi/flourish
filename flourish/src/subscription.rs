@@ -123,7 +123,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalsRuntimeRef> SubscriptionSR<'a, T, SR>
 ///
 /// ```
 /// # {
-/// #![cfg(feature = "global_signals_runtime")]
+/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 /// use flourish::Signal;
 ///
 /// // The closure runs once on subscription, but not to refresh `sub`!
