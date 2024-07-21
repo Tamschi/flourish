@@ -2,7 +2,7 @@
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 // #![warn(clippy::single_call_fn)]
-#![cfg_attr(feature = "_docs", doc = include_str!("../README.md"))]
+#![cfg_attr(feature = "_doc", doc = include_str!("../README.md"))]
 //!
 //! # Threading Notes
 //!
