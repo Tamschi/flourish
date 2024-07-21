@@ -432,9 +432,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	where
 		Eager: 'f,
 		Lazy: 'f,
-		SR: 'f,
 	{
-		let this = AssertSend(&*self as *const Self);
+		let eager = AssertSend(&self.eager as *const Eager);
+		let lazy = AssertSend(&self.lazy as *const OnceSlot<Lazy>);
 		let f = Arc::new(Mutex::new(Some(f)));
 
 		struct AssertSend<T: ?Sized>(*const T);
@@ -453,7 +453,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 					.expect("unreachable")
 					.take()
 					.expect("unreachable");
-				unsafe { f(&this.get().eager, this.get().lazy.get()) }
+				unsafe { f(eager.get(), lazy.get().get()) }
 			}
 		});
 		async move {
@@ -479,9 +479,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	where
 		Eager: 'f,
 		Lazy: 'f,
-		SR: 'f,
 	{
-		let this = AssertSend(&*self as *const Self);
+		let eager = AssertSend(&self.eager as *const Eager);
+		let lazy = AssertSend(&self.lazy as *const OnceSlot<Lazy>);
 		let f = Arc::new(Mutex::new(Some(f)));
 
 		struct AssertSend<T: ?Sized>(*const T);
@@ -502,8 +502,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 					.expect("unreachable");
 				unsafe {
 					f(
-						Pin::new_unchecked(&this.get().eager),
-						this.get().lazy.get().map(|r| Pin::new_unchecked(r)),
+						Pin::new_unchecked(eager.get()),
+						lazy.get().get().map(|r| Pin::new_unchecked(r)),
 					)
 				}
 			}

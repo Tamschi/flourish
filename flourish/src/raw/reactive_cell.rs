@@ -329,6 +329,19 @@ impl<
 			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
 	}
 
+	fn update_dyn(self: Pin<&Self>, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
+	where
+		T: 'static,
+		<SR as SignalRuntimeRef>::Symbol: Sync, //TODO: Centralise this bound!
+	{
+		self.signal
+			.clone_runtime_ref()
+			.run_detached(|| self.touch());
+		self.project_ref()
+			.signal
+			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
+	}
+
 	fn change_eager<'f>(
 		self: Pin<&Self>,
 		new_value: T,
@@ -451,6 +464,146 @@ impl<
 	where
 		Self: 'f + Sized;
 
+	fn change_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<Result<T, T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f: Pin<Box<_>> = self
+			.update_eager_dyn({
+				let r = Arc::downgrade(&r);
+				Box::new(move |value: &mut T| {
+					let Some(r) = r.upgrade() else {
+						return Propagation::Halt;
+					};
+					let mut r = r.try_lock().unwrap();
+					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+					if *value != new_value {
+						*r = Some(Ok(Ok(mem::replace(value, new_value))));
+						Propagation::Propagate
+					} else {
+						*r = Some(Ok(Err(new_value)));
+						Propagation::Halt
+					}
+				})
+			})
+			.into();
+
+		Box::new(async move {
+			f.await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		})
+	}
+
+	fn replace_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<T, T>>>
+	where
+		Self: 'f,
+		T: 'f + Sized,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f: Pin<Box<_>> = self
+			.update_eager_dyn({
+				let r = Arc::downgrade(&r);
+				Box::new(move |value: &mut T| {
+					let Some(r) = r.upgrade() else {
+						return Propagation::Halt;
+					};
+					let mut r = r.try_lock().unwrap();
+					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+					*r = Some(Ok(mem::replace(value, new_value)));
+					Propagation::Propagate
+				})
+			})
+			.into();
+
+		Box::new(async move {
+			f.await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		})
+	}
+
+	fn update_eager_dyn<'f>(
+		self: Pin<&Self>,
+		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ futures_lite::Future<
+				Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+			>,
+	>
+	where
+		T: 'f,
+	{
+		let update = Arc::new(Mutex::new(Some(update)));
+		let f = self.project_ref().signal.update_eager({
+			let update = Arc::downgrade(&update);
+			move |value, _| {
+				(
+					if let Some(update) = update.upgrade() {
+						let update = update
+							.try_lock()
+							.expect("unreachable")
+							.take()
+							.expect("unreachable");
+						update(&mut *value.0 .1.write().unwrap())
+					} else {
+						Propagation::Halt
+					},
+					(),
+				)
+			}
+		});
+		let f: Box<
+			dyn Send
+				+ futures_lite::Future<
+					Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+				>,
+		> = Box::new(async move {
+			f.await.map_err(|_| {
+				Arc::into_inner(update)
+					.expect("unreachable")
+					.into_inner()
+					.expect("unreachable")
+					.expect("`Some`")
+			})
+		});
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self` is
+			//        dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<
+					dyn Send
+						+ futures_lite::Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+				Box<
+					dyn Send
+						+ futures_lite::Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+			>(f)
+		}
+	}
+
 	fn change_blocking(&self, new_value: T) -> Result<T, T>
 	where
 		T: Sized + PartialEq,
@@ -474,6 +627,14 @@ impl<
 	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U {
 		self.signal
 			.update_blocking(|value, _| update(&mut value.0 .1.write().unwrap()))
+	}
+
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
+	where
+		<SR as SignalRuntimeRef>::Symbol: Sync,
+	{
+		self.signal
+			.update_blocking(|value, _| (update(&mut value.0 .1.write().unwrap()), ()))
 	}
 }
 

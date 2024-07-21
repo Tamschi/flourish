@@ -1,10 +1,4 @@
-use std::{
-	borrow::Borrow,
-	future::Future,
-	mem,
-	pin::Pin,
-	sync::{Arc, Mutex},
-};
+use std::{borrow::Borrow, future::Future, pin::Pin};
 
 use isoprenoid::runtime::{Propagation, SignalRuntimeRef};
 
@@ -204,11 +198,15 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
+		T: 'static,
 		SR::Symbol: Sync;
 
 	/// The same as [`update`](`SourceCell::update`), but object-safe.
-	fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
-	where
+	fn update_dyn(
+		self: Pin<&Self>,
+		update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>,
+	) where
+		T: 'static,
 		SR::Symbol: Sync;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -325,7 +323,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
-		Self: 'f;
+		T: 'f;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -381,7 +379,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 		Self: Sized;
 
 	/// The same as [`update_blocking`](`SourceCell::update_blocking`), but object-safe.
-	fn update_blocking_dyn(&self, update: Box<dyn FnOnce(&mut T) -> Propagation>)
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
 	where
 		SR::Symbol: Sync;
 
@@ -437,6 +435,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
+		T: 'static,
 		SR::Symbol: Sync;
 
 	/// The same as [`update`](`SourceCellPin::update`), but object-safe.
@@ -636,7 +635,8 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
-		Self: 'f;
+		Self: 'f,
+		T: 'f;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -692,7 +692,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		Self: Sized;
 
 	/// The same as [`update_blocking`](`SourceCellPin::update_blocking`), but object-safe.
-	fn update_blocking_dyn(&self, update: Box<dyn FnOnce(&mut T) -> Propagation>)
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
 	where
 		SR::Symbol: Sync;
 }

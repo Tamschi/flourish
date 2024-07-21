@@ -3,8 +3,6 @@ use std::{
 	fmt::Debug,
 	future::Future,
 	marker::PhantomData,
-	mem,
-	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Mutex, Weak},
 };
@@ -21,7 +19,6 @@ use crate::{
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalRuntime`]).
 pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalRuntime>;
 
-//TODO: It may be possible to fully implement the API with additional `dyn` methods on the traits.
 /// Type of [`SignalCellSR`]s after type-erasure. Less convenient API.
 pub type ErasedSignalCell<'a, T, SR> = SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>;
 
@@ -525,6 +522,7 @@ where
 	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
+		T: 'static,
 		<SR as SignalRuntimeRef>::Symbol: Sync,
 	{
 		self.source_cell.as_ref().update(update)
@@ -760,7 +758,7 @@ where
 		self.source_cell.as_ref().update_blocking(update)
 	}
 
-	fn update_blocking_dyn(&self, update: Box<dyn FnOnce(&mut T) -> Propagation>)
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
 	where
 		<SR as SignalRuntimeRef>::Symbol: Sync,
 	{
@@ -792,6 +790,7 @@ where
 	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
+		T: 'static,
 		<SR as SignalRuntimeRef>::Symbol: Sync,
 	{
 		self.source_cell.as_ref().update_dyn(Box::new(update))
@@ -916,7 +915,15 @@ where
 	where
 		Self: 'f,
 	{
-		todo!()
+		let this = self.downgrade();
+		Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				let f: Pin<Box<_>> = this.update_eager_dyn(update).into();
+				f.await
+			} else {
+				Err(update)
+			}
+		})
 	}
 
 	fn change_eager<'f>(
@@ -960,7 +967,42 @@ where
 	where
 		Self: 'f + Sized,
 	{
-		todo!("dyncall")
+		let shelve = Arc::new(Mutex::new(Some(Err(update))));
+		let f: Pin<Box<_>> = self
+			.source_cell
+			.as_ref()
+			.update_eager_dyn(Box::new({
+				let shelve = Arc::downgrade(&shelve);
+				move |value| {
+					if let Some(shelve) = shelve.upgrade() {
+						let update = shelve
+							.try_lock()
+							.expect("unreachable")
+							.take()
+							.expect("unreachable")
+							.map(|_| ())
+							.unwrap_err();
+						let (propagation, u) = update(value);
+						assert!(shelve
+							.try_lock()
+							.expect("unreachable")
+							.replace(Ok(u))
+							.is_none());
+						propagation
+					} else {
+						Propagation::Halt
+					}
+				}
+			}))
+			.into();
+		private2::DetachedEagerFuture(Box::pin(async move {
+			f.await;
+			Arc::into_inner(shelve)
+				.expect("unreachable")
+				.into_inner()
+				.expect("can't be poisoned")
+				.expect("can't be `None`")
+		}))
 	}
 
 	type UpdateEager<'f, U: 'f, F: 'f> = private2::DetachedEagerFuture<'f, Result<U, F>>
@@ -1021,10 +1063,36 @@ where
 	where
 		Self: Sized,
 	{
-		todo!("dyncall")
+		let shelve = Arc::new(Mutex::new(Some(Err(update))));
+		self.source_cell.update_blocking_dyn(Box::new({
+			shadow_clone!(shelve);
+			move |value| {
+				let update = shelve
+					.try_lock()
+					.expect("unreachable")
+					.take()
+					.expect("unreachable")
+					.map(|_| ())
+					.unwrap_err();
+				let (propagation, u) = update(value);
+				assert!(shelve
+					.try_lock()
+					.expect("unreachable")
+					.replace(Ok(u))
+					.is_none());
+				propagation
+			}
+		}));
+		Arc::into_inner(shelve)
+			.expect("unreachable")
+			.into_inner()
+			.expect("can't be poisoned")
+			.expect("can't be `None`")
+			.map_err(|_| ())
+			.expect("can't be `Err` anymore")
 	}
 
-	fn update_blocking_dyn(&self, update: Box<dyn FnOnce(&mut T) -> Propagation>)
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
 	where
 		<SR as SignalRuntimeRef>::Symbol: Sync,
 	{
