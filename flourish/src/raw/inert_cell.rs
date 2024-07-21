@@ -170,9 +170,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscribable<SR> for Iner
 	}
 }
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR>
-	for InertCell<T, SR>
-{
+impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for InertCell<T, SR> {
 	fn change(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized + PartialEq,
@@ -479,8 +477,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR>
 			.update_blocking(|value, _| update(&mut value.0.write().unwrap()))
 	}
 
-	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
-	{
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		self.signal
 			.update_blocking(|value, _| (update(&mut value.0.write().unwrap()), ()))
 	}

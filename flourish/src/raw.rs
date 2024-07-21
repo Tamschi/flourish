@@ -70,8 +70,7 @@ pub fn reactive_cell<
 	initial_value: T,
 	on_subscribed_change_fn_pin: H,
 	runtime: SR,
-) -> impl SourceCell<T, SR>
-{
+) -> impl SourceCell<T, SR> {
 	ReactiveCell::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 }
 #[macro_export]
@@ -105,8 +104,7 @@ pub fn reactive_cell_mut<
 	initial_value: T,
 	on_subscribed_change_fn_pin: H,
 	runtime: SR,
-) -> impl SourceCell<T, SR>
-{
+) -> impl SourceCell<T, SR> {
 	ReactiveCellMut::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 }
 #[macro_export]

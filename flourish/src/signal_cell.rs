@@ -38,11 +38,8 @@ pub struct WeakSignalCell<
 	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
 }
 
-impl<
-		T: ?Sized + Send,
-		S: ?Sized + SourceCell<T, SR>,
-		SR: ?Sized + SignalsRuntimeRef,
-	> WeakSignalCell<T, S, SR>
+impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	WeakSignalCell<T, S, SR>
 {
 	#[must_use]
 	pub fn upgrade(&self) -> Option<SignalCellSR<T, S, SR>> {
@@ -64,11 +61,8 @@ pub struct SignalCellSR<
 	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
 }
 
-impl<
-		T: ?Sized + Send,
-		S: ?Sized + SourceCell<T, SR>,
-		SR: ?Sized + SignalsRuntimeRef,
-	> Clone for SignalCellSR<T, S, SR>
+impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+	for SignalCellSR<T, S, SR>
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -78,11 +72,8 @@ impl<
 	}
 }
 
-impl<
-		T: ?Sized + Debug + Send,
-		S: ?Sized + SourceCell<T, SR>,
-		SR: SignalsRuntimeRef + Debug,
-	> Debug for SignalCellSR<T, S, SR>
+impl<T: ?Sized + Debug + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef + Debug> Debug
+	for SignalCellSR<T, S, SR>
 where
 	S: Debug,
 {
@@ -394,9 +385,7 @@ impl<
 	}
 }
 
-impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
-	SignalCellSR<T, S, SR>
-{
+impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef> SignalCellSR<T, S, SR> {
 	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
 	pub fn as_signal_ref<'a>(&self) -> SignalRef<'_, 'a, T, SR>
 	where
@@ -455,11 +444,8 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
 	}
 }
 
-impl<
-		T: Send + Sized + ?Sized,
-		S: ?Sized + SourceCell<T, SR>,
-		SR: ?Sized + SignalsRuntimeRef,
-	> SourcePin<SR> for SignalCellSR<T, S, SR>
+impl<T: Send + Sized + ?Sized, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	SourcePin<SR> for SignalCellSR<T, S, SR>
 {
 	type Output = T;
 
@@ -789,8 +775,7 @@ impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + Signal
 		self.source_cell.as_ref().update_blocking(update)
 	}
 
-	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
-	{
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		self.source_cell.as_ref().update_blocking_dyn(update)
 	}
 }
@@ -1152,8 +1137,7 @@ impl<'a, T: Send + Sized + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin
 			.expect("can't be `Err` anymore")
 	}
 
-	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
-	{
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		self.source_cell.as_ref().update_blocking_dyn(update)
 	}
 }

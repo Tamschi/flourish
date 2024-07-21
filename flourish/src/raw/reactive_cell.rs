@@ -622,8 +622,7 @@ impl<
 			.update_blocking(|value, _| update(&mut value.0 .1.write().unwrap()))
 	}
 
-	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
-	{
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		self.signal
 			.update_blocking(|value, _| (update(&mut value.0 .1.write().unwrap()), ()))
 	}
