@@ -139,12 +139,20 @@ impl ASignalsRuntime {
 						// Note: Subscribed status change handlers *may* see stale values!
 						// I think simpler/deduplicated propagation is likely worth that tradeoff.
 
+						// Important guard frame against `stop` and `purge`!
+						borrow
+							.context_stack
+							.push(Some((dependency, BTreeSet::new())));
 						borrow.context_stack.push(None);
 						drop(borrow);
 						let propagation =
 							try_eval(|| on_subscribed_change(data, true)).finally(|()| {
 								let mut borrow = (**lock).borrow_mut();
 								assert_eq!(borrow.context_stack.pop(), Some(None));
+								assert_eq!(
+									borrow.context_stack.pop(),
+									Some(Some((dependency, BTreeSet::new())))
+								);
 							});
 						borrow = (**lock).borrow_mut();
 						match propagation {
@@ -209,12 +217,20 @@ impl ASignalsRuntime {
 						// Note: Subscribed status change handlers *may* see stale values!
 						// I think simpler/deduplicated propagation is likely worth that tradeoff.
 
+						// Important guard frame against `stop` and `purge`!
+						borrow
+							.context_stack
+							.push(Some((dependency, BTreeSet::new())));
 						borrow.context_stack.push(None);
 						drop(borrow);
 						let propagation =
 							try_eval(|| on_subscribed_change(data, false)).finally(|()| {
 								let mut borrow = (**lock).borrow_mut();
 								assert_eq!(borrow.context_stack.pop(), Some(None));
+								assert_eq!(
+									borrow.context_stack.pop(),
+									Some(Some((dependency, BTreeSet::new())))
+								);
 							});
 						borrow = (**lock).borrow_mut();
 						match propagation {
@@ -493,6 +509,8 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		{
 			// Subscribed, so run the callback for that.
 			let propagation = try_eval(|| {
+				// Important guard frame against `stop` and `purge`!
+				borrow.context_stack.push(Some((id, BTreeSet::new())));
 				borrow.context_stack.push(None);
 				drop(borrow);
 				unsafe {
@@ -511,6 +529,10 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			.finally(|()| {
 				let mut borrow = (*lock).borrow_mut();
 				assert_eq!(borrow.context_stack.pop(), Some(None));
+				assert_eq!(
+					borrow.context_stack.pop(),
+					Some(Some((id, BTreeSet::new())))
+				);
 			});
 
 			borrow = (*lock).borrow_mut();
@@ -524,7 +546,6 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		t
 	}
 
-	//TODO: Add guard stack-frame for subscribe_status_changed callbacks (which run detached)!
 	fn stop(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
