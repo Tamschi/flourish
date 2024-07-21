@@ -110,35 +110,59 @@ impl<T: ?Sized + Send, SR: SignalsRuntimeRef> InertCell<T, SR> {
 	}
 }
 
-impl<T: Send + ?Sized, SR: SignalsRuntimeRef> Source<SR> for InertCell<T, SR> {
-	type Output = T;
-
+impl<T: Send + ?Sized, SR: SignalsRuntimeRef> Source<T, SR> for InertCell<T, SR> {
 	fn touch(self: Pin<&Self>) {
 		self.touch();
 	}
 
-	fn get_clone(self: Pin<&Self>) -> Self::Output
+	fn get_clone(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Sync + Clone,
 	{
-		self.read().borrow().clone()
+		Borrow::<T>::borrow(&self.read()).clone()
 	}
 
-	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
+	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
-		Self::Output: Clone,
+		T: Clone,
 	{
-		self.touch().write().unwrap().clone()
+		Borrow::<T>::borrow(&self.read_exclusive()).clone()
 	}
 
-	fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
+	fn read<'r>(self: Pin<&'r Self>) -> InertCellGuard<'r, T>
 	where
-		Self::Output: Sync,
+		Self: Sized,
+		T: Sync,
+	{
+		let touch = self.touch();
+		InertCellGuard(touch.read().unwrap())
+	}
+
+	type Read<'r> = InertCellGuard<'r, T>
+			where
+				Self: 'r + Sized,
+				T: Sync;
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> InertCellGuardExclusive<'r, T>
+	where
+		Self: Sized,
+	{
+		let touch = self.touch();
+		InertCellGuardExclusive(touch.write().unwrap())
+	}
+
+	type ReadExclusive<'r> = InertCellGuardExclusive<'r, T>
+			where
+				Self: 'r + Sized;
+
+	fn read_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>>
+	where
+		T: Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
+	fn read_exclusive_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>> {
 		Box::new(self.read_exclusive())
 	}
 
@@ -150,8 +174,8 @@ impl<T: Send + ?Sized, SR: SignalsRuntimeRef> Source<SR> for InertCell<T, SR> {
 	}
 }
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscribable<SR> for InertCell<T, SR> {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
+impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for InertCell<T, SR> {
+	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
 		//FIXME: This is inefficient.
 		if self
 			.project_ref()
@@ -159,7 +183,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscribable<SR> for Iner
 			.subscribe_inherently_or_init::<NoCallbacks>(|_, slot| slot.write(()))
 			.is_some()
 		{
-			Some(Source::read_exclusive(self))
+			Some(Source::read_exclusive_dyn(self))
 		} else {
 			None
 		}

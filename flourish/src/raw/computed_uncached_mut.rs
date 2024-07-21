@@ -81,52 +81,64 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> ComputedUncachedMut
 	}
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<T, SR>
 	for ComputedUncachedMut<T, F, SR>
 {
-	type Output = T;
-
 	fn touch(self: Pin<&Self>) {
 		self.touch();
 	}
 
-	fn get(self: Pin<&Self>) -> Self::Output
+	fn get_clone(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Copy,
+		T: Sync + Clone,
 	{
-		self.get()
+		self.get_clone_exclusive()
 	}
 
-	fn get_clone(self: Pin<&Self>) -> Self::Output
+	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Clone,
 	{
-		self.get()
+		self.read_exclusive()
 	}
 
-	fn get_exclusive(self: Pin<&Self>) -> Self::Output
+	fn read<'r>(self: Pin<&'r Self>) -> T
 	where
-		Self::Output: Copy,
+		Self: Sized,
+		T: Sync,
 	{
-		self.get()
+		self.read_exclusive()
 	}
 
-	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
+	type Read<'r> = T
 	where
-		Self::Output: Clone,
+		Self: 'r + Sized,
+		T: Sync;
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> T
+	where
+		Self: Sized,
 	{
-		self.get()
+		let mutex = self.touch();
+		let mut fn_pin = mutex.lock().expect("unreachable");
+		self.project_ref()
+			.0
+			.update_dependency_set(move |_, _| fn_pin())
 	}
 
-	fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
+	type ReadExclusive<'r> = T
 	where
-		Self::Output: Sync,
+		Self: 'r + Sized;
+
+	fn read_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>>
+	where
+		T: Sync,
 	{
-		Box::new(self.get())
+		Box::new(self.read())
 	}
 
-	fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
-		Box::new(self.get())
+	fn read_exclusive_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>> {
+		Box::new(self.read_exclusive())
 	}
 
 	fn clone_runtime_ref(&self) -> SR
@@ -137,10 +149,10 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<SR>
 	}
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Subscribable<SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Subscribable<T, SR>
 	for ComputedUncachedMut<T, F, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
+	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
 		self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)
 	}
 

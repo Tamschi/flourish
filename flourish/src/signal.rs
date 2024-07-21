@@ -24,7 +24,7 @@ pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalsRuntime>;
 /// Signals are not evaluated unless they are subscribed-to (or on demand if if not current).  
 /// Uncached signals are instead evaluated on direct demand **only** (but still communicate subscriptions and invalidation).
 pub struct SignalSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> {
-	pub(super) source: Pin<Arc<dyn 'a + Subscribable<SR, Output = T>>>,
+	pub(super) source: Pin<Arc<dyn 'a + Subscribable<T, SR>>>,
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Clone for SignalSR<'a, T, SR> {
@@ -44,7 +44,7 @@ where
 			f.debug_struct("SignalSR")
 				.field(
 					"(value)",
-					&(&*self.source.as_ref().read_exclusive()).borrow(),
+					&(&*self.source.as_ref().read_exclusive_dyn()).borrow(),
 				)
 				.finish_non_exhaustive()
 		})
@@ -56,7 +56,7 @@ unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Sync for Signa
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a, T, SR> {
 	/// Creates a new [`SignalSR`] from the provided raw [`Subscribable`].
-	pub fn new(source: impl 'a + Subscribable<SR, Output = T>) -> Self {
+	pub fn new(source: impl 'a + Subscribable<T, SR>) -> Self {
 		SignalSR {
 			source: Arc::pin(source),
 		}
@@ -257,38 +257,36 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a
 	}
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<SR>
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
 	for SignalSR<'a, T, SR>
 {
-	type Output = T;
-
 	fn touch(&self) {
 		self.source.as_ref().touch()
 	}
 
-	fn get_clone(&self) -> Self::Output
+	fn get_clone(&self) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Sync + Clone,
 	{
 		self.source.as_ref().get_clone()
 	}
 
-	fn get_clone_exclusive(&self) -> Self::Output
+	fn get_clone_exclusive(&self) -> T
 	where
-		Self::Output: Clone,
+		T: Clone,
 	{
 		self.source.as_ref().get_clone_exclusive()
 	}
 
-	fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
 	where
-		Self::Output: 'r + Sync,
+		T: Sync,
 	{
-		self.source.as_ref().read()
+		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
-		self.source.as_ref().read_exclusive()
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>> {
+		self.source.as_ref().read_exclusive_dyn()
 	}
 
 	fn clone_runtime_ref(&self) -> SR
@@ -304,8 +302,8 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<S
 /// Can be cloned into an additional [`SignalSR`] or subscribed to.
 #[derive(Debug)]
 pub struct SignalRef<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> {
-	pub(crate) source: *const (dyn 'a + Subscribable<SR, Output = T>),
-	pub(crate) _phantom: PhantomData<(&'r (dyn 'a + Subscribable<SR, Output = T>), SR)>,
+	pub(crate) source: *const (dyn 'a + Subscribable<T, SR>),
+	pub(crate) _phantom: PhantomData<(&'r (dyn 'a + Subscribable<T, SR>), SR)>,
 }
 
 impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SignalRef<'r, 'a, T, SR> {
@@ -362,40 +360,38 @@ unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Sync
 	// SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
 }
 
-impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<SR>
+impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
 	for SignalRef<'r, 'a, T, SR>
 {
-	type Output = T;
-
 	//SAFETY: `self.source` is a payload pointer that's valid for at least 'r.
 
 	fn touch(&self) {
 		unsafe { Pin::new_unchecked(&*self.source) }.touch()
 	}
 
-	fn get_clone(&self) -> Self::Output
+	fn get_clone(&self) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Sync + Clone,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.get_clone()
 	}
 
-	fn get_clone_exclusive(&self) -> Self::Output
+	fn get_clone_exclusive(&self) -> T
 	where
-		Self::Output: Clone,
+		T: Clone,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.get_clone_exclusive()
 	}
 
-	fn read<'s>(&'s self) -> Box<dyn 's + Borrow<Self::Output>>
+	fn read_dyn<'s>(&'s self) -> Box<dyn 's + Borrow<T>>
 	where
-		Self::Output: 's + Sync,
+		T: 's + Sync,
 	{
-		unsafe { Pin::new_unchecked(&*self.source) }.read()
+		unsafe { Pin::new_unchecked(&*self.source) }.read_dyn()
 	}
 
-	fn read_exclusive<'s>(&'s self) -> Box<dyn 's + Borrow<Self::Output>> {
-		unsafe { Pin::new_unchecked(&*self.source) }.read_exclusive()
+	fn read_exclusive_dyn<'s>(&'s self) -> Box<dyn 's + Borrow<T>> {
+		unsafe { Pin::new_unchecked(&*self.source) }.read_exclusive_dyn()
 	}
 
 	fn clone_runtime_ref(&self) -> SR
@@ -405,16 +401,16 @@ impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<SR
 		unsafe { Pin::new_unchecked(&*self.source) }.clone_runtime_ref()
 	}
 
-	fn get(&self) -> Self::Output
+	fn get(&self) -> T
 	where
-		Self::Output: Sync + Copy,
+		T: Sync + Copy,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.get()
 	}
 
-	fn get_exclusive(&self) -> Self::Output
+	fn get_exclusive(&self) -> T
 	where
-		Self::Output: Copy,
+		T: Copy,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.get_exclusive()
 	}

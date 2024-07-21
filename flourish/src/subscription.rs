@@ -21,7 +21,7 @@ pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalsRuntime>;
 /// Can be directly constructed but also converted to and fro.
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct SubscriptionSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> {
-	pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Output = T>>>,
+	pub(crate) source: Pin<Arc<dyn 'a + Subscribable<T, SR>>>,
 }
 
 impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Debug
@@ -34,7 +34,7 @@ where
 			f.debug_struct("SubscriptionSR")
 				.field(
 					"(value)",
-					&(&*self.source.as_ref().read_exclusive()).borrow(),
+					&(&*self.source.as_ref().read_exclusive_dyn()).borrow(),
 				)
 				.finish_non_exhaustive()
 		})
@@ -67,7 +67,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalsRuntimeRef> SubscriptionSR<'a, T, SR>
 	///
 	/// Iff the call to [`Subscribable::subscribe_inherently`] fails. This should never happen,
 	/// as the subscribable shouldn't have been in a state where it could be subscribed to before pinning.
-	pub fn new<S: 'a + Subscribable<SR, Output = T>>(source: S) -> Self {
+	pub fn new<S: 'a + Subscribable<T, SR>>(source: S) -> Self {
 		source.clone_runtime_ref().run_detached(|| {
 			let arc = Arc::pin(source);
 			arc.as_ref()
@@ -199,38 +199,36 @@ impl<'a, T: 'a + Send, SR: SignalsRuntimeRef> SubscriptionSR<'a, T, SR> {
 	}
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<SR>
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
 	for SubscriptionSR<'a, T, SR>
 {
-	type Output = T;
-
 	fn touch(&self) {
 		self.source.as_ref().touch()
 	}
 
-	fn get_clone(&self) -> Self::Output
+	fn get_clone(&self) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Sync + Clone,
 	{
 		self.source.as_ref().get_clone()
 	}
 
-	fn get_clone_exclusive(&self) -> Self::Output
+	fn get_clone_exclusive(&self) -> T
 	where
-		Self::Output: Clone,
+		T: Clone,
 	{
 		self.source.as_ref().get_clone_exclusive()
 	}
 
-	fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
 	where
-		Self::Output: 'r + Sync,
+		T: 'r + Sync,
 	{
-		self.source.as_ref().read()
+		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
-		self.source.as_ref().read_exclusive()
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>> {
+		self.source.as_ref().read_exclusive_dyn()
 	}
 
 	fn clone_runtime_ref(&self) -> SR

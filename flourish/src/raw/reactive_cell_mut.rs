@@ -218,36 +218,60 @@ impl<
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalsRuntimeRef,
-	> Source<SR> for ReactiveCellMut<T, HandlerFnPin, SR>
+	> Source<T, SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
-	type Output = T;
-
 	fn touch(self: Pin<&Self>) {
 		self.touch();
 	}
 
-	fn get_clone(self: Pin<&Self>) -> Self::Output
+	fn get_clone(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Sync + Clone,
 	{
-		self.read().borrow().clone()
+		Borrow::<T>::borrow(&self.read()).clone()
 	}
 
-	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
+	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
-		Self::Output: Clone,
+		T: Clone,
 	{
-		self.touch().write().unwrap().clone()
+		Borrow::<T>::borrow(&self.read_exclusive()).clone()
 	}
 
-	fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
+	fn read<'r>(self: Pin<&'r Self>) -> ReactiveCellMutGuard<'r, T>
 	where
-		Self::Output: Sync,
+		Self: Sized,
+		T: Sync,
+	{
+		let touch = self.touch();
+		ReactiveCellMutGuard(touch.read().unwrap())
+	}
+
+	type Read<'r> = ReactiveCellMutGuard<'r, T>
+			where
+				Self: 'r + Sized,
+				T: Sync;
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ReactiveCellMutGuardExclusive<'r, T>
+	where
+		Self: Sized,
+	{
+		let touch = self.touch();
+		ReactiveCellMutGuardExclusive(touch.write().unwrap())
+	}
+
+	type ReadExclusive<'r> = ReactiveCellMutGuardExclusive<'r, T>
+			where
+				Self: 'r + Sized;
+
+	fn read_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>>
+	where
+		T: Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
+	fn read_exclusive_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>> {
 		Box::new(self.read_exclusive())
 	}
 
@@ -267,9 +291,9 @@ impl<
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalsRuntimeRef,
-	> Subscribable<SR> for ReactiveCellMut<T, HandlerFnPin, SR>
+	> Subscribable<T, SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
+	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
 		//FIXME: This is inefficient.
 		if self
 			.project_ref()
@@ -277,7 +301,7 @@ impl<
 			.subscribe_inherently_or_init::<E>(|_, slot| slot.write(()))
 			.is_some()
 		{
-			Some(Source::read_exclusive(self))
+			Some(Source::read_exclusive_dyn(self))
 		} else {
 			None
 		}

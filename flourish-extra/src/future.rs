@@ -23,7 +23,7 @@ pub async fn skipped_while<'a, T: 'a + Send + Sync, SR: 'a + SignalsRuntimeRef>(
 			let effect = effect_with_runtime!({
 				let (sub, once) = (&sub, &once);
 				move || {
-					if !predicate_fn_pin(&*sub.read().borrow()) {
+					if !predicate_fn_pin(&*sub.read_dyn().borrow()) {
 						once.set_blocking(()).ok();
 					}
 				}

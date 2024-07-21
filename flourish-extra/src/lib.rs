@@ -18,7 +18,7 @@ pub mod future;
 pub fn delta<'a, V: 'a + Send, T: 'a + Send + Zero, SR: 'a + SignalsRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> V,
 	runtime: SR,
-) -> impl 'a + Subscribable<SR, Output = T>
+) -> impl 'a + Subscribable<T, SR>
 where
 	for<'b> &'b V: Sub<Output = T>,
 {
@@ -40,7 +40,7 @@ where
 pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalsRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> V,
 	runtime: SR,
-) -> impl 'a + Subscribable<SR, Output = T> {
+) -> impl 'a + Subscribable<T, SR> {
 	folded(
 		T::zero(),
 		move |tally| {

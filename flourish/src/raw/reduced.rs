@@ -69,45 +69,6 @@ impl<
 		))
 	}
 
-	fn get(self: Pin<&Self>) -> T
-	where
-		T: Sync + Copy,
-	{
-		*self.read().borrow()
-	}
-
-	fn get_clone(self: Pin<&Self>) -> T
-	where
-		T: Sync + Clone,
-	{
-		self.read().borrow().clone()
-	}
-
-	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
-	where
-		T: Sync,
-	{
-		ReducedGuard(self.touch().read().unwrap())
-	}
-
-	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
-		ReducedGuardExclusive(self.touch().write().unwrap())
-	}
-
-	fn get_exclusive(self: Pin<&Self>) -> T
-	where
-		T: Copy,
-	{
-		self.get_clone_exclusive()
-	}
-
-	fn get_clone_exclusive(self: Pin<&Self>) -> T
-	where
-		T: Clone,
-	{
-		self.touch().write().unwrap().clone()
-	}
-
 	pub(crate) fn touch(self: Pin<&Self>) -> &RwLock<T> {
 		unsafe {
 			self.project_ref()
@@ -117,21 +78,6 @@ impl<
 				.project_ref()
 				.0
 		}
-	}
-
-	fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
-		Some(unsafe {
-			//TODO: SAFETY COMMENT.
-			mem::transmute::<ReducedGuard<T>, ReducedGuard<T>>(ReducedGuard(
-				self.project_ref()
-					.0
-					.subscribe_inherently_or_init::<E>(|f, cache| Self::init(f, cache))?
-					.1
-					 .0
-					.read()
-					.unwrap(),
-			))
-		})
 	}
 }
 
@@ -204,50 +150,60 @@ impl<
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Propagation,
 		SR: SignalsRuntimeRef,
-	> Source<SR> for Reduced<T, S, M, SR>
+	> Source<T, SR> for Reduced<T, S, M, SR>
 {
-	type Output = T;
-
 	fn touch(self: Pin<&Self>) {
 		self.touch();
 	}
 
-	fn get(self: Pin<&Self>) -> Self::Output
+	fn get_clone(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Copy,
+		T: Sync + Clone,
 	{
-		self.get()
+		Borrow::<T>::borrow(&self.read()).clone()
 	}
 
-	fn get_clone(self: Pin<&Self>) -> Self::Output
+	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Clone,
 	{
-		self.get_clone()
+		Borrow::<T>::borrow(&self.read_exclusive()).clone()
 	}
 
-	fn get_exclusive(self: Pin<&Self>) -> Self::Output
+	fn read<'r>(self: Pin<&'r Self>) -> ReducedGuard<'r, T>
 	where
-		Self::Output: Copy,
+		Self: Sized,
+		T: Sync,
 	{
-		self.get_exclusive()
+		let touch = self.touch();
+		ReducedGuard(touch.read().unwrap())
 	}
 
-	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
+	type Read<'r> = ReducedGuard<'r, T>
+			where
+				Self: 'r + Sized,
+				T: Sync;
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ReducedGuardExclusive<'r, T>
 	where
-		Self::Output: Clone,
+		Self: Sized,
 	{
-		self.get_clone_exclusive()
+		let touch = self.touch();
+		ReducedGuardExclusive(touch.write().unwrap())
 	}
 
-	fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
+	type ReadExclusive<'r> = ReducedGuardExclusive<'r, T>
+			where
+				Self: 'r + Sized;
+
+	fn read_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>>
 	where
-		Self::Output: Sync,
+		T: Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
+	fn read_exclusive_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>> {
 		Box::new(self.read_exclusive())
 	}
 
@@ -264,10 +220,21 @@ impl<
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Propagation,
 		SR: SignalsRuntimeRef,
-	> Subscribable<SR> for Reduced<T, S, M, SR>
+	> Subscribable<T, SR> for Reduced<T, S, M, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
-		self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)
+	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
+		Some(Box::new(unsafe {
+			//TODO: SAFETY COMMENT.
+			mem::transmute::<ReducedGuard<T>, ReducedGuard<T>>(ReducedGuard(
+				self.project_ref()
+					.0
+					.subscribe_inherently_or_init::<E>(|f, cache| Self::init(f, cache))?
+					.1
+					 .0
+					.read()
+					.unwrap(),
+			))
+		}))
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
