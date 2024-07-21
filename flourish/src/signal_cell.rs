@@ -397,8 +397,6 @@ impl<
 impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef<Symbol: Sync>>
 	SignalCellSR<T, S, SR>
 {
-	//TODO: `as_ref`/`SignalCellRef`?
-
 	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
 	pub fn as_signal_ref<'a>(&self) -> SignalRef<'_, 'a, T, SR>
 	where
@@ -457,7 +455,7 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef<Symbol: Sync>
 	}
 }
 
-//TODO: Clean up `Sync: Sync`… everywhere.
+//TODO: Clean up `Symbol: Sync`… everywhere.
 impl<
 		T: Send + Sized + ?Sized,
 		S: ?Sized + SourceCell<T, SR>,
