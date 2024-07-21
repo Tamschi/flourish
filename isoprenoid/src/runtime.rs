@@ -220,10 +220,8 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 mod a_signals_runtime;
 
 #[cfg(feature = "global_signals_runtime")]
-rubicon::process_local! {
-	static ISOPRENOID_GLOBAL_SIGNALS_RUNTIME: a_signals_runtime::ASignalsRuntime =
-		a_signals_runtime::ASignalsRuntime::new();
-}
+static ISOPRENOID_GLOBAL_SIGNALS_RUNTIME: a_signals_runtime::ASignalsRuntime =
+	a_signals_runtime::ASignalsRuntime::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct ASymbol(pub(crate) NonZeroU64);

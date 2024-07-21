@@ -20,12 +20,10 @@ use crate::{
 	slot::{Slot, Token},
 };
 
-rubicon::process_local! {
-	static ISOPRENOID_CALLBACK_TABLES: Mutex<
-		//BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
-		BTreeMap<TypeId, AssertSend<*mut ()>>,
-	> = Mutex::new(BTreeMap::new());
-}
+static ISOPRENOID_CALLBACK_TABLES: Mutex<
+	//BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
+	BTreeMap<TypeId, AssertSend<*mut ()>>,
+> = Mutex::new(BTreeMap::new());
 
 struct AssertSend<T>(T);
 unsafe impl<T> Send for AssertSend<T> {}
@@ -296,7 +294,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 								.expect("Assured by `OnceSlot` synchronisation.");
 						},
 						{
-							let guard = &mut ISOPRENOID_CALLBACK_TABLES.lock().expect("unreachable");
+							let guard =
+								&mut ISOPRENOID_CALLBACK_TABLES.lock().expect("unreachable");
 							match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
 								Entry::Vacant(vacant) => vacant.insert(AssertSend(
 									(Box::leak(Box::new(BTreeMap::<
