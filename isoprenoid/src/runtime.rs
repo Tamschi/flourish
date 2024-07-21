@@ -79,7 +79,10 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Logic
 	///
-	/// This method **should not** remove interdependencies, just clear the callback information.
+	/// This method **should not** remove interdependencies,
+	/// just clear the callback information and pending updates for `id`.
+	///
+	/// The runtime **should** remove callbacks *before* cancelling pending updates.
 	///
 	/// # Safety
 	///
@@ -194,9 +197,14 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// [`update`][`CallbackTable::update`] callback before this method returns.
 	fn refresh(&self, id: Self::Symbol);
 
-	/// Removes callbacks, dependency relations (in either direction) associated with `id`.
+	/// Removes existing callbacks, dependency relations (in either direction) associated with `id`.
+	///
+	/// Ones that are scheduled as a result of this are not necessarily removed!
 	///
 	/// # Logic
+	///
+	/// The runtime **should** remove callbacks *after* processing dependency changes.  
+	/// The runtime **should** remove callbacks *before* cancelling pending updates.
 	///
 	/// This method **should** be called last when ceasing use of a particular `id`.  
 	/// The runtime **may** indefinitely hold onto resources associated with `id` if this

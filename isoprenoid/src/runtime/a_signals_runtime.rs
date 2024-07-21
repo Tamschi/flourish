@@ -524,10 +524,29 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		t
 	}
 
+	//TODO: Add guard stack-frame for subscribe_status_changed callbacks (which run detached)!
 	fn stop(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		todo!()
+
+		if borrow
+			.context_stack
+			.iter()
+			.flatten()
+			.any(|(stack_id, _)| *stack_id == id)
+		{
+			panic!("Tried to stop `id` in its own context.");
+		}
+
+		borrow.callbacks.remove(&id);
+
+		// This can unblock futures.
+		// Note that this could schedule more work for `id`!
+		// This method only guarantees _previous_ updates have been stopped.
+		drop(borrow.update_queue.remove(&id));
+
+		// There may have been side-effects.
+		self.process_pending(&lock, borrow);
 	}
 
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
@@ -791,7 +810,11 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 		borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
 
+		borrow.callbacks.remove(&id);
+
 		// This can unblock futures.
+		// Note that this could schedule more work for `id`!
+		// This method only guarantees _previous_ updates have been stopped.
 		drop(borrow.update_queue.remove(&id));
 
 		let interdependencies = &mut borrow.interdependencies;
