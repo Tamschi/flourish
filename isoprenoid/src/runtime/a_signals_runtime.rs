@@ -15,18 +15,18 @@ use unwind_safe::try_eval;
 
 use super::{
 	private, ACallbackTableTypes, ASymbol, CallbackTable, CallbackTableTypes, Propagation,
-	SignalRuntimeRef,
+	SignalsRuntimeRef,
 };
 
 #[derive(Debug)]
-pub(crate) struct ASignalRuntime {
+pub(crate) struct ASignalsRuntime {
 	pub(crate) source_counter: AtomicU64,
-	pub(crate) critical_mutex: ReentrantMutex<RefCell<ASignalRuntime_>>,
+	pub(crate) critical_mutex: ReentrantMutex<RefCell<ASignalsRuntime_>>,
 }
 
-unsafe impl Sync for ASignalRuntime {}
+unsafe impl Sync for ASignalsRuntime {}
 
-pub(crate) struct ASignalRuntime_ {
+pub(crate) struct ASignalsRuntime_ {
 	pub(crate) context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
 	pub(crate) callbacks:
 		BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
@@ -37,9 +37,9 @@ pub(crate) struct ASignalRuntime_ {
 	pub(crate) interdependencies: Interdependencies,
 }
 
-impl Debug for ASignalRuntime_ {
+impl Debug for ASignalsRuntime_ {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("ASignalRuntime_")
+		f.debug_struct("ASignalsRuntime_")
 			.field("context_stack", &self.context_stack)
 			.field("callbacks", &self.callbacks)
 			.field("update_queue", &self.update_queue.keys())
@@ -69,11 +69,11 @@ impl Interdependencies {
 	}
 }
 
-impl ASignalRuntime {
+impl ASignalsRuntime {
 	pub(crate) const fn new() -> Self {
 		Self {
 			source_counter: AtomicU64::new(0),
-			critical_mutex: ReentrantMutex::new(RefCell::new(ASignalRuntime_ {
+			critical_mutex: ReentrantMutex::new(RefCell::new(ASignalsRuntime_ {
 				context_stack: Vec::new(),
 				callbacks: BTreeMap::new(),
 				update_queue: BTreeMap::new(),
@@ -85,8 +85,8 @@ impl ASignalRuntime {
 
 	pub(crate) fn peek_stale<'a>(
 		&self,
-		borrow: RefMut<'a, ASignalRuntime_>,
-	) -> (Option<ASymbol>, RefMut<'a, ASignalRuntime_>) {
+		borrow: RefMut<'a, ASignalsRuntime_>,
+	) -> (Option<ASymbol>, RefMut<'a, ASignalsRuntime_>) {
 		//FIXME: This is very inefficient!
 
 		(
@@ -106,9 +106,9 @@ impl ASignalRuntime {
 		&self,
 		dependency: ASymbol,
 		dependent: ASymbol,
-		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalRuntime_>>,
-		mut borrow: RefMut<'a, ASignalRuntime_>,
-	) -> RefMut<'a, ASignalRuntime_> {
+		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+		mut borrow: RefMut<'a, ASignalsRuntime_>,
+	) -> RefMut<'a, ASignalsRuntime_> {
 		let subscribers = borrow
 			.interdependencies
 			.subscribers_by_dependency
@@ -165,9 +165,9 @@ impl ASignalRuntime {
 		&self,
 		dependency: ASymbol,
 		dependent: ASymbol,
-		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalRuntime_>>,
-		mut borrow: RefMut<'a, ASignalRuntime_>,
-	) -> RefMut<'a, ASignalRuntime_> {
+		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+		mut borrow: RefMut<'a, ASignalsRuntime_>,
+	) -> RefMut<'a, ASignalsRuntime_> {
 		let subscribers = &borrow
 			.interdependencies
 			.subscribers_by_dependency
@@ -247,9 +247,9 @@ impl ASignalRuntime {
 
 	pub(crate) fn process_pending<'a>(
 		&self,
-		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalRuntime_>>,
-		mut borrow: RefMut<'a, ASignalRuntime_>,
-	) -> RefMut<'a, ASignalRuntime_> {
+		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+		mut borrow: RefMut<'a, ASignalsRuntime_>,
+	) -> RefMut<'a, ASignalsRuntime_> {
 		if !borrow.context_stack.is_empty() {
 			return borrow;
 		}
@@ -302,11 +302,11 @@ impl ASignalRuntime {
 
 	pub(crate) fn next_update<'a>(
 		&self,
-		_lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalRuntime_>>,
-		mut borrow: RefMut<'a, ASignalRuntime_>,
+		_lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+		mut borrow: RefMut<'a, ASignalsRuntime_>,
 	) -> (
 		Option<(ASymbol, Box<dyn 'static + Send + FnOnce() -> Propagation>)>,
-		RefMut<'a, ASignalRuntime_>,
+		RefMut<'a, ASignalsRuntime_>,
 	) {
 		while let Some(mut first_group) = borrow.update_queue.first_entry() {
 			if let Some(update) = first_group.get_mut().pop_front() {
@@ -321,9 +321,9 @@ impl ASignalRuntime {
 	pub(crate) fn mark_direct_dependencies_stale<'a>(
 		&self,
 		id: ASymbol,
-		_lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalRuntime_>>,
-		mut borrow: RefMut<'a, ASignalRuntime_>,
-	) -> RefMut<'a, ASignalRuntime_> {
+		_lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+		mut borrow: RefMut<'a, ASignalsRuntime_>,
+	) -> RefMut<'a, ASignalsRuntime_> {
 		let dependents = borrow
 			.interdependencies
 			.all_by_dependency
@@ -340,9 +340,9 @@ impl ASignalRuntime {
 		&self,
 		id: ASymbol,
 		recorded_dependencies: BTreeSet<ASymbol>,
-		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalRuntime_>>,
-		mut borrow: RefMut<'a, ASignalRuntime_>,
-	) -> RefMut<'a, ASignalRuntime_> {
+		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+		mut borrow: RefMut<'a, ASignalsRuntime_>,
+	) -> RefMut<'a, ASignalsRuntime_> {
 		let prior_dependencies = borrow
 			.interdependencies
 			.all_by_dependent
@@ -383,7 +383,7 @@ impl ASignalRuntime {
 	}
 }
 
-unsafe impl SignalRuntimeRef for &ASignalRuntime {
+unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 	type Symbol = ASymbol;
 	type CallbackTableTypes = ACallbackTableTypes;
 
@@ -670,7 +670,7 @@ unsafe impl SignalRuntimeRef for &ASignalRuntime {
 		//BLOCKED: Avoid the heap allocation once the `Allocator` API is stabilised.
 
 		fn update_blocking<T>(
-			this: &ASignalRuntime,
+			this: &ASignalsRuntime,
 			id: ASymbol,
 			f: Box<dyn '_ + FnOnce() -> (Propagation, T)>,
 		) -> T {

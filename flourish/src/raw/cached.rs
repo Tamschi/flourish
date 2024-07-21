@@ -8,7 +8,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
+	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -19,7 +19,7 @@ use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct Cached<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>(
+pub(crate) struct Cached<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef>(
 	#[pin] RawSignal<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>,
 );
 
@@ -59,12 +59,12 @@ impl<'a, T: ?Sized> Borrow<T> for CachedGuardExclusive<'a, T> {
 }
 
 // TODO: Safety documentation.
-unsafe impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef + Sync> Sync
+unsafe impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef + Sync> Sync
 	for Cached<T, S, SR>
 {
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cached<T, S, SR> {
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
 	pub(crate) fn new(source: S) -> Self {
 		let runtime = source.clone_runtime_ref();
 		Self(RawSignal::with_runtime(
@@ -143,13 +143,13 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cac
 }
 
 enum E {}
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef>
 	Callbacks<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
 	const UPDATE: Option<
 		fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Propagation,
 	> = {
-		fn eval<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>(
+		fn eval<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef>(
 			source: Pin<&ForceSyncUnpin<S>>,
 			cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
 		) -> Propagation {
@@ -175,7 +175,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cached<T, S, SR> {
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
 	unsafe fn init<'a>(
 		source: Pin<&'a ForceSyncUnpin<S>>,
 		cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
@@ -187,7 +187,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Cac
 	}
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Source<SR>
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Source<SR>
 	for Cached<T, S, SR>
 {
 	type Output = T;
@@ -243,7 +243,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Sou
 	}
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Subscribable<SR>
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Subscribable<SR>
 	for Cached<T, S, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {

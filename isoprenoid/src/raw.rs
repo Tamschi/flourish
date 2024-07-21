@@ -18,17 +18,17 @@ use std::{
 use once_slot::OnceSlot;
 
 use crate::{
-	runtime::{CallbackTable, CallbackTableTypes, Propagation, SignalRuntimeRef},
+	runtime::{CallbackTable, CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Token},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct SignalId<SR: SignalRuntimeRef> {
+pub(crate) struct SignalId<SR: SignalsRuntimeRef> {
 	id: SR::Symbol,
 	runtime: SR,
 }
 
-impl<SR: SignalRuntimeRef> SignalId<SR> {
+impl<SR: SignalsRuntimeRef> SignalId<SR> {
 	fn with_runtime(runtime: SR) -> Self {
 		Self {
 			id: runtime.next_id(),
@@ -86,22 +86,22 @@ impl<SR: SignalRuntimeRef> SignalId<SR> {
 
 mod once_slot;
 
-/// A slightly higher-level signal primitive than using a runtime's [`SignalRuntimeRef::Symbol`] directly.
+/// A slightly higher-level signal primitive than using a runtime's [`SignalsRuntimeRef::Symbol`] directly.
 /// This type comes with some lifecycle management to ensure orderly callbacks and safe data access.
-pub struct RawSignal<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> {
+pub struct RawSignal<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> {
 	handle: SignalId<SR>,
 	_pinned: PhantomPinned,
 	lazy: OnceSlot<Lazy>,
 	eager: Eager,
 }
 
-unsafe impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Sync
+unsafe impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> Sync
 	for RawSignal<Eager, Lazy, SR>
 {
 	// Access to `eval` is synchronised through `lazy`.
 }
 
-impl<Eager: Sync + ?Sized + Debug, Lazy: Sync + Debug, SR: SignalRuntimeRef + Debug> Debug
+impl<Eager: Sync + ?Sized + Debug, Lazy: Sync + Debug, SR: SignalsRuntimeRef + Debug> Debug
 	for RawSignal<Eager, Lazy, SR>
 where
 	SR::Symbol: Debug,
@@ -115,9 +115,9 @@ where
 			.finish()
 	}
 }
-impl<SR: SignalRuntimeRef + Unpin> Unpin for RawSignal<(), (), SR> {}
+impl<SR: SignalsRuntimeRef + Unpin> Unpin for RawSignal<(), (), SR> {}
 
-impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, Lazy, SR> {
+impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 	pub fn new(eager: Eager) -> Self
 	where
 		Eager: Sized,
@@ -223,7 +223,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 				unsafe fn update<
 					Eager: Sync + ?Sized,
 					Lazy: Sync,
-					SR: SignalRuntimeRef,
+					SR: SignalsRuntimeRef,
 					C: Callbacks<Eager, Lazy, SR>,
 				>(
 					this: *const RawSignal<Eager, Lazy, SR>,
@@ -238,7 +238,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 				unsafe fn on_subscribed_change<
 					Eager: Sync + ?Sized,
 					Lazy: Sync,
-					SR: SignalRuntimeRef,
+					SR: SignalsRuntimeRef,
 					C: Callbacks<Eager, Lazy, SR>,
 				>(
 					this: *const RawSignal<Eager, Lazy, SR>,
@@ -348,7 +348,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 					unsafe fn update<
 						Eager: Sync + ?Sized,
 						Lazy: Sync,
-						SR: SignalRuntimeRef,
+						SR: SignalsRuntimeRef,
 						C: Callbacks<Eager, Lazy, SR>,
 					>(
 						this: *const RawSignal<Eager, Lazy, SR>,
@@ -363,7 +363,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 					unsafe fn on_subscribed_change<
 						Eager: Sync + ?Sized,
 						Lazy: Sync,
-						SR: SignalRuntimeRef,
+						SR: SignalsRuntimeRef,
 						C: Callbacks<Eager, Lazy, SR>,
 					>(
 						this: *const RawSignal<Eager, Lazy, SR>,
@@ -580,7 +580,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> RawSignal<Eager, La
 	}
 }
 
-impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
+impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
 	fn drop(&mut self) {
 		if self.lazy.get().is_some() {
 			self.handle.purge()
@@ -591,7 +591,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalRuntimeRef> Drop for RawSignal<
 /// Static callback tables used to set up each [`RawSignal`].
 ///
 /// For each [`RawSignal`] instance, these functions are called altogether at most once at a time.
-pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
+pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
 	/// The primary update callback for signals. Whenever a signal has internally cached state,
 	/// it should specify an [`UPDATE`](`Callbacks::UPDATE`) handler to recompute it.
 	///
@@ -629,7 +629,7 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> {
 ///
 /// Callbacks are internally type-erased, so [`None`] helps to skip locks in some circumstances.
 pub enum NoCallbacks {}
-impl<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalRuntimeRef> Callbacks<Eager, Lazy, SR>
+impl<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> Callbacks<Eager, Lazy, SR>
 	for NoCallbacks
 {
 	const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Propagation> = None;

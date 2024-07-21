@@ -2,14 +2,14 @@ use std::{borrow::BorrowMut, pin::Pin, sync::Mutex};
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
+	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
 
 #[must_use = "Effects are cancelled when dropped."]
 #[repr(transparent)]
-pub struct RawEffect<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>(
+pub struct RawEffect<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>(
 	RawSignal<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
 );
 
@@ -25,7 +25,7 @@ pub fn new_raw_unsubscribed_effect<
 	T: Send,
 	S: Send + FnMut() -> T,
 	D: Send + FnMut(T),
-	SR: SignalRuntimeRef,
+	SR: SignalsRuntimeRef,
 >(
 	init_fn_pin: S,
 	drop_fn_pin: D,
@@ -37,7 +37,7 @@ pub fn new_raw_unsubscribed_effect<
 	))
 }
 
-impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef> Drop
+impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef> Drop
 	for RawEffect<T, S, D, SR>
 {
 	fn drop(&mut self) {
@@ -54,7 +54,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef> 
 }
 
 enum E {}
-impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
+impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
 	Callbacks<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR> for E
 {
 	const UPDATE: Option<
@@ -92,7 +92,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalRuntimeRef>
+impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
 	RawEffect<T, S, D, SR>
 {
 	unsafe fn init<'a>(

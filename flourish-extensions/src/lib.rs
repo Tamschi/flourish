@@ -6,7 +6,7 @@ pub mod prelude {
 	use std::ops::{AddAssign, Sub};
 
 	use ext_trait::extension;
-	use flourish::{SignalRuntimeRef, SignalSR, SubscriptionSR};
+	use flourish::{SignalSR, SignalsRuntimeRef, SubscriptionSR};
 	use flourish_extra::{
 		delta,
 		future::{filter_mapped, filtered, skipped_while},
@@ -17,7 +17,7 @@ pub mod prelude {
 	//TODO: These have extraneous bounds that aren't really needed, usually `T: Sync + Copy`.
 
 	#[extension(pub trait SignalExt)]
-	impl<'a, T: 'a + Send + ?Sized, SR: 'a + SignalRuntimeRef> SignalSR<'a, T, SR> {
+	impl<'a, T: 'a + Send + ?Sized, SR: 'a + SignalsRuntimeRef> SignalSR<'a, T, SR> {
 		fn delta<V: 'a + Send>(fn_pin: impl 'a + Send + FnMut() -> V) -> SignalSR<'a, T, SR>
 		where
 			T: Zero,
@@ -58,7 +58,7 @@ pub mod prelude {
 	}
 
 	#[extension(pub trait SubscriptionExt)]
-	impl<'a, T: 'a + Send + Sync + ?Sized + Clone, SR: 'a + SignalRuntimeRef>
+	impl<'a, T: 'a + Send + Sync + ?Sized + Clone, SR: 'a + SignalsRuntimeRef>
 		SubscriptionSR<'a, T, SR>
 	{
 		async fn skipped_while(

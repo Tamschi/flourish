@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, pin::Pin};
 
-use isoprenoid::runtime::SignalRuntimeRef;
+use isoprenoid::runtime::SignalsRuntimeRef;
 use pin_project::pin_project;
 
 use crate::traits::Subscribable;
@@ -17,7 +17,7 @@ pub struct RawSubscription<
 	// should be crate-private.
 	T: Send + Clone,
 	S: Subscribable<SR, Output = T>,
-	SR: SignalRuntimeRef,
+	SR: SignalsRuntimeRef,
 >(#[pin] Cached<T, S, SR>);
 
 //TODO: Add some associated methods, like not-boxing `read`/`read_exclusive`.
@@ -27,7 +27,7 @@ pub struct RawSubscription<
 pub fn new_raw_unsubscribed_subscription<
 	T: Send + Clone,
 	S: Subscribable<SR, Output = T>,
-	SR: SignalRuntimeRef,
+	SR: SignalsRuntimeRef,
 >(
 	source: S,
 ) -> RawSubscription<T, S, SR> {
@@ -35,20 +35,24 @@ pub fn new_raw_unsubscribed_subscription<
 }
 
 #[doc(hidden)]
-pub fn pull_subscription<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef>(
+pub fn pull_subscription<
+	T: Send + Clone,
+	S: Subscribable<SR, Output = T>,
+	SR: SignalsRuntimeRef,
+>(
 	subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
 	subscription.project_ref().0.subscribe_inherently();
 }
 
 #[doc(hidden)]
-pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalRuntimeRef>(
+pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalsRuntimeRef>(
 	pin: Pin<&'a impl Source<SR, Output = T>>,
 ) -> Pin<&'a impl Source<SR, Output = T>> {
 	pin
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalRuntimeRef> Source<SR>
+impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Source<SR>
 	for RawSubscription<T, S, SR>
 {
 	type Output = T;

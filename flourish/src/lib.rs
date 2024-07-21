@@ -14,7 +14,7 @@
 
 pub mod raw;
 
-//TODO: Inter-runtime signals (i.e. takes two signal runtimes as parameters, acts as source for one and dynamic subscriber for the other).
+//TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
 mod signal_cell;
 pub use signal_cell::{ErasedSignalCell, SignalCell, SignalCellSR};
@@ -31,7 +31,7 @@ pub use effect::{Effect, EffectSR};
 mod traits;
 pub use traits::{SourceCellPin, SourcePin};
 
-pub use isoprenoid::runtime::{GlobalSignalRuntime, Propagation, SignalRuntimeRef};
+pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 pub mod prelude {
 	//! Flourish's value accessor traits ([`SourcePin`](`crate::traits::SourcePin`),

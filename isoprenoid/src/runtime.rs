@@ -1,11 +1,11 @@
-//! Low-level types for implementing [`SignalRuntimeRef`], as well as a functional [`GlobalSignalRuntime`].
+//! Low-level types for implementing [`SignalsRuntimeRef`], as well as a functional [`GlobalSignalsRuntime`].
 
 use core::{self};
 use std::{self, fmt::Debug, future::Future, mem, num::NonZeroU64};
 
 /// Trait for handles that let signals refer to a specific runtime (instance).
 ///
-/// [`GlobalSignalRuntime`] provides a usable default.
+/// [`GlobalSignalsRuntime`] provides a usable default.
 ///
 /// # Logic
 ///
@@ -15,8 +15,8 @@ use std::{self, fmt::Debug, future::Future, mem, num::NonZeroU64};
 /// # Safety
 ///
 /// Please see the 'Safety' sections on individual associated items.
-pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
-	/// The signal instance key used by this [`SignalRuntimeRef`].
+pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
+	/// The signal instance key used by this [`SignalsRuntimeRef`].
 	///
 	/// Used to manage dependencies and callbacks.
 	type Symbol: Clone + Copy + Send;
@@ -24,7 +24,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// Types used in callback signatures.
 	type CallbackTableTypes: ?Sized + CallbackTableTypes;
 
-	/// Creates a fresh unique [`SignalRuntimeRef::Symbol`] for this instance.
+	/// Creates a fresh unique [`SignalsRuntimeRef::Symbol`] for this instance.
 	///
 	/// Symbols are usually not interchangeable between different instances of a runtime!  
 	/// Runtimes **should** detect and panic on misuse when debug-assertions are enabled.
@@ -32,7 +32,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// # Safety
 	///
 	/// The return value **must** be able to uniquely identify a signal towards this runtime.  
-	/// Symbols **may not** be reused even after calls to [`.stop(id)`](`SignalRuntimeRef::stop`).
+	/// Symbols **may not** be reused even after calls to [`.stop(id)`](`SignalsRuntimeRef::stop`).
 	fn next_id(&self) -> Self::Symbol;
 
 	/// When run in a context that records dependencies, records `id` as dependency of that context.
@@ -49,7 +49,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Logic
 	///
-	/// Dependencies that are [recorded](`SignalRuntimeRef::record_dependency`) within
+	/// Dependencies that are [recorded](`SignalsRuntimeRef::record_dependency`) within
 	/// `init` and [`CallbackTable::update`] on the same thread **must** be recorded
 	/// as and update the dependency set of `id`, respectively.
 	///
@@ -61,12 +61,12 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// Before this method returns, `f` **must** be called.
 	///
 	/// Only after `f` completes, the runtime **may** run the functions specified in `callback_table` with
-	/// `callback_data`, but only one at a time and only before the next [`.stop(id)`](`SignalRuntimeRef::stop`)
+	/// `callback_data`, but only one at a time and only before the next [`.stop(id)`](`SignalsRuntimeRef::stop`)
 	/// call for the same runtime with an identical `id` completes.
 	///
 	/// # See also
 	///
-	/// [`SignalRuntimeRef::stop`], [`SignalRuntimeRef::purge`]
+	/// [`SignalsRuntimeRef::stop`], [`SignalsRuntimeRef::purge`]
 	unsafe fn start<T, D: ?Sized>(
 		&self,
 		id: Self::Symbol,
@@ -87,7 +87,7 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	///
 	/// # See also
 	///
-	/// [`SignalRuntimeRef::purge`]
+	/// [`SignalsRuntimeRef::purge`]
 	fn stop(&self, id: Self::Symbol);
 
 	/// Executes `f` while recording dependencies for `id`, updating the recorded dependencies for `id` to the new set.
@@ -101,11 +101,11 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Panics
 	///
-	/// This function **may** panic unless called between the start of [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
+	/// This function **may** panic unless called between the start of [`.start`](`SignalsRuntimeRef::start`) and [`.stop`](`SignalsRuntimeRef::stop`) for `id`.
 	///
 	/// # See also
 	///
-	/// [`SignalRuntimeRef::purge`]
+	/// [`SignalsRuntimeRef::purge`]
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
 
 	/// Enables or disables the inherent subscription of `id`.
@@ -126,21 +126,21 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	///
 	/// # See also
 	///
-	/// [`SignalRuntimeRef::purge`]
+	/// [`SignalsRuntimeRef::purge`]
 	fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
 
 	/// Submits `f` to run exclusively for `id` outside of recording dependencies.
 	///
 	/// The runtime **should** run `f` eventually, but **may** cancel it in response to
-	/// a [`.stop(id)`](`SignalRuntimeRef::stop`) call with the same `id``.
+	/// a [`.stop(id)`](`SignalsRuntimeRef::stop`) call with the same `id``.
 	///
 	/// # Panics
 	///
-	/// This function **may** panic unless called between [`.start`](`SignalRuntimeRef::start`) and [`.stop`](`SignalRuntimeRef::stop`) for `id`.
+	/// This function **may** panic unless called between [`.start`](`SignalsRuntimeRef::start`) and [`.stop`](`SignalsRuntimeRef::stop`) for `id`.
 	///
 	/// # Safety
 	///
-	/// `f` **must** be dropped or consumed before the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.
+	/// `f` **must** be dropped or consumed before the next matching [`.stop(id)`](`SignalsRuntimeRef::stop`) call returns.
 	fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce() -> Propagation);
 
 	/// **Immediately** submits `f` to run exclusively for `id` outside of recording dependencies.
@@ -148,13 +148,13 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	/// # Logic
 	///
 	/// The runtime **should** run `f` eventually, but **may** instead cancel and return it in response to
-	/// a [`.stop(id)`](`SignalRuntimeRef::stop`) or [`.purge(id)`](`SignalRuntimeRef::purge`) call with the same `id`.  
+	/// a [`.stop(id)`](`SignalsRuntimeRef::stop`) or [`.purge(id)`](`SignalsRuntimeRef::purge`) call with the same `id`.  
 	/// This method **must not** block indefinitely *as long as `f` doesn't*, regardless of context.  
-	/// Calling [`.stop(id)`](`SignalRuntimeRef::stop`) with matching `id` **should** cancel the update and return the [`Err`] variant.
+	/// Calling [`.stop(id)`](`SignalsRuntimeRef::stop`) with matching `id` **should** cancel the update and return the [`Err`] variant.
 	///
 	/// # Safety
 	///
-	/// `f` **must not** be dropped or run after the next matching [`.stop(id)`](`SignalRuntimeRef::stop`) call returns.  
+	/// `f` **must not** be dropped or run after the next matching [`.stop(id)`](`SignalsRuntimeRef::stop`) call returns.  
 	/// `f` **must not** be dropped or run after the [`Future`] returned by this function is dropped.
 	///
 	/// The hidden type returned from this method **must not** capture the elided lifetime of `&self`.  
@@ -216,12 +216,12 @@ pub unsafe trait SignalRuntimeRef: Send + Sync + Clone {
 	fn purge(&self, id: Self::Symbol);
 }
 
-#[cfg(feature = "global_signal_runtime")]
-mod a_signal_runtime;
+#[cfg(feature = "global_signals_runtime")]
+mod a_signals_runtime;
 
-#[cfg(feature = "global_signal_runtime")]
-static GLOBAL_SIGNAL_RUNTIME: a_signal_runtime::ASignalRuntime =
-	a_signal_runtime::ASignalRuntime::new();
+#[cfg(feature = "global_signals_runtime")]
+static GLOBAL_SIGNAL_RUNTIME: a_signals_runtime::ASignalsRuntime =
+	a_signals_runtime::ASignalsRuntime::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct ASymbol(pub(crate) NonZeroU64);
@@ -232,13 +232,13 @@ impl CallbackTableTypes for ACallbackTableTypes {
 	type SubscribedStatus = bool;
 }
 
-/// A plain [`SignalRuntimeRef`] implementation that represents a static signal runtime.
+/// A plain [`SignalsRuntimeRef`] implementation that represents a static signals runtime.
 ///
 /// 🚧 This implementation is currently not optimised. 🚧
 ///
 /// # Features
 ///
-/// Enable the `global_signal_runtime` Cargo feature to implement [`SignalRuntimeRef`] for this type.
+/// Enable the `global_signals_runtime` Cargo feature to implement [`SignalsRuntimeRef`] for this type.
 ///
 /// # Logic
 ///
@@ -247,16 +247,16 @@ impl CallbackTableTypes for ACallbackTableTypes {
 /// won't necessarily be visible without external synchronisation.
 ///
 /// (This means that in addition to transiently borrowing calls, returned [`Future`]s
-/// **may** cause the [`GlobalSignalRuntime`] not to settle until they are dropped.)
+/// **may** cause the [`GlobalSignalsRuntime`] not to settle until they are dropped.)
 ///
-/// Otherwise, it makes no additional guarantees over those specified in [`SignalRuntimeRef`]'s documentation.
+/// Otherwise, it makes no additional guarantees over those specified in [`SignalsRuntimeRef`]'s documentation.
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GlobalSignalRuntime;
+pub struct GlobalSignalsRuntime;
 
-impl Debug for GlobalSignalRuntime {
+impl Debug for GlobalSignalsRuntime {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if cfg!(feature = "global_signal_runtime") {
-			#[cfg(feature = "global_signal_runtime")]
+		if cfg!(feature = "global_signals_runtime") {
+			#[cfg(feature = "global_signals_runtime")]
 			Debug::fmt(&GLOBAL_SIGNAL_RUNTIME, f)?;
 			Ok(())
 		} else {
@@ -265,19 +265,19 @@ impl Debug for GlobalSignalRuntime {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 					write!(
 						f,
-						"(unavailable without `isoprenoid/global_signal_runtime` feature)"
+						"(unavailable without `isoprenoid/global_signals_runtime` feature)"
 					)
 				}
 			}
 
-			f.debug_struct("GlobalSignalRuntime")
+			f.debug_struct("GlobalSignalsRuntime")
 				.field("state", &Unavailable)
 				.finish_non_exhaustive()
 		}
 	}
 }
 
-/// [`SignalRuntimeRef::Symbol`] for [`GlobalSignalRuntime`].
+/// [`SignalsRuntimeRef::Symbol`] for [`GlobalSignalsRuntime`].
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GSRSymbol(ASymbol);
 
@@ -287,7 +287,7 @@ impl Debug for GSRSymbol {
 	}
 }
 
-/// [`SignalRuntimeRef::CallbackTableTypes`] for [`GlobalSignalRuntime`].
+/// [`SignalsRuntimeRef::CallbackTableTypes`] for [`GlobalSignalsRuntime`].
 #[repr(transparent)]
 pub struct GlobalCallbackTableTypes(ACallbackTableTypes);
 impl CallbackTableTypes for GlobalCallbackTableTypes {
@@ -295,8 +295,8 @@ impl CallbackTableTypes for GlobalCallbackTableTypes {
 	type SubscribedStatus = bool;
 }
 
-#[cfg(feature = "global_signal_runtime")]
-unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
+#[cfg(feature = "global_signals_runtime")]
+unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 	type Symbol = GSRSymbol;
 	type CallbackTableTypes = GlobalCallbackTableTypes;
 
@@ -375,7 +375,7 @@ unsafe impl SignalRuntimeRef for GlobalSignalRuntime {
 }
 
 /// The `unsafe` at-runtime version of [`Callbacks`](`crate::raw::Callbacks`),
-/// mainly for use between [`RawSignal`](`crate::raw::RawSignal`) and [`SignalRuntimeRef`].
+/// mainly for use between [`RawSignal`](`crate::raw::RawSignal`) and [`SignalsRuntimeRef`].
 #[repr(C)]
 #[non_exhaustive]
 pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
@@ -453,11 +453,11 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Ord for CallbackTable<T, CTT> 
 	}
 }
 
-/// Describes types appearing in callback signatures for a particular [`SignalRuntimeRef`] implementation.
+/// Describes types appearing in callback signatures for a particular [`SignalsRuntimeRef`] implementation.
 pub trait CallbackTableTypes: 'static {
 	/// A status indicating "how subscribed" a signal now is.
 	///
-	/// [`GlobalSignalRuntime`] notifies only for the first and removal of the last subscription for each signal,
+	/// [`GlobalSignalsRuntime`] notifies only for the first and removal of the last subscription for each signal,
 	/// so it uses a [`bool`], but other runtimes may notify with the direct or total subscriber count or a more complex measure.
 	type SubscribedStatus;
 }

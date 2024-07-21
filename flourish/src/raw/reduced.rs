@@ -8,7 +8,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
+	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -23,7 +23,7 @@ pub(crate) struct Reduced<
 	T: Send,
 	S: Send + FnMut() -> T,
 	M: Send + FnMut(&mut T, T) -> Propagation,
-	SR: SignalRuntimeRef,
+	SR: SignalsRuntimeRef,
 >(#[pin] RawSignal<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR>);
 
 #[pin_project]
@@ -50,7 +50,7 @@ unsafe impl<
 		T: Send,
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Propagation,
-		SR: SignalRuntimeRef + Sync,
+		SR: SignalsRuntimeRef + Sync,
 	> Sync for Reduced<T, S, M, SR>
 {
 }
@@ -59,7 +59,7 @@ impl<
 		T: Send,
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Reduced<T, S, M, SR>
 {
 	pub(crate) fn new(select_fn_pin: S, reduce_fn_pin: M, runtime: SR) -> Self {
@@ -140,7 +140,7 @@ impl<
 		T: Send,
 		S: Send + FnMut() -> T,
 		M: Send + ?Sized + FnMut(&mut T, T) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Callbacks<ForceSyncUnpin<UnsafeCell<(S, M)>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
 	const UPDATE: Option<
@@ -188,7 +188,7 @@ impl<
 		T: Send,
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Reduced<T, S, M, SR>
 {
 	unsafe fn init<'a>(
@@ -203,7 +203,7 @@ impl<
 		T: Send,
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Source<SR> for Reduced<T, S, M, SR>
 {
 	type Output = T;
@@ -263,7 +263,7 @@ impl<
 		T: Send,
 		S: Send + FnMut() -> T,
 		M: Send + FnMut(&mut T, T) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Subscribable<SR> for Reduced<T, S, M, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {

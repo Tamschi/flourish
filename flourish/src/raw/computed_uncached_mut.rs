@@ -2,7 +2,7 @@ use std::{borrow::Borrow, pin::Pin, sync::Mutex};
 
 use isoprenoid::{
 	raw::{NoCallbacks, RawSignal},
-	runtime::SignalRuntimeRef,
+	runtime::SignalsRuntimeRef,
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -13,7 +13,7 @@ use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct ComputedUncachedMut<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
+pub(crate) struct ComputedUncachedMut<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef>(
 	#[pin] RawSignal<ForceSyncUnpin<Mutex<F>>, (), SR>,
 );
 
@@ -22,12 +22,12 @@ struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
 /// TODO: Safety documentation.
-unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
+unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef + Sync> Sync
 	for ComputedUncachedMut<T, F, SR>
 {
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> ComputedUncachedMut<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> ComputedUncachedMut<T, F, SR> {
 	pub(crate) fn new(fn_pin: F, runtime: SR) -> Self {
 		Self(RawSignal::with_runtime(
 			ForceSyncUnpin(fn_pin.into()),
@@ -75,13 +75,13 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> ComputedUncachedMut<
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> ComputedUncachedMut<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> ComputedUncachedMut<T, F, SR> {
 	unsafe fn init<'a>(_: Pin<&'a ForceSyncUnpin<Mutex<F>>>, lazy: Slot<'a, ()>) -> Token<'a> {
 		lazy.write(())
 	}
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<SR>
 	for ComputedUncachedMut<T, F, SR>
 {
 	type Output = T;
@@ -137,7 +137,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR>
 	}
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Subscribable<SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Subscribable<SR>
 	for ComputedUncachedMut<T, F, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {

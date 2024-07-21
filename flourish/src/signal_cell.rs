@@ -8,7 +8,9 @@ use std::{
 	sync::{Arc, Mutex, Weak},
 };
 
-use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, Propagation, SignalRuntimeRef};
+use isoprenoid::runtime::{
+	CallbackTableTypes, GlobalSignalsRuntime, Propagation, SignalsRuntimeRef,
+};
 
 use crate::{
 	raw::{InertCell, ReactiveCell, ReactiveCellMut},
@@ -17,8 +19,8 @@ use crate::{
 	SignalRef, SignalSR, SourceCellPin, SourcePin,
 };
 
-/// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalRuntime`]).
-pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalRuntime>;
+/// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalsRuntime`]).
+pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalsRuntime>;
 
 /// Type of [`SignalCellSR`]s after type-erasure. Less convenient API.
 pub type ErasedSignalCell<'a, T, SR> = SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>;
@@ -28,7 +30,7 @@ pub type ErasedWeakSignalCell<'a, T, SR> = WeakSignalCell<T, dyn 'a + SourceCell
 pub struct WeakSignalCell<
 	T: ?Sized + Send,
 	S: ?Sized + SourceCell<T, SR>,
-	SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+	SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>,
 > {
 	source_cell: Weak<S>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
@@ -39,7 +41,7 @@ pub struct WeakSignalCell<
 impl<
 		T: ?Sized + Send,
 		S: ?Sized + SourceCell<T, SR>,
-		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+		SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>,
 	> WeakSignalCell<T, S, SR>
 {
 	#[must_use]
@@ -54,7 +56,7 @@ impl<
 pub struct SignalCellSR<
 	T: ?Sized + Send,
 	S: ?Sized + SourceCell<T, SR>,
-	SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+	SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>,
 > {
 	source_cell: Pin<Arc<S>>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
@@ -65,7 +67,7 @@ pub struct SignalCellSR<
 impl<
 		T: ?Sized + Send,
 		S: ?Sized + SourceCell<T, SR>,
-		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+		SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>,
 	> Clone for SignalCellSR<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -79,7 +81,7 @@ impl<
 impl<
 		T: ?Sized + Debug + Send,
 		S: ?Sized + SourceCell<T, SR>,
-		SR: SignalRuntimeRef<Symbol: Sync> + Debug,
+		SR: SignalsRuntimeRef<Symbol: Sync> + Debug,
 	> Debug for SignalCellSR<T, S, SR>
 where
 	S: Debug,
@@ -102,7 +104,7 @@ impl<T> From<T> for AssertSendSync<T> {
 	}
 }
 
-impl<T: Send, SR: SignalRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, SR>, SR> {
+impl<T: Send, SR: SignalsRuntimeRef<Symbol: Sync>> SignalCellSR<T, InertCell<T, SR>, SR> {
 	pub fn new(initial_value: T) -> Self
 	where
 		SR: Default,
@@ -188,7 +190,7 @@ impl<
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef<Symbol: Sync>,
+		SR: SignalsRuntimeRef<Symbol: Sync>,
 	> SignalCellSR<T, ReactiveCell<T, HandlerFnPin, SR>, SR>
 {
 	pub fn new_reactive(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
@@ -292,7 +294,7 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef<Symbol: Sync>,
+		SR: SignalsRuntimeRef<Symbol: Sync>,
 	> SignalCellSR<T, ReactiveCellMut<T, HandlerFnPin, SR>, SR>
 {
 	pub fn new_reactive_mut(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
@@ -392,7 +394,7 @@ impl<
 	}
 }
 
-impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
+impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef<Symbol: Sync>>
 	SignalCellSR<T, S, SR>
 {
 	//TODO: `as_ref`/`SignalCellRef`?
@@ -459,7 +461,7 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef<Symbol: Sync>>
 impl<
 		T: Send + Sized + ?Sized,
 		S: ?Sized + SourceCell<T, SR>,
-		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+		SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>,
 	> SourcePin<SR> for SignalCellSR<T, S, SR>
 {
 	type Output = T;
@@ -501,10 +503,10 @@ impl<
 	}
 }
 
-impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef>
+impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SourceCellPin<T, SR> for SignalCellSR<T, S, SR>
 where
-	<SR as SignalRuntimeRef>::Symbol: Sync,
+	<SR as SignalsRuntimeRef>::Symbol: Sync,
 {
 	fn change(&self, new_value: T)
 	where
@@ -524,7 +526,7 @@ where
 	where
 		Self: Sized,
 		T: 'static,
-		<SR as SignalRuntimeRef>::Symbol: Sync,
+		<SR as SignalsRuntimeRef>::Symbol: Sync,
 	{
 		self.source_cell.as_ref().update(update)
 	}
@@ -532,7 +534,7 @@ where
 	fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
 		T: 'static,
-		<SR as SignalRuntimeRef>::Symbol: Sync,
+		<SR as SignalsRuntimeRef>::Symbol: Sync,
 	{
 		self.source_cell.as_ref().update_dyn(update)
 	}
@@ -796,7 +798,7 @@ where
 
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
 	where
-		<SR as SignalRuntimeRef>::Symbol: Sync,
+		<SR as SignalsRuntimeRef>::Symbol: Sync,
 	{
 		self.source_cell.as_ref().update_blocking_dyn(update)
 	}
@@ -804,10 +806,10 @@ where
 
 /// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
 /// bound, which is a bit less performant than using those accessors without type erasure.
-impl<'a, T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourceCellPin<T, SR>
+impl<'a, T: Send + Sized + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 	for ErasedSignalCell<'a, T, SR>
 where
-	<SR as SignalRuntimeRef>::Symbol: Sync,
+	<SR as SignalsRuntimeRef>::Symbol: Sync,
 {
 	fn change(&self, new_value: T)
 	where
@@ -827,7 +829,7 @@ where
 	where
 		Self: Sized,
 		T: 'static,
-		<SR as SignalRuntimeRef>::Symbol: Sync,
+		<SR as SignalsRuntimeRef>::Symbol: Sync,
 	{
 		self.source_cell.as_ref().update_dyn(Box::new(update))
 	}
@@ -835,7 +837,7 @@ where
 	fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
 		T: 'static,
-		<SR as SignalRuntimeRef>::Symbol: Sync,
+		<SR as SignalsRuntimeRef>::Symbol: Sync,
 	{
 		self.source_cell.as_ref().update_dyn(Box::new(update))
 	}
@@ -1165,7 +1167,7 @@ where
 
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
 	where
-		<SR as SignalRuntimeRef>::Symbol: Sync,
+		<SR as SignalsRuntimeRef>::Symbol: Sync,
 	{
 		self.source_cell.as_ref().update_blocking_dyn(update)
 	}

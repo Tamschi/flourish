@@ -9,7 +9,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
+	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 };
 use pin_project::pin_project;
 
@@ -23,7 +23,7 @@ pub struct ReactiveCell<
 	T: ?Sized + Send,
 	HandlerFnPin: Send
 		+ FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
-	SR: SignalRuntimeRef,
+	SR: SignalsRuntimeRef,
 > {
 	#[pin]
 	signal: RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>,
@@ -37,7 +37,7 @@ impl<
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation
 			+ Debug,
-		SR: SignalRuntimeRef + Debug,
+		SR: SignalsRuntimeRef + Debug,
 	> Debug for ReactiveCell<T, HandlerFnPin, SR>
 where
 	SR::Symbol: Debug,
@@ -57,7 +57,7 @@ unsafe impl<
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef + Sync,
+		SR: SignalsRuntimeRef + Sync,
 	> Sync for ReactiveCell<T, HandlerFnPin, SR>
 {
 }
@@ -112,7 +112,7 @@ impl<
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> ReactiveCell<T, HandlerFnPin, SR>
 {
 	pub(crate) fn new(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
@@ -177,7 +177,7 @@ impl<
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Callbacks<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR> for E
 {
 	const UPDATE: Option<
@@ -192,13 +192,13 @@ impl<
 			signal: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>,
 			eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>,
 			lazy: Pin<&()>,
-			subscribed: <<SR as SignalRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			subscribed: <<SR as SignalsRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		) -> Propagation,
 	> = {
 		fn on_subscribed_change_fn_pin<
 			T: ?Sized + Send,
 			HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
-			SR: SignalRuntimeRef,
+			SR: SignalsRuntimeRef,
 		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>, eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation{
 			eager.0.0.lock().unwrap()(eager.0.1.read().unwrap().borrow(), status)
 		}
@@ -214,7 +214,7 @@ impl<
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Source<SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
 	type Output = T;
@@ -263,7 +263,7 @@ impl<
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Subscribable<SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
@@ -292,7 +292,7 @@ impl<
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: ?Sized + SignalRuntimeRef<Symbol: Sync>,
+		SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>,
 	> SourceCell<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
 	fn change(self: Pin<&Self>, new_value: T)
@@ -333,7 +333,7 @@ impl<
 	fn update_dyn(self: Pin<&Self>, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
 		T: 'static,
-		<SR as SignalRuntimeRef>::Symbol: Sync, //TODO: Centralise this bound!
+		<SR as SignalsRuntimeRef>::Symbol: Sync, //TODO: Centralise this bound!
 	{
 		self.signal
 			.clone_runtime_ref()
@@ -627,7 +627,7 @@ impl<
 
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
 	where
-		<SR as SignalRuntimeRef>::Symbol: Sync,
+		<SR as SignalsRuntimeRef>::Symbol: Sync,
 	{
 		self.signal
 			.update_blocking(|value, _| (update(&mut value.0 .1.write().unwrap()), ()))

@@ -1,9 +1,9 @@
-#![cfg(feature = "global_signal_runtime")]
+#![cfg(feature = "global_signals_runtime")]
 
 use ::core::pin::{pin, Pin};
 use flourish::{
 	raw::{inert_cell, Source, SourceCell},
-	GlobalSignalRuntime,
+	GlobalSignalsRuntime,
 };
 mod _validator;
 use _validator::Validator;
@@ -13,9 +13,9 @@ fn use_macros() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
-	let a = pin!(inert_cell(1, GlobalSignalRuntime));
+	let a = pin!(inert_cell(1, GlobalSignalsRuntime));
 	let a = Pin::into_ref(a);
-	let b = pin!(inert_cell(2, GlobalSignalRuntime));
+	let b = pin!(inert_cell(2, GlobalSignalsRuntime));
 	let b = Pin::into_ref(b);
 	let (b, b_cell) = b.as_source_and_cell();
 	let c = pin!(flourish::raw::computed(
@@ -23,7 +23,7 @@ fn use_macros() {
 			x.push("c");
 			a.get() + b.get()
 		},
-		GlobalSignalRuntime
+		GlobalSignalsRuntime
 	));
 	let c = Pin::into_ref(c) as Pin<&dyn Source<_, Output = _>>;
 	let d = pin!(flourish::raw::computed(
@@ -31,7 +31,7 @@ fn use_macros() {
 			x.push("d");
 			a.get() - b.get()
 		},
-		GlobalSignalRuntime
+		GlobalSignalsRuntime
 	));
 	let d = Pin::into_ref(d) as Pin<&dyn Source<_, Output = _>>;
 	let aa = pin!(flourish::raw::computed_uncached(
@@ -39,7 +39,7 @@ fn use_macros() {
 			x.push("aa");
 			c.get() + d.get()
 		},
-		GlobalSignalRuntime
+		GlobalSignalsRuntime
 	));
 	let aa = Pin::into_ref(aa) as Pin<&dyn Source<_, Output = _>>;
 	v.expect([]);
@@ -52,7 +52,7 @@ fn use_macros() {
 					x.push("sub_aa");
 					v.push(aa.get())
 				},
-				GlobalSignalRuntime
+				GlobalSignalsRuntime
 			)
 		));
 		let _sub_aa = Pin::into_ref(_sub_aa);
@@ -83,7 +83,7 @@ fn use_macros() {
 				x.push("sub_c");
 				v.push(c.get())
 			},
-			GlobalSignalRuntime
+			GlobalSignalsRuntime
 		)
 	));
 	let _sub_c = Pin::into_ref(_sub_c);
@@ -95,7 +95,7 @@ fn use_macros() {
 				x.push("sub_d");
 				v.push(d.get())
 			},
-			GlobalSignalRuntime
+			GlobalSignalsRuntime
 		)
 	));
 	let _sub_d = Pin::into_ref(_sub_d);

@@ -9,7 +9,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{NoCallbacks, RawSignal},
-	runtime::{Propagation, SignalRuntimeRef},
+	runtime::{Propagation, SignalsRuntimeRef},
 };
 use pin_project::pin_project;
 
@@ -18,12 +18,12 @@ use crate::shadow_clone;
 use super::{Source, SourceCell, Subscribable};
 
 #[pin_project]
-pub struct InertCell<T: ?Sized + Send, SR: SignalRuntimeRef> {
+pub struct InertCell<T: ?Sized + Send, SR: SignalsRuntimeRef> {
 	#[pin]
 	signal: RawSignal<AssertSync<RwLock<T>>, (), SR>,
 }
 
-impl<T: ?Sized + Send + Debug, SR: SignalRuntimeRef + Debug> Debug for InertCell<T, SR>
+impl<T: ?Sized + Send + Debug, SR: SignalsRuntimeRef + Debug> Debug for InertCell<T, SR>
 where
 	SR::Symbol: Debug,
 {
@@ -35,7 +35,7 @@ where
 }
 
 /// TODO: Safety.
-unsafe impl<T: Send + ?Sized, SR: SignalRuntimeRef + Sync> Sync for InertCell<T, SR> {}
+unsafe impl<T: Send + ?Sized, SR: SignalsRuntimeRef + Sync> Sync for InertCell<T, SR> {}
 
 struct AssertSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for AssertSync<T> {}
@@ -68,7 +68,7 @@ impl<'a, T: ?Sized> Borrow<T> for InertCellGuardExclusive<'a, T> {
 	}
 }
 
-impl<T: ?Sized + Send, SR: SignalRuntimeRef> InertCell<T, SR> {
+impl<T: ?Sized + Send, SR: SignalsRuntimeRef> InertCell<T, SR> {
 	pub(crate) fn new(initial_value: T) -> Self
 	where
 		T: Sized,
@@ -110,7 +110,7 @@ impl<T: ?Sized + Send, SR: SignalRuntimeRef> InertCell<T, SR> {
 	}
 }
 
-impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for InertCell<T, SR> {
+impl<T: Send + ?Sized, SR: SignalsRuntimeRef> Source<SR> for InertCell<T, SR> {
 	type Output = T;
 
 	fn touch(self: Pin<&Self>) {
@@ -150,7 +150,7 @@ impl<T: Send + ?Sized, SR: SignalRuntimeRef> Source<SR> for InertCell<T, SR> {
 	}
 }
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Subscribable<SR> for InertCell<T, SR> {
+impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscribable<SR> for InertCell<T, SR> {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
 		//FIXME: This is inefficient.
 		if self
@@ -170,7 +170,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Subscribable<SR> for Inert
 	}
 }
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T, SR>
+impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>> SourceCell<T, SR>
 	for InertCell<T, SR>
 {
 	fn change(self: Pin<&Self>, new_value: T)
@@ -211,7 +211,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 	fn update_dyn(self: Pin<&Self>, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
 		T: 'static,
-		<SR as SignalRuntimeRef>::Symbol: Sync, //TODO: Centralise this bound!
+		<SR as SignalsRuntimeRef>::Symbol: Sync, //TODO: Centralise this bound!
 	{
 		self.signal
 			.clone_runtime_ref()
@@ -484,7 +484,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
 	where
-		<SR as SignalRuntimeRef>::Symbol: Sync,
+		<SR as SignalsRuntimeRef>::Symbol: Sync,
 	{
 		self.signal
 			.update_blocking(|value, _| (update(&mut value.0.write().unwrap()), ()))

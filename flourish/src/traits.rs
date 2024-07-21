@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, future::Future, pin::Pin};
 
-use isoprenoid::runtime::{Propagation, SignalRuntimeRef};
+use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
 /// **Combinators should implement this.** Interface for "raw" (stack-pinnable) signals that have an accessible value.
 ///
@@ -9,7 +9,7 @@ use isoprenoid::runtime::{Propagation, SignalRuntimeRef};
 /// It's sound to transmute [`dyn Source<_>`](`Source`) between different associated `Value`s as long as that's sound and they're ABI-compatible.
 ///
 /// Note that dropping the [`dyn Source<_>`](`Source`) dynamically **transmutes back**.
-pub trait Source<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
+pub trait Source<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// The type of value presented by the [`Source`].
 	type Output: ?Sized + Send;
 
@@ -64,14 +64,14 @@ pub trait Source<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
 	/// Otherwise, prefer [`Source::read`] where available.
 	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>>;
 
-	/// Clones this [`SourcePin`]'s [`SignalRuntimeRef`].
+	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
 	fn clone_runtime_ref(&self) -> SR
 	where
 		SR: Sized;
 }
 
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
-pub trait SourcePin<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
+pub trait SourcePin<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// The type of value presented by the [`SourcePin`].
 	type Output: ?Sized + Send;
 
@@ -126,14 +126,14 @@ pub trait SourcePin<SR: ?Sized + SignalRuntimeRef>: Send + Sync {
 	/// Otherwise, prefer [`SourcePin::read`] where available.
 	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>;
 
-	/// Clones this [`SourcePin`]'s [`SignalRuntimeRef`].
+	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
 	fn clone_runtime_ref(&self) -> SR
 	where
 		SR: Sized;
 }
 
 /// **Combinators should implement this.** Allows [`SignalSR`](`crate::SignalSR`) and [`SubscriptionSR`](`crate::SubscriptionSR`) to manage subscriptions through conversions between each other.
-pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Source<SR> {
+pub trait Subscribable<SR: ?Sized + SignalsRuntimeRef>: Send + Sync + Source<SR> {
 	/// Subscribes this [`Subscribable`] (only regarding innate subscription)!
 	///
 	/// If necessary, this instance is initialised first, so that callbacks are active for it.
@@ -159,10 +159,10 @@ pub trait Subscribable<SR: ?Sized + SignalRuntimeRef>: Send + Sync + Source<SR> 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool;
 }
 
-/// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalRuntimeRef`].
+/// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>>:
+pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>>:
 	Send + Sync + Subscribable<SR, Output = T>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -394,10 +394,10 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 	}
 }
 
-/// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalRuntimeRef`].
+/// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>>:
+pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>>:
 	Send + Sync + SourcePin<SR, Output = T>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.

@@ -8,7 +8,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
+	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Token},
 };
 use pin_project::pin_project;
@@ -19,7 +19,7 @@ use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct Folded<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef>(
+pub(crate) struct Folded<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef>(
 	#[pin] RawSignal<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>,
 );
 
@@ -43,12 +43,12 @@ impl<'a, T: ?Sized> Borrow<T> for FoldedGuardExclusive<'a, T> {
 }
 
 /// TODO: Safety documentation.
-unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef + Sync> Sync
+unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef + Sync> Sync
 	for Folded<T, F, SR>
 {
 }
 
-impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef> Folded<T, F, SR> {
+impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Folded<T, F, SR> {
 	pub(crate) fn new(init: T, fn_pin: F, runtime: SR) -> Self {
 		Self(RawSignal::with_runtime(
 			(ForceSyncUnpin(init.into()), ForceSyncUnpin(fn_pin.into())),
@@ -126,7 +126,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef> Fold
 }
 
 enum E {}
-impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef>
+impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef>
 	Callbacks<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR> for E
 {
 	const UPDATE: Option<
@@ -164,7 +164,7 @@ impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Propagation, SR: SignalRuntime
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef> Folded<T, F, SR> {
+impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Folded<T, F, SR> {
 	unsafe fn init<'a>(
 		state: Pin<&'a (ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
 		lazy: Slot<'a, ()>,
@@ -175,7 +175,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef> Fold
 	}
 }
 
-impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef> Source<SR>
+impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Source<SR>
 	for Folded<T, F, SR>
 {
 	type Output = T;
@@ -231,7 +231,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef> Sour
 	}
 }
 
-impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalRuntimeRef> Subscribable<SR>
+impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Subscribable<SR>
 	for Folded<T, F, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
