@@ -35,7 +35,7 @@ For libraries (which should be generic over the signals runtime `SR`):
 cargo add flourish
 ```
 
-For applications:
+For applications ("batteries included"):
 
 ```sh
 cargo add flourish --features global_signals_runtime

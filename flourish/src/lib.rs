@@ -2,7 +2,7 @@
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 // #![warn(clippy::single_call_fn)]
-#![doc = include_str!("../README.md")]
+#![cfg_attr(feature = "_docs", doc = include_str!("../README.md"))]
 //!
 //! # Threading Notes
 //!
@@ -56,6 +56,8 @@ pub mod __ {
 /// This is useful to create additional handles:
 ///
 /// ```
+/// # {
+/// #![cfg(feature = "global_signals_runtime")]
 /// use flourish::{prelude::*, shadow_clone, SignalCell, Signal};
 ///
 /// let a = SignalCell::new(1);
@@ -66,6 +68,7 @@ pub mod __ {
 /// });
 ///
 /// drop((a, b, c));
+/// # }
 /// ```
 #[macro_export]
 macro_rules! shadow_clone {

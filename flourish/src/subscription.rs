@@ -122,6 +122,8 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalsRuntimeRef> SubscriptionSR<'a, T, SR>
 /// You can still easily construct them as [`SignalSR`] and subscribe afterwards:
 ///
 /// ```
+/// # {
+/// #![cfg(feature = "global_signals_runtime")]
 /// use flourish::Signal;
 ///
 /// // The closure runs once on subscription, but not to refresh `sub`!
@@ -129,6 +131,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalsRuntimeRef> SubscriptionSR<'a, T, SR>
 /// let sub = Signal::computed_uncached(|| ())
 ///     .try_subscribe()
 ///     .expect("contextually infallible");
+/// # }
 /// ```
 impl<'a, T: 'a + Send, SR: SignalsRuntimeRef> SubscriptionSR<'a, T, SR> {
 	/// A simple cached computation.

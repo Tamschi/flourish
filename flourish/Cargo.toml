@@ -8,6 +8,8 @@ edition = "2021"
 
 [features]
 global_signals_runtime = ["isoprenoid/global_signals_runtime"] # Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
+_test = ["global_signals_runtime", "_docs"] # Internal testing feature.
+_docs = ["global_signals_runtime"] # Internal documentations feature.
 
 [dependencies]
 futures-lite = { version = "2.3.0", default-features = false, features = ["alloc"] }

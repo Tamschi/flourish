@@ -8,6 +8,7 @@ edition = "2021"
 
 [features]
 global_signals_runtime = [] # Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
+forbid_global_signals_runtime = [] # Ensure that `global_signals_runtime` is not enabled.
 
 [dependencies]
 async-lock = { version = "3.4.0", default-features = false, features = ["std"] }
