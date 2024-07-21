@@ -508,7 +508,6 @@ impl<
 		new_value: T,
 	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<T, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized,
 	{
 		let r = Arc::new(Mutex::new(Some(Err(new_value))));

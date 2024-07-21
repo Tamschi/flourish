@@ -3,6 +3,7 @@ use std::{
 	fmt::Debug,
 	future::Future,
 	marker::PhantomData,
+	mem,
 	pin::Pin,
 	sync::{Arc, Mutex, Weak},
 };
@@ -605,17 +606,25 @@ where
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized + PartialEq,
 	{
 		let this = self.downgrade();
-		Box::new(async move {
+		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
 				this.change_eager(new_value).await
 			} else {
 				Err(new_value)
 			}
-		})
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<Result<T, T>, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>,
+			>(f)
+		}
 	}
 
 	fn replace_async_dyn<'f>(
@@ -623,17 +632,25 @@ where
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized,
 	{
 		let this = self.downgrade();
-		Box::new(async move {
+		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
 				this.replace_eager(new_value).await
 			} else {
 				Err(new_value)
 			}
-		})
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<T, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<T, T>>>,
+			>(f)
+		}
 	}
 
 	fn update_async_dyn<'f>(
@@ -645,17 +662,38 @@ where
 			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
-		Self: 'f,
+		T: 'f,
 	{
 		let this = self.downgrade();
-		Box::new(async move {
+		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
 				let f: Pin<Box<_>> = this.update_eager_dyn(update).into();
 				f.await
 			} else {
 				Err(update)
 			}
-		})
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<
+					dyn '_
+						+ Send
+						+ futures_lite::Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+				Box<
+					dyn 'f
+						+ Send
+						+ futures_lite::Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+			>(f)
+		}
 	}
 
 	fn change_eager<'f>(
@@ -706,7 +744,6 @@ where
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized + PartialEq,
 	{
 		self.source_cell.as_ref().change_eager_dyn(new_value)
@@ -717,7 +754,6 @@ where
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized,
 	{
 		self.source_cell.as_ref().replace_eager_dyn(new_value)
@@ -732,7 +768,7 @@ where
 			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
-		Self: 'f,
+		T: 'f,
 	{
 		self.source_cell.as_ref().update_eager_dyn(update)
 	}
@@ -873,17 +909,25 @@ where
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized + PartialEq,
 	{
 		let this = self.downgrade();
-		Box::new(async move {
+		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
 				this.change_eager(new_value).await
 			} else {
 				Err(new_value)
 			}
-		})
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<Result<T, T>, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>,
+			>(f)
+		}
 	}
 
 	fn replace_async_dyn<'f>(
@@ -891,17 +935,25 @@ where
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized,
 	{
 		let this = self.downgrade();
-		Box::new(async move {
+		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
 				this.replace_eager(new_value).await
 			} else {
 				Err(new_value)
 			}
-		})
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<T, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<T, T>>>,
+			>(f)
+		}
 	}
 
 	fn update_async_dyn<'f>(
@@ -913,17 +965,38 @@ where
 			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
-		Self: 'f,
+		T: 'f,
 	{
 		let this = self.downgrade();
-		Box::new(async move {
+		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
 				let f: Pin<Box<_>> = this.update_eager_dyn(update).into();
 				f.await
 			} else {
 				Err(update)
 			}
-		})
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<
+					dyn '_
+						+ Send
+						+ futures_lite::Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+				Box<
+					dyn 'f
+						+ Send
+						+ futures_lite::Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+			>(f)
+		}
 	}
 
 	fn change_eager<'f>(
@@ -1014,7 +1087,6 @@ where
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized + PartialEq,
 	{
 		self.source_cell.as_ref().change_eager_dyn(new_value)
@@ -1025,7 +1097,6 @@ where
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized,
 	{
 		self.source_cell.as_ref().replace_eager_dyn(new_value)
@@ -1040,7 +1111,7 @@ where
 			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
-		Self: 'f,
+		T: 'f,
 	{
 		self.source_cell.as_ref().update_eager_dyn(update)
 	}

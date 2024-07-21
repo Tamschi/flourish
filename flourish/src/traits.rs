@@ -301,7 +301,6 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized + PartialEq;
 
 	/// The same as [`replace_eager`](`SourceCell::replace_eager`), but object-safe.
@@ -310,7 +309,6 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: Syn
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized;
 
 	/// The same as [`update_eager`](`SourceCell::update_eager`), but object-safe.
@@ -496,7 +494,6 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized + PartialEq;
 
 	/// The same as [`replace_async`](`SourceCellPin::replace_async`), but object-safe.
@@ -505,7 +502,6 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized;
 
 	/// The same as [`update_async`](`SourceCellPin::update_async`), but object-safe.
@@ -518,7 +514,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
-		Self: 'f;
+		T: 'f;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -613,7 +609,6 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized + PartialEq;
 
 	/// The same as [`replace_eager`](`SourceCellPin::replace_eager`), but object-safe.
@@ -622,7 +617,6 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized;
 
 	/// The same as [`update_eager`](`SourceCellPin::update_eager`), but object-safe.
@@ -635,7 +629,6 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalRuntimeRef<Symbol: 
 			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
-		Self: 'f,
 		T: 'f;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.

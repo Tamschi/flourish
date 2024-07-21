@@ -511,7 +511,6 @@ impl<
 		new_value: T,
 	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<T, T>>>
 	where
-		Self: 'f,
 		T: 'f + Sized,
 	{
 		let r = Arc::new(Mutex::new(Some(Err(new_value))));
@@ -592,13 +591,15 @@ impl<
 			//        dropped, because dropping the `RawSignal` implicitly purges the ID.
 			mem::transmute::<
 				Box<
-					dyn Send
+					dyn '_
+						+ Send
 						+ futures_lite::Future<
 							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
 						>,
 				>,
 				Box<
-					dyn Send
+					dyn 'f
+						+ Send
 						+ futures_lite::Future<
 							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
 						>,
