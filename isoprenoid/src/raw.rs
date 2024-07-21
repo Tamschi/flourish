@@ -7,12 +7,10 @@ use core::{
 };
 use std::{
 	any::TypeId,
-	cell::{self, UnsafeCell},
 	collections::{btree_map::Entry, BTreeMap},
 	future::Future,
 	mem::{self, MaybeUninit},
-	ops::Deref,
-	sync::{Arc, Mutex, OnceLock},
+	sync::{Arc, Mutex},
 };
 
 use once_slot::OnceSlot;
@@ -21,6 +19,16 @@ use crate::{
 	runtime::{CallbackTable, CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Token},
 };
+
+rubicon::process_local! {
+	static ISOPRENOID_CALLBACK_TABLES: Mutex<
+		//BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
+		BTreeMap<TypeId, AssertSend<*mut ()>>,
+	> = Mutex::new(BTreeMap::new());
+}
+
+struct AssertSend<T>(T);
+unsafe impl<T> Send for AssertSend<T> {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct SignalId<SR: SignalsRuntimeRef> {
@@ -173,7 +181,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 							.expect("Assured by `OnceSlot` synchronisation.");
 					},
 					{
-						let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
+						let guard = &mut ISOPRENOID_CALLBACK_TABLES.lock().expect("unreachable");
 						match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
 							Entry::Vacant(vacant) => vacant.insert(AssertSend(
 								(Box::leak(Box::new(BTreeMap::<
@@ -211,14 +219,6 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 					},
 					(Pin::into_inner_unchecked(self) as *const Self).cast(),
 				);
-
-				struct AssertSend<T>(T);
-				unsafe impl<T> Send for AssertSend<T> {}
-
-				static CALLBACK_TABLES: Mutex<
-					//BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
-					BTreeMap<TypeId, AssertSend<*mut ()>>,
-				> = Mutex::new(BTreeMap::new());
 
 				unsafe fn update<
 					Eager: Sync + ?Sized,
@@ -296,7 +296,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 								.expect("Assured by `OnceSlot` synchronisation.");
 						},
 						{
-							let guard = &mut CALLBACK_TABLES.lock().expect("unreachable");
+							let guard = &mut ISOPRENOID_CALLBACK_TABLES.lock().expect("unreachable");
 							match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
 								Entry::Vacant(vacant) => vacant.insert(AssertSend(
 									(Box::leak(Box::new(BTreeMap::<
@@ -336,14 +336,6 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 						},
 						(Pin::into_inner_unchecked(self) as *const Self).cast(),
 					);
-
-					struct AssertSend<T>(T);
-					unsafe impl<T> Send for AssertSend<T> {}
-
-					static CALLBACK_TABLES: Mutex<
-						//BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
-						BTreeMap<TypeId, AssertSend<*mut ()>>,
-					> = Mutex::new(BTreeMap::new());
 
 					unsafe fn update<
 						Eager: Sync + ?Sized,

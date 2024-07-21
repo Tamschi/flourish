@@ -7,12 +7,21 @@ edition = "2021"
 #TODO Badges, meta data
 
 [features]
-global_signals_runtime = [] # Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
-forbid_global_signals_runtime = [] # Ensure that `global_signals_runtime` is not enabled.
+ # Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
+global_signals_runtime = [
+	"dep:async-lock",
+	"dep:parking_lot",
+	"dep:scopeguard",
+	"dep:unwind_safe",
+]
+
+# Ensures that `global_signals_runtime` is not enabled.
+forbid_global_signals_runtime = []
 
 [dependencies]
-async-lock = { version = "3.4.0", default-features = false, features = ["std"] }
+async-lock = { version = "3.4.0", default-features = false, optional = true, features = ["std"] }
 futures-lite = { version = "2.3.0", default-features = false, features = ["alloc"] }
-parking_lot = { version = "0.12.2", default-features = false }
-scopeguard = { version = "1.2.0", default-features = false }
-unwind_safe = { version = "0.1.0", default-features = false }
+parking_lot = { version = "0.12.2", default-features = false, optional = true }
+rubicon = { version = "3.0.1", default-features = false }
+scopeguard = { version = "1.2.0", default-features = false, optional = true }
+unwind_safe = { version = "0.1.0", default-features = false, optional = true }

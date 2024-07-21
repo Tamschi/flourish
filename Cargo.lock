@@ -94,7 +94,6 @@ dependencies = [
  "futures-lite",
  "isoprenoid",
  "pin-project",
- "scopeguard",
 ]
 
 [[package]]
@@ -139,6 +138,7 @@ dependencies = [
  "async-lock",
  "futures-lite",
  "parking_lot",
+ "rubicon",
  "scopeguard",
  "unwind_safe",
 ]
@@ -249,6 +249,12 @@ checksum = "c82cf8cff14456045f55ec4241383baeff27af886adb72ffb2162f99911de0fd"
 dependencies = [
  "bitflags",
 ]
+
+[[package]]
+name = "rubicon"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef3452ba229ffc32c61efe53a7ce415a73e6d3fc1cb505d48dca8e6fe30eb52c"
 
 [[package]]
 name = "scopeguard"

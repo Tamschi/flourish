@@ -22,3 +22,12 @@ cargo +nightly miri test --features _test
 ```
 
 Most tests require the included global signals runtime, but should still compile without it.
+
+Please also check for unused dependencies using [cargo-udeps](https://lib.rs/crates/cargo-udeps) with both:
+
+```sh
+cargo +nightly udeps
+cargo +nightly udeps --features _test
+```
+
+Dependencies that are used only with certain features should be optional.
