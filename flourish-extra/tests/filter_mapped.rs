@@ -1,3 +1,5 @@
+#![cfg(feature = "_test")]
+
 use flourish::{prelude::*, Signal};
 use flourish_extra::future::filter_mapped;
 

@@ -4,6 +4,10 @@ edition = "2021"
 
 #TODO Badges, meta data
 
+[features]
+#TODO: Rename this to global_signal_runtime, and …SignalsRuntime to match.
+_test = ["flourish/global_signal_runtime"] # Implements `SignalRuntimeRef` for `GlobalSignalsRuntime`.
+
 [dependencies]
 async-lock = { version = "3.4.0", default-features = false, features = ["std"] }
 flourish = { path = "../flourish" }

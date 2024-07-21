@@ -1,3 +1,5 @@
+#![cfg(feature = "global_signal_runtime")]
+
 use ::core::pin::{pin, Pin};
 use flourish::{
 	raw::{inert_cell, Source, SourceCell},

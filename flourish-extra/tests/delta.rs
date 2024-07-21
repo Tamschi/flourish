@@ -1,3 +1,5 @@
+#![cfg(feature = "_test")]
+
 use flourish::{prelude::*, shadow_clone, GlobalSignalRuntime, Signal, SignalCell, Subscription};
 
 mod _validator;

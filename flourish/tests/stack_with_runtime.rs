@@ -1,3 +1,5 @@
+#![cfg(feature = "global_signal_runtime")]
+
 use flourish::{
 	raw::{Source, SourceCell},
 	signals_helper, GlobalSignalRuntime,

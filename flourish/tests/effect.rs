@@ -1,3 +1,5 @@
+#![cfg(feature = "global_signal_runtime")]
+
 use flourish::{prelude::*, Effect, SignalCell};
 mod _validator;
 use _validator::Validator;

@@ -1,3 +1,5 @@
+#![cfg(feature = "global_signal_runtime")]
+
 use std::sync::Mutex;
 
 use flourish::{prelude::*, Signal, SignalCell, Subscription};

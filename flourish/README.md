@@ -29,6 +29,18 @@ use flourish::prelude::*;
 
 ## Quick-Start
 
+For libraries (which should be generic over the signals runtime `SR`):
+
+```sh
+cargo add flourish
+```
+
+For applications:
+
+```sh
+cargo add flourish --features global_signal_runtime
+```
+
 You can put signals on the heap:
 
 ```rust
