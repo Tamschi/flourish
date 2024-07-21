@@ -446,7 +446,6 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef> SignalCellSR
 	}
 }
 
-//TODO: Clean up `Symbol: Sync`… everywhere.
 impl<T: Send + Sized + ?Sized, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SourcePin<SR> for SignalCellSR<T, S, SR>
 {
