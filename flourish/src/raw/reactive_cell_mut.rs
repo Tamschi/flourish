@@ -1,6 +1,7 @@
 use std::{
 	borrow::{Borrow, BorrowMut},
 	fmt::{self, Debug, Formatter},
+	future::Future,
 	mem,
 	pin::Pin,
 	sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -470,7 +471,7 @@ impl<
 	fn change_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<Result<T, T>, T>>>
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
 		T: 'f + Sized + PartialEq,
 	{
@@ -509,7 +510,7 @@ impl<
 	fn replace_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<T, T>>>
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
 		T: 'f + Sized,
 	{
@@ -546,9 +547,7 @@ impl<
 	) -> Box<
 		dyn 'f
 			+ Send
-			+ futures_lite::Future<
-				Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
-			>,
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
 		T: 'f,
@@ -574,9 +573,7 @@ impl<
 		});
 		let f: Box<
 			dyn Send
-				+ futures_lite::Future<
-					Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
-				>,
+				+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 		> = Box::new(async move {
 			f.await.map_err(|_| {
 				Arc::into_inner(update)
@@ -593,14 +590,14 @@ impl<
 				Box<
 					dyn '_
 						+ Send
-						+ futures_lite::Future<
+						+ Future<
 							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
 						>,
 				>,
 				Box<
 					dyn 'f
 						+ Send
-						+ futures_lite::Future<
+						+ Future<
 							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
 						>,
 				>,

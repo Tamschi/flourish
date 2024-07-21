@@ -681,14 +681,14 @@ where
 				Box<
 					dyn '_
 						+ Send
-						+ futures_lite::Future<
+						+ Future<
 							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
 						>,
 				>,
 				Box<
 					dyn 'f
 						+ Send
-						+ futures_lite::Future<
+						+ Future<
 							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
 						>,
 				>,
@@ -984,14 +984,14 @@ where
 				Box<
 					dyn '_
 						+ Send
-						+ futures_lite::Future<
+						+ Future<
 							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
 						>,
 				>,
 				Box<
 					dyn 'f
 						+ Send
-						+ futures_lite::Future<
+						+ Future<
 							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
 						>,
 				>,

@@ -1,6 +1,7 @@
 use std::{
 	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
+	future::Future,
 	mem,
 	pin::Pin,
 	sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -345,7 +346,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 	fn change_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<Result<T, T>, T>>>
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
 		T: 'f + Sized + PartialEq,
 	{
@@ -384,7 +385,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 	fn replace_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> Box<dyn 'f + Send + futures_lite::Future<Output = Result<T, T>>>
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
 		T: 'f + Sized,
 	{
@@ -421,9 +422,7 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef<Symbol: Sync>> SourceCell<T
 	) -> Box<
 		dyn 'f
 			+ Send
-			+ futures_lite::Future<
-				Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
-			>,
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
 		T: 'f,
