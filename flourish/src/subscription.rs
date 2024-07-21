@@ -6,7 +6,7 @@ use std::{
 	sync::Arc,
 };
 
-use isoprenoid::runtime::{GlobalSignalRuntime, Propagation, SignalRuntimeRef};
+use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 use crate::{
 	raw::{computed, folded, reduced},
@@ -14,17 +14,17 @@ use crate::{
 	SignalRef, SignalSR, SourcePin,
 };
 
-/// Type inference helper alias for [`SubscriptionSR`] (using [`GlobalSignalRuntime`]).
-pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalRuntime>;
+/// Type inference helper alias for [`SubscriptionSR`] (using [`GlobalSignalsRuntime`]).
+pub type Subscription<'a, T> = SubscriptionSR<'a, T, GlobalSignalsRuntime>;
 
 /// Inherently-subscribed version of [`SignalSR`].  
 /// Can be directly constructed but also converted to and fro.
 #[must_use = "Subscriptions are cancelled when dropped."]
-pub struct SubscriptionSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> {
+pub struct SubscriptionSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> {
 	pub(crate) source: Pin<Arc<dyn 'a + Subscribable<SR, Output = T>>>,
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Debug
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Debug
 	for SubscriptionSR<'a, T, SR>
 where
 	T: Debug,
@@ -41,16 +41,16 @@ where
 	}
 }
 
-unsafe impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Send
+unsafe impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Send
 	for SubscriptionSR<'a, T, SR>
 {
 }
-unsafe impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Sync
+unsafe impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Sync
 	for SubscriptionSR<'a, T, SR>
 {
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Drop
 	for SubscriptionSR<'a, T, SR>
 {
 	fn drop(&mut self) {
@@ -58,7 +58,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Drop
 	}
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
+impl<'a, T: 'a + Send + ?Sized, SR: SignalsRuntimeRef> SubscriptionSR<'a, T, SR> {
 	/// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
 	///
 	/// The subscribable is subscribed-to inherently.
@@ -122,6 +122,8 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> 
 /// You can still easily construct them as [`SignalSR`] and subscribe afterwards:
 ///
 /// ```
+/// # {
+/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 /// use flourish::Signal;
 ///
 /// // The closure runs once on subscription, but not to refresh `sub`!
@@ -129,8 +131,9 @@ impl<'a, T: 'a + Send + ?Sized, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> 
 /// let sub = Signal::computed_uncached(|| ())
 ///     .try_subscribe()
 ///     .expect("contextually infallible");
+/// # }
 /// ```
-impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
+impl<'a, T: 'a + Send, SR: SignalsRuntimeRef> SubscriptionSR<'a, T, SR> {
 	/// A simple cached computation.
 	///
 	/// Wraps [`computed`](`computed()`).
@@ -196,7 +199,7 @@ impl<'a, T: 'a + Send, SR: SignalRuntimeRef> SubscriptionSR<'a, T, SR> {
 	}
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<SR>
 	for SubscriptionSR<'a, T, SR>
 {
 	type Output = T;

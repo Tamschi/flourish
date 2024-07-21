@@ -6,6 +6,12 @@ edition = "2021"
 
 #TODO Badges, meta data
 
+[features]
+global_signals_runtime = ["isoprenoid/global_signals_runtime"] # Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
+_test = ["global_signals_runtime", "_doc"] # Internal testing feature.
+_doc = ["global_signals_runtime"] # Internal documentation feature.
+
 [dependencies]
-pin-project = "1.1.5"
+futures-lite = { version = "2.3.0", default-features = false, features = ["alloc"] }
 isoprenoid = { path = "../isoprenoid" }
+pin-project = "1.1.5"

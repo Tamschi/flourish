@@ -1,16 +1,19 @@
 use std::{
 	borrow::{Borrow, BorrowMut},
 	fmt::{self, Debug, Formatter},
+	future::Future,
 	mem,
 	pin::Pin,
-	sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
+	sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
+	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 };
 use pin_project::pin_project;
+
+use crate::shadow_clone;
 
 use super::{Source, SourceCell, Subscribable};
 
@@ -23,7 +26,7 @@ pub struct ReactiveCellMut<
 			&mut T,
 			<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		) -> Propagation,
-	SR: SignalRuntimeRef,
+	SR: SignalsRuntimeRef,
 > {
 	#[pin]
 	signal: RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>,
@@ -37,7 +40,7 @@ impl<
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation
 			+ Debug,
-		SR: SignalRuntimeRef + Debug,
+		SR: SignalsRuntimeRef + Debug,
 	> Debug for ReactiveCellMut<T, HandlerFnPin, SR>
 where
 	SR::Symbol: Debug,
@@ -57,7 +60,7 @@ unsafe impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef + Sync,
+		SR: SignalsRuntimeRef + Sync,
 	> Sync for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 }
@@ -112,7 +115,7 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	pub(crate) fn new(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
@@ -177,7 +180,7 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Callbacks<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR> for E
 {
 	const UPDATE: Option<
@@ -192,13 +195,13 @@ impl<
 			signal: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>,
 			eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>,
 			lazy: Pin<&()>,
-			subscribed: <<SR as SignalRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			subscribed: <<SR as SignalsRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		) -> Propagation,
 	> = {
 		fn on_subscribed_change_fn_pin<
 			T: ?Sized + Send,
 			HandlerFnPin: Send + FnMut(&mut T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
-			SR: SignalRuntimeRef,
+			SR: SignalsRuntimeRef,
 		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>,eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation{
 			eager.0.0.lock().unwrap()(eager.0.1.write().unwrap().borrow_mut(), status)
 		}
@@ -214,7 +217,7 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Source<SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	type Output = T;
@@ -263,7 +266,7 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Subscribable<SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
@@ -292,7 +295,7 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: ?Sized + SignalRuntimeRef,
+		SR: ?Sized + SignalsRuntimeRef,
 	> SourceCell<T, SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	fn change(self: Pin<&Self>, new_value: T)
@@ -328,13 +331,275 @@ impl<
 			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
 	}
 
-	async fn update_async<U: Send>(
-		&self,
-		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
-	) -> U {
+	fn update_dyn(self: Pin<&Self>, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
+	where
+		T: 'static,
+	{
 		self.signal
-			.update_async(|value, _| update(&mut value.0 .1.write().unwrap()))
-			.await
+			.clone_runtime_ref()
+			.run_detached(|| self.touch());
+		self.project_ref()
+			.signal
+			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
+	}
+
+	fn change_eager<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> private::DetachedFuture<'f, Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + PartialEq,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f = self.update_eager({
+			let r = Arc::downgrade(&r);
+			move |value| {
+				let Some(r) = r.upgrade() else {
+					return (Propagation::Halt, ());
+				};
+				let mut r = r.try_lock().unwrap();
+				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+				if *value != new_value {
+					*r = Some(Ok(Ok(mem::replace(value, new_value))));
+					(Propagation::Propagate, ())
+				} else {
+					*r = Some(Ok(Err(new_value)));
+					(Propagation::Halt, ())
+				}
+			}
+		});
+
+		private::DetachedFuture(Box::pin(async move {
+			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
+			use futures_lite::FutureExt;
+			f.boxed().await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		}))
+	}
+
+	type ChangeEager<'f> = private::DetachedFuture<'f, Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn replace_eager<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> private::DetachedFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f = self.update_eager({
+			let r = Arc::downgrade(&r);
+			move |value| {
+				let Some(r) = r.upgrade() else {
+					return (Propagation::Halt, ());
+				};
+				let mut r = r.try_lock().unwrap();
+				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+				*r = Some(Ok(mem::replace(value, new_value)));
+				(Propagation::Propagate, ())
+			}
+		});
+
+		private::DetachedFuture(Box::pin(async move {
+			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
+			use futures_lite::FutureExt;
+			f.boxed().await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		}))
+	}
+
+	type ReplaceEager<'f> = private::DetachedFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		self: Pin<&Self>,
+		update: F,
+	) -> private::DetachedFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized,
+	{
+		let update = Arc::new(Mutex::new(Some(update)));
+		let f = self.project_ref().signal.update_eager({
+			shadow_clone!(update);
+			move |value, _| {
+				let update = update
+					.try_lock()
+					.expect("unreachable")
+					.take()
+					.expect("unreachable");
+				update(&mut value.0 .1.write().unwrap())
+			}
+		});
+		private::DetachedFuture(Box::pin(async move {
+			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
+			use futures_lite::FutureExt;
+			f.boxed().await.map_err(|_| {
+				Arc::try_unwrap(update)
+					.map_err(|_| ())
+					.expect("The `Arc`'s clone is dropped in the previous line.")
+					.into_inner()
+					.expect("unreachable")
+					.expect("unreachable")
+			})
+		}))
+	}
+
+	type UpdateEager<'f, U: 'f, F: 'f> = private::DetachedFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized;
+
+	fn change_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f: Pin<Box<_>> = self
+			.update_eager_dyn({
+				let r = Arc::downgrade(&r);
+				Box::new(move |value: &mut T| {
+					let Some(r) = r.upgrade() else {
+						return Propagation::Halt;
+					};
+					let mut r = r.try_lock().unwrap();
+					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+					if *value != new_value {
+						*r = Some(Ok(Ok(mem::replace(value, new_value))));
+						Propagation::Propagate
+					} else {
+						*r = Some(Ok(Err(new_value)));
+						Propagation::Halt
+					}
+				})
+			})
+			.into();
+
+		Box::new(async move {
+			f.await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		})
+	}
+
+	fn replace_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	where
+		T: 'f + Sized,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f: Pin<Box<_>> = self
+			.update_eager_dyn({
+				let r = Arc::downgrade(&r);
+				Box::new(move |value: &mut T| {
+					let Some(r) = r.upgrade() else {
+						return Propagation::Halt;
+					};
+					let mut r = r.try_lock().unwrap();
+					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+					*r = Some(Ok(mem::replace(value, new_value)));
+					Propagation::Propagate
+				})
+			})
+			.into();
+
+		Box::new(async move {
+			f.await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		})
+	}
+
+	fn update_eager_dyn<'f>(
+		self: Pin<&Self>,
+		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
+	>
+	where
+		T: 'f,
+	{
+		let update = Arc::new(Mutex::new(Some(update)));
+		let f = self.project_ref().signal.update_eager({
+			let update = Arc::downgrade(&update);
+			move |value, _| {
+				(
+					if let Some(update) = update.upgrade() {
+						let update = update
+							.try_lock()
+							.expect("unreachable")
+							.take()
+							.expect("unreachable");
+						update(&mut *value.0 .1.write().unwrap())
+					} else {
+						Propagation::Halt
+					},
+					(),
+				)
+			}
+		});
+		let f: Box<
+			dyn Send
+				+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
+		> = Box::new(async move {
+			f.await.map_err(|_| {
+				Arc::into_inner(update)
+					.expect("unreachable")
+					.into_inner()
+					.expect("unreachable")
+					.expect("`Some`")
+			})
+		});
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self` is
+			//        dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<
+					dyn '_
+						+ Send
+						+ Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+				Box<
+					dyn 'f
+						+ Send
+						+ Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+			>(f)
+		}
 	}
 
 	fn change_blocking(&self, new_value: T) -> Result<T, T>
@@ -360,5 +625,34 @@ impl<
 	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U {
 		self.signal
 			.update_blocking(|value, _| update(&mut value.0 .1.write().unwrap()))
+	}
+
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
+		self.signal
+			.update_blocking(|value, _| (update(&mut value.0 .1.write().unwrap()), ()))
+	}
+}
+
+/// Duplicated to avoid identities.
+mod private {
+	use std::{
+		future::Future,
+		pin::Pin,
+		task::{Context, Poll},
+	};
+
+	use futures_lite::FutureExt;
+
+	#[must_use = "Eager futures may still cancel their effect iff dropped."]
+	pub struct DetachedFuture<'f, Output: 'f>(
+		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+	);
+
+	impl<'f, Output: 'f> Future for DetachedFuture<'f, Output> {
+		type Output = Output;
+
+		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.0.poll(cx)
+		}
 	}
 }

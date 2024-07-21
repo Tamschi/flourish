@@ -5,7 +5,7 @@ use std::ops::{AddAssign, Sub};
 
 use flourish::{
 	raw::{folded, Subscribable},
-	Propagation, SignalRuntimeRef, SubscriptionSR,
+	Propagation, SignalsRuntimeRef, SubscriptionSR,
 };
 use num_traits::Zero;
 
@@ -15,7 +15,7 @@ pub mod future;
 
 //TODO: These have extraneous bounds. Change to accept closures to remove some `T: Sync + Copy` bounds.
 
-pub fn delta<'a, V: 'a + Send, T: 'a + Send + Zero, SR: 'a + SignalRuntimeRef>(
+pub fn delta<'a, V: 'a + Send, T: 'a + Send + Zero, SR: 'a + SignalsRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> V,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T>
@@ -37,7 +37,7 @@ where
 	)
 }
 
-pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalRuntimeRef>(
+pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalsRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> V,
 	runtime: SR,
 ) -> impl 'a + Subscribable<SR, Output = T> {
@@ -51,7 +51,7 @@ pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + Sign
 	)
 }
 
-pub fn eager_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalRuntimeRef>(
+pub fn eager_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalsRuntimeRef>(
 	fn_pin: impl 'a + Send + FnMut() -> V,
 	runtime: SR,
 ) -> SubscriptionSR<'a, T, SR> {

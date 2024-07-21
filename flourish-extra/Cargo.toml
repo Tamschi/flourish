@@ -4,6 +4,9 @@ edition = "2021"
 
 #TODO Badges, meta data
 
+[features]
+_test = ["flourish/global_signals_runtime"]  # Internal testing feature.
+
 [dependencies]
 async-lock = { version = "3.4.0", default-features = false, features = ["std"] }
 flourish = { path = "../flourish" }

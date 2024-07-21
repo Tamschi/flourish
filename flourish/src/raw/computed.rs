@@ -7,7 +7,7 @@ use std::{
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
+	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Written},
 };
 use pin_project::pin_project;
@@ -18,7 +18,7 @@ use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct Computed<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>(
+pub(crate) struct Computed<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef>(
 	#[pin] RawSignal<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR>,
 );
 
@@ -42,12 +42,12 @@ impl<'a, T: ?Sized> Borrow<T> for ComputedGuardExclusive<'a, T> {
 }
 
 /// TODO: Safety documentation.
-unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef + Sync> Sync
+unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef + Sync> Sync
 	for Computed<T, F, SR>
 {
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Computed<T, F, SR> {
 	pub(crate) fn new(fn_pin: F, runtime: SR) -> Self {
 		Self(RawSignal::with_runtime(
 			ForceSyncUnpin(fn_pin.into()),
@@ -125,7 +125,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
 }
 
 enum E {}
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef>
 	Callbacks<ForceSyncUnpin<Mutex<F>>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
 	const UPDATE: Option<
@@ -160,7 +160,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Computed<T, F, SR> {
 	unsafe fn init<'a>(
 		fn_pin: Pin<&'a ForceSyncUnpin<Mutex<F>>>,
 		cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
@@ -172,7 +172,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Computed<T, F, SR> {
 	}
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR> for Computed<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<SR> for Computed<T, F, SR> {
 	type Output = T;
 
 	fn touch(self: Pin<&Self>) {
@@ -226,7 +226,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Source<SR> for Compu
 	}
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalRuntimeRef> Subscribable<SR>
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Subscribable<SR>
 	for Computed<T, F, SR>
 {
 	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {

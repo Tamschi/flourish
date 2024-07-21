@@ -2,6 +2,8 @@
 
 Convenient and composable signals for Rust.
 
+The API design emphasises efficient resource management and performance-aware code without compromising on ease of use at near-zero boilerplate.
+
 🚧 This is a(n optimisable) proof of concept! 🚧  
 🚧 The API is full-featured, but the code is not (much at all) optimised. 🚧
 
@@ -26,6 +28,18 @@ use flourish::prelude::*;
 ```
 
 ## Quick-Start
+
+For libraries (which should be generic over the signals runtime `SR`):
+
+```sh
+cargo add flourish
+```
+
+For applications ("batteries included"):
+
+```sh
+cargo add flourish --features global_signals_runtime
+```
 
 You can put signals on the heap:
 
@@ -142,7 +156,7 @@ index.change(3); // nothing
 
 `Signal`s are fully lazy, so they only update while subscribed or to refresh their value if dirty.
 
-The default `GlobalSignalRuntime` notifies signals iteratively from earlier to later when possible. Only one such notification cascade is processed at a time with this runtime.
+The default `GlobalSignalsRuntime` notifies signals iteratively from earlier to later when possible. Only one such notification cascade is processed at a time with this runtime.
 
 ("uncached" signals run their closure whenever their value is retrieved instead, not on update.)
 
@@ -151,30 +165,30 @@ The default `GlobalSignalRuntime` notifies signals iteratively from earlier to l
 You can use a different [`isoprenoid`] runtime with the included types and macros (but ideally, alias these items for your own use):
 
 ```rust
-use flourish::{signals_helper, GlobalSignalRuntime, SignalSR, SignalCell, SubscriptionSR, Propagation};
+use flourish::{signals_helper, GlobalSignalsRuntime, SignalSR, SignalCell, SubscriptionSR, Propagation};
 
-let _ = SignalCell::with_runtime((), GlobalSignalRuntime);
+let _ = SignalCell::with_runtime((), GlobalSignalsRuntime);
 
-let _ = SignalSR::computed_with_runtime(|| (), GlobalSignalRuntime);
-let _ = SignalSR::computed_uncached_with_runtime(|| (), GlobalSignalRuntime);
-let _ = SignalSR::computed_uncached_mut_with_runtime(|| (), GlobalSignalRuntime);
-let _ = SignalSR::folded_with_runtime((), |_value| Propagation::Propagate, GlobalSignalRuntime);
-let _ = SignalSR::reduced_with_runtime(|| (), |_value, _next| Propagation::Propagate, GlobalSignalRuntime);
+let _ = SignalSR::computed_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = SignalSR::computed_uncached_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = SignalSR::computed_uncached_mut_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = SignalSR::folded_with_runtime((), |_value| Propagation::Propagate, GlobalSignalsRuntime);
+let _ = SignalSR::reduced_with_runtime(|| (), |_value, _next| Propagation::Propagate, GlobalSignalsRuntime);
 
-let _ = SubscriptionSR::computed_with_runtime(|| (), GlobalSignalRuntime);
+let _ = SubscriptionSR::computed_with_runtime(|| (), GlobalSignalsRuntime);
 
 signals_helper! {
-  let _inert_cell = inert_cell_with_runtime!((), GlobalSignalRuntime);
+  let _inert_cell = inert_cell_with_runtime!((), GlobalSignalsRuntime);
 
-  let _source = computed_with_runtime!(|| (), GlobalSignalRuntime);
-  let _source = computed_uncached_with_runtime!(|| (), GlobalSignalRuntime);
-  let _source = computed_uncached_mut_with_runtime!(|| (), GlobalSignalRuntime);
-  let _source = folded_with_runtime!((), |_value| Propagation::Propagate, GlobalSignalRuntime);
-  let _source = reduced_with_runtime!(|| (), |_value, _next| Propagation::Propagate, GlobalSignalRuntime);
+  let _source = computed_with_runtime!(|| (), GlobalSignalsRuntime);
+  let _source = computed_uncached_with_runtime!(|| (), GlobalSignalsRuntime);
+  let _source = computed_uncached_mut_with_runtime!(|| (), GlobalSignalsRuntime);
+  let _source = folded_with_runtime!((), |_value| Propagation::Propagate, GlobalSignalsRuntime);
+  let _source = reduced_with_runtime!(|| (), |_value, _next| Propagation::Propagate, GlobalSignalsRuntime);
 
-  let _source = subscription_with_runtime!(|| (), GlobalSignalRuntime);
+  let _source = subscription_with_runtime!(|| (), GlobalSignalsRuntime);
 
-  let _effect = effect_with_runtime!(|| (), drop, GlobalSignalRuntime);
+  let _effect = effect_with_runtime!(|| (), drop, GlobalSignalsRuntime);
 }
 ```
 

@@ -1,25 +1,27 @@
 use std::{
 	borrow::Borrow,
 	fmt::Debug,
+	future::Future,
 	marker::PhantomData,
 	mem,
-	ops::Deref,
 	pin::Pin,
-	sync::{Arc, Weak},
+	sync::{Arc, Mutex, Weak},
 };
 
-use isoprenoid::runtime::{CallbackTableTypes, GlobalSignalRuntime, Propagation, SignalRuntimeRef};
+use isoprenoid::runtime::{
+	CallbackTableTypes, GlobalSignalsRuntime, Propagation, SignalsRuntimeRef,
+};
 
 use crate::{
 	raw::{InertCell, ReactiveCell, ReactiveCellMut},
+	shadow_clone,
 	traits::{Source, SourceCell, Subscribable},
 	SignalRef, SignalSR, SourceCellPin, SourcePin,
 };
 
-/// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalRuntime`]).
-pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalRuntime>;
+/// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalsRuntime`]).
+pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalsRuntime>;
 
-//TODO: It may be possible to fully implement the API with additional `dyn` methods on the traits.
 /// Type of [`SignalCellSR`]s after type-erasure. Less convenient API.
 pub type ErasedSignalCell<'a, T, SR> = SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>;
 
@@ -28,7 +30,7 @@ pub type ErasedWeakSignalCell<'a, T, SR> = WeakSignalCell<T, dyn 'a + SourceCell
 pub struct WeakSignalCell<
 	T: ?Sized + Send,
 	S: ?Sized + SourceCell<T, SR>,
-	SR: ?Sized + SignalRuntimeRef,
+	SR: ?Sized + SignalsRuntimeRef,
 > {
 	source_cell: Weak<S>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
@@ -36,7 +38,7 @@ pub struct WeakSignalCell<
 	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	WeakSignalCell<T, S, SR>
 {
 	#[must_use]
@@ -51,7 +53,7 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntime
 pub struct SignalCellSR<
 	T: ?Sized + Send,
 	S: ?Sized + SourceCell<T, SR>,
-	SR: ?Sized + SignalRuntimeRef,
+	SR: ?Sized + SignalsRuntimeRef,
 > {
 	source_cell: Pin<Arc<S>>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
@@ -59,7 +61,7 @@ pub struct SignalCellSR<
 	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for SignalCellSR<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -70,7 +72,7 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntime
 	}
 }
 
-impl<T: ?Sized + Debug + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef + Debug> Debug
+impl<T: ?Sized + Debug + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef + Debug> Debug
 	for SignalCellSR<T, S, SR>
 where
 	S: Debug,
@@ -93,7 +95,7 @@ impl<T> From<T> for AssertSendSync<T> {
 	}
 }
 
-impl<T: Send, SR: SignalRuntimeRef> SignalCellSR<T, InertCell<T, SR>, SR> {
+impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, InertCell<T, SR>, SR> {
 	pub fn new(initial_value: T) -> Self
 	where
 		SR: Default,
@@ -179,7 +181,7 @@ impl<
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> SignalCellSR<T, ReactiveCell<T, HandlerFnPin, SR>, SR>
 {
 	pub fn new_reactive(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
@@ -283,7 +285,7 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> SignalCellSR<T, ReactiveCellMut<T, HandlerFnPin, SR>, SR>
 {
 	pub fn new_reactive_mut(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
@@ -383,8 +385,8 @@ impl<
 	}
 }
 
-impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef> SignalCellSR<T, S, SR> {
-	//TODO: `as_ref`/`SignalCellRef`?
+impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef> SignalCellSR<T, S, SR> {
+	//TODO: `as_ref` as `SignalCellRef`?
 
 	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
 	pub fn as_signal_ref<'a>(&self) -> SignalRef<'_, 'a, T, SR>
@@ -420,6 +422,15 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef> SignalCellSR<
 		}
 	}
 
+	pub fn downgrade(&self) -> WeakSignalCell<T, S, SR> {
+		WeakSignalCell {
+			source_cell: Arc::downgrade(unsafe {
+				&Pin::into_inner_unchecked(Pin::clone(&self.source_cell))
+			}),
+			upcast: self.upcast,
+		}
+	}
+
 	pub fn into_signal_and_self<'a>(self) -> (SignalSR<'a, T, SR>, Self)
 	where
 		S: 'a + Sized,
@@ -435,8 +446,8 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalRuntimeRef> SignalCellSR<
 	}
 }
 
-//TODO: Clean up `Sync: Sync`… everywhere.
-impl<T: Send + Sized + ?Sized, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef>
+//TODO: Clean up `Symbol: Sync`… everywhere.
+impl<T: Send + Sized + ?Sized, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SourcePin<SR> for SignalCellSR<T, S, SR>
 {
 	type Output = T;
@@ -478,7 +489,7 @@ impl<T: Send + Sized + ?Sized, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
-impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalRuntimeRef>
+impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SourceCellPin<T, SR> for SignalCellSR<T, S, SR>
 {
 	fn change(&self, new_value: T)
@@ -498,18 +509,252 @@ impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + Signal
 	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
+		T: 'static,
 	{
 		self.source_cell.as_ref().update(update)
 	}
 
-	fn update_async<U: Send>(
-		&self,
-		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
-	) -> impl Send + std::future::Future<Output = U>
+	fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
-		Self: Sized,
+		T: 'static,
 	{
-		self.source_cell.update_async(update)
+		self.source_cell.as_ref().update_dyn(update)
+	}
+
+	fn change_async<'f>(
+		&self,
+		new_value: T,
+	) -> private::DetachedAsyncFuture<'f, Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + PartialEq,
+	{
+		let this = self.downgrade();
+		private::DetachedAsyncFuture(Box::pin(async move {
+			if let Some(this) = this.upgrade() {
+				this.change_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		}))
+	}
+
+	type ChangeAsync<'f> = private::DetachedAsyncFuture<'f, Result<Result<T,T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn replace_async<'f>(&self, new_value: T) -> private::DetachedAsyncFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized,
+	{
+		let this = self.downgrade();
+		private::DetachedAsyncFuture(Box::pin(async move {
+			if let Some(this) = this.upgrade() {
+				this.replace_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		}))
+	}
+
+	type ReplaceAsync<'f> = private::DetachedAsyncFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		&self,
+		update: F,
+	) -> private::DetachedAsyncFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized,
+	{
+		let this = self.downgrade();
+		private::DetachedAsyncFuture(Box::pin(async move {
+			if let Some(this) = this.upgrade() {
+				this.update_eager(update).await
+			} else {
+				Err(update)
+			}
+		}))
+	}
+
+	type UpdateAsync<'f, U: 'f, F: 'f>=private::DetachedAsyncFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized;
+
+	fn change_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				this.change_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<Result<T, T>, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>,
+			>(f)
+		}
+	}
+
+	fn replace_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	where
+		T: 'f + Sized,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				this.replace_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<T, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<T, T>>>,
+			>(f)
+		}
+	}
+
+	fn update_async_dyn<'f>(
+		&self,
+		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
+	>
+	where
+		T: 'f,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				let f: Pin<Box<_>> = this.update_eager_dyn(update).into();
+				f.await
+			} else {
+				Err(update)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<
+					dyn '_
+						+ Send
+						+ Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+				Box<
+					dyn 'f
+						+ Send
+						+ Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+			>(f)
+		}
+	}
+
+	fn change_eager<'f>(
+		&self,
+		new_value: T,
+	) -> private::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: Sized + PartialEq,
+	{
+		private::DetachedEagerFuture(Box::pin(self.source_cell.as_ref().change_eager(new_value)))
+	}
+
+	type ChangeEager<'f> = private::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn replace_eager<'f>(&self, new_value: T) -> private::DetachedEagerFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: Sized,
+	{
+		private::DetachedEagerFuture(Box::pin(self.source_cell.as_ref().replace_eager(new_value)))
+	}
+
+	type ReplaceEager<'f> = private::DetachedEagerFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn update_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		&self,
+		update: F,
+	) -> private::DetachedEagerFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized,
+	{
+		private::DetachedEagerFuture(Box::pin(self.source_cell.as_ref().update_eager(update)))
+	}
+
+	type UpdateEager<'f, U: 'f, F: 'f> = private::DetachedEagerFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized;
+
+	fn change_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		self.source_cell.as_ref().change_eager_dyn(new_value)
+	}
+
+	fn replace_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	where
+		T: 'f + Sized,
+	{
+		self.source_cell.as_ref().replace_eager_dyn(new_value)
+	}
+
+	fn update_eager_dyn<'f>(
+		&self,
+		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
+	>
+	where
+		T: 'f,
+	{
+		self.source_cell.as_ref().update_eager_dyn(update)
 	}
 
 	fn change_blocking(&self, new_value: T) -> Result<T, T>
@@ -532,120 +777,444 @@ impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + Signal
 	{
 		self.source_cell.as_ref().update_blocking(update)
 	}
-}
 
-#[repr(transparent)]
-struct Private<T>(T);
-
-impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourcePin<SR>
-	for Private<SignalCellSR<T, dyn SourceCell<T, SR>, SR>>
-{
-	type Output = T;
-
-	fn touch(&self) {
-		self.0.touch()
-	}
-
-	fn get_clone(&self) -> Self::Output
-	where
-		Self::Output: Sync + Clone,
-	{
-		self.0.get_clone()
-	}
-
-	fn get_clone_exclusive(&self) -> Self::Output
-	where
-		Self::Output: Clone,
-	{
-		self.0.get_clone_exclusive()
-	}
-
-	fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
-	where
-		Self::Output: 'r + Sync,
-	{
-		self.0.read()
-	}
-
-	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
-		self.0.read_exclusive()
-	}
-
-	fn clone_runtime_ref(&self) -> SR
-	where
-		SR: Sized,
-	{
-		self.0.clone_runtime_ref()
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
+		self.source_cell.as_ref().update_blocking_dyn(update)
 	}
 }
 
-/// This unfortunately must be private/via-`dyn`-only until the non-dispatchable items can be implemented.
-impl<T: Send + Sized + ?Sized, SR: ?Sized + SignalRuntimeRef> SourceCellPin<T, SR>
-	for Private<SignalCellSR<T, dyn SourceCell<T, SR>, SR>>
+/// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
+/// bound, which is a bit less performant than using those accessors without type erasure.
+impl<'a, T: Send + Sized + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
+	for ErasedSignalCell<'a, T, SR>
 {
 	fn change(&self, new_value: T)
 	where
 		T: 'static + Sized + PartialEq,
 	{
-		self.0.source_cell.as_ref().change(new_value)
+		self.source_cell.as_ref().change(new_value)
 	}
 
 	fn replace(&self, new_value: T)
 	where
 		T: 'static + Sized,
 	{
-		self.0.source_cell.as_ref().replace(new_value)
+		self.source_cell.as_ref().replace(new_value)
 	}
 
 	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
+		T: 'static,
 	{
-		unreachable!()
+		self.source_cell.as_ref().update_dyn(Box::new(update))
 	}
 
-	fn update_async<U: Send>(
-		&self,
-		update: impl Send + FnOnce(&mut T) -> (Propagation, U),
-	) -> impl Send + std::future::Future<Output = U>
+	fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
-		Self: Sized,
+		T: 'static,
 	{
-		unreachable!();
-		async { unreachable!() }
+		self.source_cell.as_ref().update_dyn(Box::new(update))
+	}
+
+	fn change_async<'f>(
+		&self,
+		new_value: T,
+	) -> private2::DetachedAsyncFuture<'f, Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + PartialEq,
+	{
+		let this = self.downgrade();
+		private2::DetachedAsyncFuture(Box::pin(async move {
+			if let Some(this) = this.upgrade() {
+				this.change_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		}))
+	}
+
+	type ChangeAsync<'f> = private2::DetachedAsyncFuture<'f, Result<Result<T,T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn replace_async<'f>(&self, new_value: T) -> private2::DetachedAsyncFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized,
+	{
+		let this = self.downgrade();
+		private2::DetachedAsyncFuture(Box::pin(async move {
+			if let Some(this) = this.upgrade() {
+				this.replace_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		}))
+	}
+
+	type ReplaceAsync<'f> = private2::DetachedAsyncFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		&self,
+		update: F,
+	) -> private2::DetachedAsyncFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized,
+	{
+		let this = self.downgrade();
+		private2::DetachedAsyncFuture(Box::pin(async move {
+			if let Some(this) = this.upgrade() {
+				this.update_eager(update).await
+			} else {
+				Err(update)
+			}
+		}))
+	}
+
+	type UpdateAsync<'f, U: 'f, F: 'f>=private2::DetachedAsyncFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized;
+
+	fn change_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				this.change_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<Result<T, T>, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>,
+			>(f)
+		}
+	}
+
+	fn replace_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	where
+		T: 'f + Sized,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				this.replace_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<T, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<T, T>>>,
+			>(f)
+		}
+	}
+
+	fn update_async_dyn<'f>(
+		&self,
+		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
+	>
+	where
+		T: 'f,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				let f: Pin<Box<_>> = this.update_eager_dyn(update).into();
+				f.await
+			} else {
+				Err(update)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<
+					dyn '_
+						+ Send
+						+ Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+				Box<
+					dyn 'f
+						+ Send
+						+ Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+			>(f)
+		}
+	}
+
+	fn change_eager<'f>(
+		&self,
+		new_value: T,
+	) -> private2::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: Sized + PartialEq,
+	{
+		private2::DetachedEagerFuture(self.source_cell.as_ref().change_eager_dyn(new_value).into())
+	}
+
+	type ChangeEager<'f> = private2::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn replace_eager<'f>(&self, new_value: T) -> private2::DetachedEagerFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: Sized,
+	{
+		private2::DetachedEagerFuture(
+			self.source_cell
+				.as_ref()
+				.replace_eager_dyn(new_value)
+				.into(),
+		)
+	}
+
+	type ReplaceEager<'f> = private2::DetachedEagerFuture<'f, Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn update_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		&self,
+		update: F,
+	) -> private2::DetachedEagerFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized,
+	{
+		let shelf = Arc::new(Mutex::new(Some(Err(update))));
+		let f: Pin<Box<_>> = self
+			.source_cell
+			.as_ref()
+			.update_eager_dyn(Box::new({
+				let shelf = Arc::downgrade(&shelf);
+				move |value| {
+					if let Some(shelf) = shelf.upgrade() {
+						let update = shelf
+							.try_lock()
+							.expect("unreachable")
+							.take()
+							.expect("unreachable")
+							.map(|_| ())
+							.unwrap_err();
+						let (propagation, u) = update(value);
+						assert!(shelf
+							.try_lock()
+							.expect("unreachable")
+							.replace(Ok(u))
+							.is_none());
+						propagation
+					} else {
+						Propagation::Halt
+					}
+				}
+			}))
+			.into();
+		private2::DetachedEagerFuture(Box::pin(async move {
+			f.await;
+			Arc::into_inner(shelf)
+				.expect("unreachable")
+				.into_inner()
+				.expect("can't be poisoned")
+				.expect("can't be `None`")
+		}))
+	}
+
+	type UpdateEager<'f, U: 'f, F: 'f> = private2::DetachedEagerFuture<'f, Result<U, F>>
+	where
+		Self: 'f + Sized;
+
+	fn change_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		self.source_cell.as_ref().change_eager_dyn(new_value)
+	}
+
+	fn replace_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	where
+		T: 'f + Sized,
+	{
+		self.source_cell.as_ref().replace_eager_dyn(new_value)
+	}
+
+	fn update_eager_dyn<'f>(
+		&self,
+		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
+	>
+	where
+		T: 'f,
+	{
+		self.source_cell.as_ref().update_eager_dyn(update)
 	}
 
 	fn change_blocking(&self, new_value: T) -> Result<T, T>
 	where
 		T: Sized + PartialEq,
 	{
-		self.0.source_cell.as_ref().change_blocking(new_value)
+		self.source_cell.as_ref().change_blocking(new_value)
 	}
 
 	fn replace_blocking(&self, new_value: T) -> T
 	where
 		T: Sized,
 	{
-		self.0.source_cell.as_ref().replace_blocking(new_value)
+		self.source_cell.as_ref().replace_blocking(new_value)
 	}
 
 	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U
 	where
 		Self: Sized,
 	{
-		unreachable!()
+		let shelf = Arc::new(Mutex::new(Some(Err(update))));
+		self.source_cell.update_blocking_dyn(Box::new({
+			shadow_clone!(shelf);
+			move |value| {
+				let update = shelf
+					.try_lock()
+					.expect("unreachable")
+					.take()
+					.expect("unreachable")
+					.map(|_| ())
+					.unwrap_err();
+				let (propagation, u) = update(value);
+				assert!(shelf
+					.try_lock()
+					.expect("unreachable")
+					.replace(Ok(u))
+					.is_none());
+				propagation
+			}
+		}));
+		Arc::into_inner(shelf)
+			.expect("unreachable")
+			.into_inner()
+			.expect("can't be poisoned")
+			.expect("can't be `None`")
+			.map_err(|_| ())
+			.expect("can't be `Err` anymore")
+	}
+
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
+		self.source_cell.as_ref().update_blocking_dyn(update)
 	}
 }
 
-impl<'a: 'static, T: 'a + Send + Sized + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Deref
-	for ErasedSignalCell<'a, T, SR>
-{
-	type Target = dyn 'a + SourceCellPin<T, SR>;
+/// Duplicated to avoid identities.
+mod private {
+	use std::{
+		future::Future,
+		pin::Pin,
+		task::{Context, Poll},
+	};
 
-	fn deref(&self) -> &Self::Target {
-		unsafe {
-			&*(mem::transmute::<*const Self, &'a Private<Self>>(self as *const _)
-				as *const (dyn 'a + SourceCellPin<T, SR>))
+	use futures_lite::FutureExt;
+
+	#[must_use = "Eager futures may still cancel their effect iff dropped."]
+	pub struct DetachedEagerFuture<'f, Output: 'f>(
+		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+	);
+
+	impl<'f, Output: 'f> Future for DetachedEagerFuture<'f, Output> {
+		type Output = Output;
+
+		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.0.poll(cx)
+		}
+	}
+
+	#[must_use = "Async futures do nothing unless awaited."]
+	pub struct DetachedAsyncFuture<'f, Output: 'f>(
+		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+	);
+
+	impl<'f, Output: 'f> Future for DetachedAsyncFuture<'f, Output> {
+		type Output = Output;
+
+		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.0.poll(cx)
+		}
+	}
+}
+
+/// Duplicated to avoid identities.
+mod private2 {
+	use std::{
+		future::Future,
+		pin::Pin,
+		task::{Context, Poll},
+	};
+
+	use futures_lite::FutureExt;
+
+	#[must_use = "Eager futures may still cancel their effect iff dropped."]
+	pub struct DetachedEagerFuture<'f, Output: 'f>(
+		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+	);
+
+	impl<'f, Output: 'f> Future for DetachedEagerFuture<'f, Output> {
+		type Output = Output;
+
+		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.0.poll(cx)
+		}
+	}
+
+	#[must_use = "Async futures do nothing unless awaited."]
+	pub struct DetachedAsyncFuture<'f, Output: 'f>(
+		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+	);
+
+	impl<'f, Output: 'f> Future for DetachedAsyncFuture<'f, Output> {
+		type Output = Output;
+
+		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.0.poll(cx)
 		}
 	}
 }

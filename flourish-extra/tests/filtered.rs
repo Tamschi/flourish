@@ -1,3 +1,5 @@
+#![cfg(feature = "_test")]
+
 use flourish::{prelude::*, Signal};
 
 mod _validator;

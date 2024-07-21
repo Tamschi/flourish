@@ -1,4 +1,6 @@
-use flourish::{prelude::*, raw::computed, GlobalSignalRuntime, Signal, SignalCell, Subscription};
+#![cfg(feature = "global_signals_runtime")]
+
+use flourish::{prelude::*, raw::computed, GlobalSignalsRuntime, Signal, SignalCell, Subscription};
 
 mod _validator;
 use _validator::Validator;
@@ -18,7 +20,7 @@ fn debounce_test() {
 			x.push("s");
 			v.push(debounced.get())
 		},
-		GlobalSignalRuntime,
+		GlobalSignalsRuntime,
 	));
 	v.expect([0]);
 	x.expect(["s", "d"]);

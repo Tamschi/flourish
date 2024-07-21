@@ -8,10 +8,10 @@ use std::{
 
 use async_lock::OnceCell;
 use flourish::{
-	prelude::*, shadow_clone, signals_helper, Propagation, SignalRuntimeRef, SubscriptionSR,
+	prelude::*, shadow_clone, signals_helper, Propagation, SignalsRuntimeRef, SubscriptionSR,
 };
 
-pub async fn skipped_while<'a, T: 'a + Send + Sync, SR: 'a + SignalRuntimeRef>(
+pub async fn skipped_while<'a, T: 'a + Send + Sync, SR: 'a + SignalsRuntimeRef>(
 	fn_pin: impl 'a + Send + FnMut() -> T,
 	mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 	runtime: SR,
@@ -34,7 +34,7 @@ pub async fn skipped_while<'a, T: 'a + Send + Sync, SR: 'a + SignalRuntimeRef>(
 	sub
 }
 
-pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalsRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> T,
 	mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 	runtime: SR,
@@ -73,7 +73,7 @@ pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>
 	}
 }
 
-pub async fn filter_mapped<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalRuntimeRef>(
+pub async fn filter_mapped<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalsRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 	runtime: SR,
 ) -> SubscriptionSR<'a, T, SR> {
@@ -114,7 +114,7 @@ pub struct CancellableSlot<T> {
 	_phantom: PhantomData<T>,
 }
 
-pub fn while_subscribed<'a, T: 'a + Send, SR: 'a + SignalRuntimeRef>(
+pub fn while_subscribed<'a, T: 'a + Send, SR: 'a + SignalsRuntimeRef>(
 	load: impl FnMut(CancellableSlot<T>),
 ) {
 	todo!()

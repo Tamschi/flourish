@@ -2,7 +2,7 @@ use std::{borrow::BorrowMut, pin::Pin, sync::Mutex};
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
-	runtime::{CallbackTableTypes, Propagation, SignalRuntimeRef},
+	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Written},
 };
 use pin_project::pin_project;
@@ -14,7 +14,7 @@ pub struct RawPinningEffect<
 	S: Send + FnMut() -> (T, A),
 	A: Send + FnOnce(Pin<&mut T>),
 	D: Send + FnMut(Pin<&mut T>),
-	SR: SignalRuntimeRef,
+	SR: SignalsRuntimeRef,
 >(RawSignal<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>);
 
 #[pin_project]
@@ -30,7 +30,7 @@ pub fn new_raw_unsubscribed_pinning_effect<
 	S: Send + FnMut() -> (T, A),
 	A: Send + FnOnce(Pin<&mut T>),
 	D: Send + FnMut(Pin<&mut T>),
-	SR: SignalRuntimeRef,
+	SR: SignalsRuntimeRef,
 >(
 	fn_pin: S,
 	before_drop_fn_pin: D,
@@ -47,7 +47,7 @@ impl<
 		S: Send + FnMut() -> (T, A),
 		A: Send + FnOnce(Pin<&mut T>),
 		D: Send + FnMut(Pin<&mut T>),
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Drop for RawPinningEffect<T, S, A, D, SR>
 {
 	fn drop(&mut self) {
@@ -69,7 +69,7 @@ impl<
 		S: Send + FnMut() -> (T, A),
 		A: Send + FnOnce(Pin<&mut T>),
 		D: Send + FnMut(Pin<&mut T>),
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> Callbacks<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR> for E
 {
 	const UPDATE: Option<
@@ -121,7 +121,7 @@ impl<
 		S: Send + FnMut() -> (T, A),
 		A: Send + FnOnce(Pin<&mut T>),
 		D: Send + FnMut(Pin<&mut T>),
-		SR: SignalRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> RawPinningEffect<T, S, A, D, SR>
 {
 	unsafe fn init<'a>(

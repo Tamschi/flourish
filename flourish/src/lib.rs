@@ -2,7 +2,7 @@
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 // #![warn(clippy::single_call_fn)]
-#![doc = include_str!("../README.md")]
+#![cfg_attr(feature = "_doc", doc = include_str!("../README.md"))]
 //!
 //! # Threading Notes
 //!
@@ -14,7 +14,7 @@
 
 pub mod raw;
 
-//TODO: Inter-runtime signals (i.e. takes two signal runtimes as parameters, acts as source for one and dynamic subscriber for the other).
+//TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
 mod signal_cell;
 pub use signal_cell::{ErasedSignalCell, SignalCell, SignalCellSR};
@@ -34,7 +34,7 @@ pub use traits::{SourceCellPin, SourcePin};
 mod pinning_traits;
 pub use pinning_traits::{PinningSourceCellPin, PinningSourcePin};
 
-pub use isoprenoid::runtime::{GlobalSignalRuntime, Propagation, SignalRuntimeRef};
+pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 pub mod prelude {
 	//! Flourish's value accessor traits ([`SourcePin`](`crate::traits::SourcePin`),
@@ -59,6 +59,8 @@ pub mod __ {
 /// This is useful to create additional handles:
 ///
 /// ```
+/// # {
+/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 /// use flourish::{prelude::*, shadow_clone, SignalCell, Signal};
 ///
 /// let a = SignalCell::new(1);
@@ -69,6 +71,7 @@ pub mod __ {
 /// });
 ///
 /// drop((a, b, c));
+/// # }
 /// ```
 #[macro_export]
 macro_rules! shadow_clone {

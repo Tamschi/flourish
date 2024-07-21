@@ -1,4 +1,6 @@
-use flourish::{prelude::*, shadow_clone, GlobalSignalRuntime, Signal, SignalCell, Subscription};
+#![cfg(feature = "_test")]
+
+use flourish::{prelude::*, shadow_clone, GlobalSignalsRuntime, Signal, SignalCell, Subscription};
 
 mod _validator;
 use _validator::Validator;
@@ -9,7 +11,7 @@ fn delta_test() {
 	let v = &Validator::new();
 
 	let (signal, cell) = SignalCell::new(1).into_signal_and_erased();
-	let delta = Signal::new(delta(move || signal.get(), GlobalSignalRuntime));
+	let delta = Signal::new(delta(move || signal.get(), GlobalSignalsRuntime));
 	let sub = Subscription::computed({
 		shadow_clone!(delta);
 		move || v.push(delta.get())

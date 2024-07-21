@@ -6,7 +6,7 @@ use std::{
 	sync::Arc,
 };
 
-use isoprenoid::runtime::{GlobalSignalRuntime, Propagation, SignalRuntimeRef};
+use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 use crate::{
 	raw::{computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced},
@@ -14,8 +14,8 @@ use crate::{
 	SourcePin, SubscriptionSR,
 };
 
-/// Type inference helper alias for [`SignalSR`] (using [`GlobalSignalRuntime`]).
-pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
+/// Type inference helper alias for [`SignalSR`] (using [`GlobalSignalsRuntime`]).
+pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalsRuntime>;
 
 /// A largely type-erased signal handle that is all of [`Clone`], [`Send`], [`Sync`] and [`Unpin`].
 ///
@@ -23,11 +23,11 @@ pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalRuntime>;
 ///
 /// Signals are not evaluated unless they are subscribed-to (or on demand if if not current).  
 /// Uncached signals are instead evaluated on direct demand **only** (but still communicate subscriptions and invalidation).
-pub struct SignalSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> {
+pub struct SignalSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> {
 	pub(super) source: Pin<Arc<dyn 'a + Subscribable<SR, Output = T>>>,
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Clone for SignalSR<'a, T, SR> {
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Clone for SignalSR<'a, T, SR> {
 	fn clone(&self) -> Self {
 		Self {
 			source: self.source.clone(),
@@ -35,7 +35,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Clone for Si
 	}
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> Debug for SignalSR<'a, T, SR>
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Debug for SignalSR<'a, T, SR>
 where
 	T: Debug,
 {
@@ -51,10 +51,10 @@ where
 	}
 }
 
-unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Send for SignalSR<'a, T, SR> {}
-unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Sync for SignalSR<'a, T, SR> {}
+unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Send for SignalSR<'a, T, SR> {}
+unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Sync for SignalSR<'a, T, SR> {}
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a, T, SR> {
 	/// Creates a new [`SignalSR`] from the provided raw [`Subscribable`].
 	pub fn new(source: impl 'a + Subscribable<SR, Output = T>) -> Self {
 		SignalSR {
@@ -102,7 +102,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
 }
 
 /// Secondary constructors.
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a, T, SR> {
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a, T, SR> {
 	/// A simple cached computation.
 	///
 	/// Wraps [`computed`](`computed()`).
@@ -257,7 +257,7 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SignalSR<'a,
 	}
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>
+impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<SR>
 	for SignalSR<'a, T, SR>
 {
 	type Output = T;
@@ -303,12 +303,12 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR
 ///
 /// Can be cloned into an additional [`SignalSR`] or subscribed to.
 #[derive(Debug)]
-pub struct SignalRef<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> {
+pub struct SignalRef<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> {
 	pub(crate) source: *const (dyn 'a + Subscribable<SR, Output = T>),
 	pub(crate) _phantom: PhantomData<(&'r (dyn 'a + Subscribable<SR, Output = T>), SR)>,
 }
 
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> SignalRef<'r, 'a, T, SR> {
+impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SignalRef<'r, 'a, T, SR> {
 	/// Cheaply creates an additional [`SignalSR`] managing the same [`Subscribable`].
 	pub fn to_signal(&self) -> SignalSR<'a, T, SR> {
 		SignalSR {
@@ -337,7 +337,7 @@ impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> SignalRef<'r,
 	}
 }
 
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Clone
+impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Clone
 	for SignalRef<'r, 'a, T, SR>
 {
 	fn clone(&self) -> Self {
@@ -345,24 +345,24 @@ impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Clone
 	}
 }
 
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Copy
+impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Copy
 	for SignalRef<'r, 'a, T, SR>
 {
 }
 
-unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Send
-	for SignalRef<'r, 'a, T, SR>
-{
-	// SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
-}
-
-unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalRuntimeRef> Sync
+unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Send
 	for SignalRef<'r, 'a, T, SR>
 {
 	// SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
 }
 
-impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalRuntimeRef> SourcePin<SR>
+unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Sync
+	for SignalRef<'r, 'a, T, SR>
+{
+	// SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
+}
+
+impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<SR>
 	for SignalRef<'r, 'a, T, SR>
 {
 	type Output = T;
