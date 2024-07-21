@@ -39,10 +39,7 @@ pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 pub fn inert_cell<T: Send, SR: SignalsRuntimeRef>(
 	initial_value: T,
 	runtime: SR,
-) -> impl SourceCell<T, SR>
-where
-	SR::Symbol: Sync,
-{
+) -> impl SourceCell<T, SR> {
 	InertCell::with_runtime(initial_value, runtime)
 }
 #[macro_export]
@@ -74,8 +71,6 @@ pub fn reactive_cell<
 	on_subscribed_change_fn_pin: H,
 	runtime: SR,
 ) -> impl SourceCell<T, SR>
-where
-	SR::Symbol: Sync,
 {
 	ReactiveCell::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 }
@@ -111,8 +106,6 @@ pub fn reactive_cell_mut<
 	on_subscribed_change_fn_pin: H,
 	runtime: SR,
 ) -> impl SourceCell<T, SR>
-where
-	SR::Symbol: Sync,
 {
 	ReactiveCellMut::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 }

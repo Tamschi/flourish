@@ -162,7 +162,7 @@ pub trait Subscribable<SR: ?Sized + SignalsRuntimeRef>: Send + Sync + Source<SR>
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>>:
+pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + Subscribable<SR, Output = T>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -198,16 +198,14 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef<Symbol: Sy
 	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
-		T: 'static,
-		SR::Symbol: Sync;
+		T: 'static;
 
 	/// The same as [`update`](`SourceCell::update`), but object-safe.
 	fn update_dyn(
 		self: Pin<&Self>,
 		update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>,
 	) where
-		T: 'static,
-		SR::Symbol: Sync;
+		T: 'static;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -377,9 +375,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef<Symbol: Sy
 		Self: Sized;
 
 	/// The same as [`update_blocking`](`SourceCell::update_blocking`), but object-safe.
-	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
-	where
-		SR::Symbol: Sync;
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>);
 
 	fn as_source_and_cell(
 		self: Pin<&Self>,
@@ -397,7 +393,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef<Symbol: Sy
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>>:
+pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + SourcePin<SR, Output = T>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -433,14 +429,12 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef<Symbol:
 	fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
-		T: 'static,
-		SR::Symbol: Sync;
+		T: 'static;
 
 	/// The same as [`update`](`SourceCellPin::update`), but object-safe.
 	fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
-		T: 'static,
-		SR::Symbol: Sync;
+		T: 'static;
 
 	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`SourceCellPin::change_eager`) when polled.
 	///
@@ -685,7 +679,5 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef<Symbol:
 		Self: Sized;
 
 	/// The same as [`update_blocking`](`SourceCellPin::update_blocking`), but object-safe.
-	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
-	where
-		SR::Symbol: Sync;
+	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>);
 }

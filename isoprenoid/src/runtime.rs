@@ -19,7 +19,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// The signal instance key used by this [`SignalsRuntimeRef`].
 	///
 	/// Used to manage dependencies and callbacks.
-	type Symbol: Clone + Copy + Send;
+	type Symbol: Clone + Copy + Send + Sync;
 
 	/// Types used in callback signatures.
 	type CallbackTableTypes: ?Sized + CallbackTableTypes;

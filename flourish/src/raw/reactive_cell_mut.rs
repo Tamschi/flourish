@@ -295,13 +295,12 @@ impl<
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: ?Sized + SignalsRuntimeRef<Symbol: Sync>,
+		SR: ?Sized + SignalsRuntimeRef,
 	> SourceCell<T, SR> for ReactiveCellMut<T, HandlerFnPin, SR>
 {
 	fn change(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized + PartialEq,
-		SR::Symbol: Sync,
 	{
 		self.update(|value| {
 			if *value != new_value {
@@ -316,7 +315,6 @@ impl<
 	fn replace(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized,
-		SR::Symbol: Sync,
 	{
 		self.update(|value| {
 			*value = new_value;
@@ -336,7 +334,6 @@ impl<
 	fn update_dyn(self: Pin<&Self>, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
 		T: 'static,
-		<SR as SignalsRuntimeRef>::Symbol: Sync, //TODO: Centralise this bound!
 	{
 		self.signal
 			.clone_runtime_ref()
@@ -631,8 +628,6 @@ impl<
 	}
 
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>)
-	where
-		<SR as SignalsRuntimeRef>::Symbol: Sync,
 	{
 		self.signal
 			.update_blocking(|value, _| (update(&mut value.0 .1.write().unwrap()), ()))
