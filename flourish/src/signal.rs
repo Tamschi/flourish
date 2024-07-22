@@ -3,19 +3,47 @@ use std::{
 	fmt::{self, Debug, Formatter},
 	marker::PhantomData,
 	pin::Pin,
-	sync::Arc,
+	sync::{Arc, Weak},
 };
 
 use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 use crate::{
+	opaque::Opaque,
 	raw::{computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced},
+	subscription::SubscriptionDyn,
 	traits::Subscribable,
 	SourcePin, SubscriptionSR,
 };
 
 /// Type inference helper alias for [`SignalSR`] (using [`GlobalSignalsRuntime`]).
-pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalsRuntime>;
+pub type Signal<T, S> = SignalSR<T, S, GlobalSignalsRuntime>;
+
+/// Type of [`SignalSR`]s after type-erasure. Dynamic dispatch.
+pub type SignalDyn<'a, T, SR> = SignalSR<T, dyn 'a + Subscribable<T, SR>, SR>;
+
+pub type WeakSignalDyn<'a, T, SR> = WeakSignal<T, dyn 'a + Subscribable<T, SR>, SR>;
+
+pub struct WeakSignal<
+	T: ?Sized + Send,
+	S: ?Sized + Subscribable<T, SR>,
+	SR: ?Sized + SignalsRuntimeRef,
+> {
+	source_cell: Weak<S>,
+	_phantom: PhantomData<(PhantomData<T>, SR)>,
+}
+
+impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	WeakSignal<T, S, SR>
+{
+	#[must_use]
+	pub fn upgrade(&self) -> Option<SignalSR<T, S, SR>> {
+		self.source_cell.upgrade().map(|strong| SignalSR {
+			source: unsafe { Pin::new_unchecked(strong) },
+			_phantom: PhantomData,
+		})
+	}
+}
 
 /// A largely type-erased signal handle that is all of [`Clone`], [`Send`], [`Sync`] and [`Unpin`].
 ///
@@ -23,19 +51,28 @@ pub type Signal<'a, T> = SignalSR<'a, T, GlobalSignalsRuntime>;
 ///
 /// Signals are not evaluated unless they are subscribed-to (or on demand if if not current).  
 /// Uncached signals are instead evaluated on direct demand **only** (but still communicate subscriptions and invalidation).
-pub struct SignalSR<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> {
-	pub(super) source: Pin<Arc<dyn 'a + Subscribable<T, SR>>>,
+pub struct SignalSR<
+	T: ?Sized + Send,
+	S: ?Sized + Subscribable<T, SR>,
+	SR: ?Sized + SignalsRuntimeRef,
+> {
+	pub(super) source: Pin<Arc<S>>,
+	pub(crate) _phantom: PhantomData<(PhantomData<T>, SR)>,
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Clone for SignalSR<'a, T, SR> {
+impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+	for SignalSR<T, S, SR>
+{
 	fn clone(&self) -> Self {
 		Self {
 			source: self.source.clone(),
+			_phantom: PhantomData,
 		}
 	}
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> Debug for SignalSR<'a, T, SR>
+impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+	for SignalSR<T, S, SR>
 where
 	T: Debug,
 {
@@ -51,19 +88,31 @@ where
 	}
 }
 
-unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Send for SignalSR<'a, T, SR> {}
-unsafe impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Sync for SignalSR<'a, T, SR> {}
+unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
+	for SignalSR<T, S, SR>
+{
+}
+unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
+	for SignalSR<T, S, SR>
+{
+}
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a, T, SR> {
+impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	SignalSR<T, S, SR>
+{
 	/// Creates a new [`SignalSR`] from the provided raw [`Subscribable`].
-	pub fn new(source: impl 'a + Subscribable<T, SR>) -> Self {
+	pub fn new(source: S) -> Self
+	where
+		S: Sized,
+	{
 		SignalSR {
 			source: Arc::pin(source),
+			_phantom: PhantomData,
 		}
 	}
 
 	/// Cheaply borrows this [`SignalSR`] as [`SignalRef`], which is [`Copy`].
-	pub fn as_ref(&self) -> SignalRef<'_, 'a, T, SR> {
+	pub fn as_ref(&self) -> SignalRef<'_, T, S, SR> {
 		SignalRef {
 			source: {
 				let ptr =
@@ -75,53 +124,89 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a
 		}
 	}
 
-	pub fn try_subscribe(self) -> Result<SubscriptionSR<'a, T, SR>, Self> {
+	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
+
+	pub fn try_subscribe(self) -> Result<SubscriptionSR<T, S, SR>, Self> {
 		if (|| self.source.as_ref().subscribe_inherently().is_some())() {
 			Ok(SubscriptionSR {
 				source: self.source,
+				_phantom: PhantomData,
 			})
 		} else {
 			Err(self)
 		}
 	}
+}
 
+impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	SignalSR<T, S, SR>
+{
 	/// First calls [`self.try_subscribe()`](`SignalSR::try_subscribe`) and, iff that fails,
 	/// falls back to constructing a computed (cached) subscription from `make_fn_pin(self)`'s output.
-	pub fn subscribe_or_computed<FnPin: 'a + Send + FnMut() -> T>(
+	pub fn subscribe_or_computed_dyn<'a, FnPin: 'a + Send + FnMut() -> T>(
 		self,
 		make_fn_pin: impl FnOnce(Self) -> FnPin,
-	) -> SubscriptionSR<'a, T, SR>
+	) -> SubscriptionDyn<'a, T, SR>
 	where
 		T: Sized,
+		SR: Sized,
 	{
-		self.try_subscribe().unwrap_or_else(move |this| {
-			let runtime = this.clone_runtime_ref();
-			SubscriptionSR::computed_with_runtime(make_fn_pin(this), runtime)
-		})
+		self.try_subscribe()
+			.map(|subscription| subscription.into_dyn())
+			.unwrap_or_else(move |this| {
+				let runtime = this.clone_runtime_ref();
+				SubscriptionSR::computed_with_runtime(make_fn_pin(this), runtime).into_dyn()
+			})
+	}
+}
+
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalDyn<'a, T, SR> {
+	/// First calls [`self.try_subscribe()`](`SignalSR::try_subscribe`) and, iff that fails,
+	/// falls back to constructing a computed (cached) subscription from `make_fn_pin(self)`'s output.
+	pub fn subscribe_or_computed_dyn<FnPin: 'a + Send + FnMut() -> T>(
+		self,
+		make_fn_pin: impl FnOnce(Self) -> FnPin,
+	) -> SubscriptionDyn<'a, T, SR>
+	where
+		T: Sized,
+		SR: Sized,
+	{
+		self.try_subscribe()
+			.map(|subscription| subscription.into_dyn())
+			.unwrap_or_else(move |this| {
+				let runtime = this.clone_runtime_ref();
+				SubscriptionSR::computed_with_runtime(make_fn_pin(this), runtime).into_dyn()
+			})
 	}
 }
 
 /// Secondary constructors.
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a, T, SR> {
+impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// Wraps [`computed`](`computed()`).
-	pub fn computed(fn_pin: impl 'a + Send + FnMut() -> T) -> Self
+	pub fn computed<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
-		SR: Default,
+		T: 'a + Sized,
+		SR: 'a + Default,
 	{
-		Self::new(computed(fn_pin, SR::default()))
+		Self::computed_with_runtime(fn_pin, SR::default())
 	}
 
 	/// A simple cached computation.
 	///
 	/// Wraps [`computed`](`computed()`).
-	pub fn computed_with_runtime(fn_pin: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
+	pub fn computed_with_runtime<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+		runtime: SR,
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
+		T: 'a + Sized,
+		SR: 'a,
 	{
-		Self::new(computed(fn_pin, runtime))
+		SignalSR::new(computed(fn_pin, runtime))
 	}
 
 	/// A simple cached computation.
@@ -129,12 +214,14 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a
 	/// Doesn't update its cache or propagate iff the new result is equal.
 	///
 	/// Wraps [`debounced`](`debounced()`).
-	pub fn debounced(fn_pin: impl 'a + Send + FnMut() -> T) -> Self
+	pub fn debounced<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized + PartialEq,
-		SR: Default,
+		T: 'a + Sized + PartialEq,
+		SR: 'a + Default,
 	{
-		Self::new(debounced(fn_pin, SR::default()))
+		Self::debounced_with_runtime(fn_pin, SR::default())
 	}
 
 	/// A simple cached computation.
@@ -142,20 +229,26 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a
 	/// Doesn't update its cache or propagate iff the new result is equal.
 	///
 	/// Wraps [`debounced`](`debounced()`).
-	pub fn debounced_with_runtime(fn_pin: impl 'a + Send + FnMut() -> T, runtime: SR) -> Self
+	pub fn debounced_with_runtime<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+		runtime: SR,
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized + PartialEq,
+		T: 'a + Sized + PartialEq,
+		SR: 'a,
 	{
-		Self::new(debounced(fn_pin, runtime))
+		SignalSR::new(debounced(fn_pin, runtime))
 	}
 
 	/// A simple **uncached** computation.
 	///
 	/// Wraps [`computed_uncached`](`computed_uncached()`).
-	pub fn computed_uncached(fn_pin: impl 'a + Send + Sync + Fn() -> T) -> Self
+	pub fn computed_uncached<'a>(
+		fn_pin: impl 'a + Send + Sync + Fn() -> T,
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
-		SR: Default,
+		T: 'a + Sized,
+		SR: 'a + Default,
 	{
 		Self::computed_uncached_with_runtime(fn_pin, SR::default())
 	}
@@ -163,14 +256,15 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a
 	/// A simple **uncached** computation.
 	///
 	/// Wraps [`computed_uncached`](`computed_uncached()`).
-	pub fn computed_uncached_with_runtime(
+	pub fn computed_uncached_with_runtime<'a>(
 		fn_pin: impl 'a + Send + Sync + Fn() -> T,
 		runtime: SR,
-	) -> Self
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
+		T: 'a + Sized,
+		SR: 'a,
 	{
-		Self::new(computed_uncached(fn_pin, runtime))
+		SignalSR::new(computed_uncached(fn_pin, runtime))
 	}
 
 	/// A simple **stateful uncached** computation.
@@ -178,10 +272,12 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a
 	/// ⚠️ Care must be taken to avoid unexpected behaviour!
 	///
 	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
-	pub fn computed_uncached_mut(fn_pin: impl 'a + Send + FnMut() -> T) -> Self
+	pub fn computed_uncached_mut<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
-		SR: Default,
+		T: 'a + Sized,
+		SR: 'a + Default,
 	{
 		Self::computed_uncached_mut_with_runtime(fn_pin, SR::default())
 	}
@@ -191,23 +287,27 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a
 	/// ⚠️ Care must be taken to avoid unexpected behaviour!
 	///
 	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
-	pub fn computed_uncached_mut_with_runtime(
+	pub fn computed_uncached_mut_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
-	) -> Self
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
+		T: 'a + Sized,
+		SR: 'a,
 	{
-		Self::new(computed_uncached_mut(fn_pin, runtime))
+		SignalSR::new(computed_uncached_mut(fn_pin, runtime))
 	}
 
 	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
 	///
 	/// Wraps [`folded`](`folded()`).
-	pub fn folded(init: T, fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation) -> Self
+	pub fn folded<'a>(
+		init: T,
+		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
-		SR: Default,
+		T: 'a + Sized,
+		SR: 'a + Default,
 	{
 		Self::folded_with_runtime(init, fold_fn_pin, SR::default())
 	}
@@ -215,50 +315,52 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalSR<'a
 	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
 	///
 	/// Wraps [`folded`](`folded()`).
-	pub fn folded_with_runtime(
+	pub fn folded_with_runtime<'a>(
 		init: T,
 		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
 		runtime: SR,
-	) -> Self
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
+		T: 'a + Sized,
+		SR: 'a,
 	{
-		Self::new(folded(init, fold_fn_pin, runtime))
+		SignalSR::new(folded(init, fold_fn_pin, runtime))
 	}
 
 	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
 	/// Dependencies are detected across both closures.
 	///
 	/// Wraps [`reduced`](`reduced()`).
-	pub fn reduced(
+	pub fn reduced<'a>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
-	) -> Self
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
-		SR: Default,
+		T: 'a + Sized,
+		SR: 'a + Default,
 	{
-		Self::new(reduced(select_fn_pin, reduce_fn_pin, SR::default()))
+		Self::reduced_with_runtime(select_fn_pin, reduce_fn_pin, SR::default())
 	}
 
 	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
 	/// Dependencies are detected across both closures.
 	///
 	/// Wraps [`reduced`](`reduced()`).
-	pub fn reduced_with_runtime(
+	pub fn reduced_with_runtime<'a>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
 		runtime: SR,
-	) -> Self
+	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
+		T: 'a + Sized,
+		SR: 'a,
 	{
-		Self::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
+		SignalSR::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
 }
 
-impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
-	for SignalSR<'a, T, SR>
+impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	SourcePin<T, SR> for SignalSR<T, S, SR>
 {
 	fn touch(&self) {
 		self.source.as_ref().touch()
@@ -277,6 +379,97 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 	{
 		self.source.as_ref().get_clone_exclusive()
 	}
+
+	fn read<'r>(&'r self) -> S::Read<'r>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync,
+	{
+		self.source.as_ref().read()
+	}
+
+	type Read<'r> = S::Read<'r>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
+
+	fn read_exclusive<'r>(&'r self) -> S::ReadExclusive<'r>
+	where
+		Self: 'r + Sized,
+		T: 'r,
+	{
+		self.source.as_ref().read_exclusive()
+	}
+
+	type ReadExclusive<'r> = S::ReadExclusive<'r>
+	where
+		Self: 'r + Sized;
+
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: Sync,
+	{
+		self.source.as_ref().read_dyn()
+	}
+
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>> {
+		self.source.as_ref().read_exclusive_dyn()
+	}
+
+	fn clone_runtime_ref(&self) -> SR
+	where
+		SR: Sized,
+	{
+		self.source.as_ref().clone_runtime_ref()
+	}
+}
+
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
+	for SignalDyn<'a, T, SR>
+{
+	fn touch(&self) {
+		self.source.as_ref().touch()
+	}
+
+	fn get_clone(&self) -> T
+	where
+		T: Sync + Clone,
+	{
+		self.source.as_ref().get_clone()
+	}
+
+	fn get_clone_exclusive(&self) -> T
+	where
+		T: Clone,
+	{
+		self.source.as_ref().get_clone_exclusive()
+	}
+
+	fn read<'r>(&'r self) -> S::Read<'r>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync,
+	{
+		self.source.as_ref().read_dyn()
+	}
+
+	type Read<'r> = S::Read<'r>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
+
+	fn read_exclusive<'r>(&'r self) -> S::ReadExclusive<'r>
+	where
+		Self: 'r + Sized,
+		T: 'r,
+	{
+		self.source.as_ref().read_exclusive_dyn()
+	}
+
+	type ReadExclusive<'r> = S::ReadExclusive<'r>
+	where
+		Self: 'r + Sized,
+		T: 'r;
 
 	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
 	where
@@ -301,19 +494,27 @@ impl<'a, T: 'a + Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 ///
 /// Can be cloned into an additional [`SignalSR`] or subscribed to.
 #[derive(Debug)]
-pub struct SignalRef<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> {
-	pub(crate) source: *const (dyn 'a + Subscribable<T, SR>),
-	pub(crate) _phantom: PhantomData<(&'r (dyn 'a + Subscribable<T, SR>), SR)>,
+pub struct SignalRef<
+	'r,
+	T: ?Sized + Send,
+	S: ?Sized + Subscribable<T, SR>,
+	SR: ?Sized + SignalsRuntimeRef,
+> {
+	pub(crate) source: *const S,
+	pub(crate) _phantom: PhantomData<&'r (PhantomData<T>, SR)>,
 }
 
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SignalRef<'r, 'a, T, SR> {
+impl<'r, T: Send + ?Sized, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	SignalRef<'r, T, S, SR>
+{
 	/// Cheaply creates an additional [`SignalSR`] managing the same [`Subscribable`].
-	pub fn to_signal(&self) -> SignalSR<'a, T, SR> {
+	pub fn to_signal(&self) -> SignalSR<T, S, SR> {
 		SignalSR {
 			source: unsafe {
 				Arc::increment_strong_count(self.source);
 				Pin::new_unchecked(Arc::from_raw(self.source))
 			},
+			_phantom: PhantomData,
 		}
 	}
 
@@ -323,8 +524,8 @@ impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SignalRef<'r
 	/// (This method may be slightly more efficient.)
 	pub fn subscribe_computed<FnPin: 'a + Send + FnMut() -> T>(
 		&self,
-		make_fn_pin: impl FnOnce(SignalSR<'a, T, SR>) -> FnPin,
-	) -> SubscriptionSR<'a, T, SR>
+		make_fn_pin: impl FnOnce(SignalSR<T, S, SR>) -> FnPin,
+	) -> SubscriptionSR<T, S, SR>
 	where
 		T: Sized,
 	{

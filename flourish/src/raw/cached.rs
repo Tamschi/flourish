@@ -170,7 +170,7 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 	fn read<'r>(self: Pin<&'r Self>) -> CachedGuard<'r, T>
 	where
 		Self: Sized,
-		T: Sync,
+		T: 'r + Sync,
 	{
 		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
 		CachedGuard(touch.read().unwrap())
@@ -184,6 +184,7 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 	fn read_exclusive<'r>(self: Pin<&'r Self>) -> CachedGuardExclusive<'r, T>
 	where
 		Self: Sized,
+		T: 'r,
 	{
 		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
 		CachedGuardExclusive(touch.write().unwrap())
@@ -191,16 +192,20 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 
 	type ReadExclusive<'r> = CachedGuardExclusive<'r, T>
 	where
-		Self: 'r + Sized;
+		Self: 'r + Sized,
+		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
 	where
-		T: Sync,
+		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>> {
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r,
+	{
 		Box::new(self.read_exclusive())
 	}
 

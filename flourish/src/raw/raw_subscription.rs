@@ -103,7 +103,7 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 	fn read<'r>(self: Pin<&'r Self>) -> RawSubscriptionGuard<'r, T>
 	where
 		Self: Sized,
-		T: Sync,
+		T: 'r + Sync,
 	{
 		RawSubscriptionGuard(self.project_ref().0.read())
 	}
@@ -111,27 +111,32 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 	type Read<'r> = RawSubscriptionGuard<'r, T>
 	where
 		Self: 'r + Sized,
-		T: Sync;
+		T: 'r + Sync;
 
 	fn read_exclusive<'r>(self: Pin<&'r Self>) -> RawSubscriptionGuardExclusive<'r, T>
 	where
 		Self: Sized,
+		T: 'r,
 	{
 		RawSubscriptionGuardExclusive(self.project_ref().0.read_exclusive())
 	}
 
 	type ReadExclusive<'r> = RawSubscriptionGuardExclusive<'r, T>
 	where
-		Self: 'r + Sized;
+		Self: 'r + Sized,
+		T: 'r;
 
-	fn read_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
 	where
-		T: Sync,
+		T: 'r + Sync,
 	{
 		self.project_ref().0.read_dyn()
 	}
 
-	fn read_exclusive_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>> {
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r,
+	{
 		self.project_ref().0.read_exclusive_dyn()
 	}
 

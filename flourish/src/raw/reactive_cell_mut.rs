@@ -19,7 +19,7 @@ use super::{Source, SourceCell, Subscribable};
 
 #[pin_project]
 #[repr(transparent)]
-pub struct ReactiveCellMut<
+pub(crate) struct ReactiveCellMut<
 	T: ?Sized + Send,
 	HandlerFnPin: Send
 		+ FnMut(
@@ -241,37 +241,42 @@ impl<
 	fn read<'r>(self: Pin<&'r Self>) -> ReactiveCellMutGuard<'r, T>
 	where
 		Self: Sized,
-		T: Sync,
+		T: 'r + Sync,
 	{
 		let touch = self.touch();
 		ReactiveCellMutGuard(touch.read().unwrap())
 	}
 
 	type Read<'r> = ReactiveCellMutGuard<'r, T>
-			where
-				Self: 'r + Sized,
-				T: Sync;
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
 
 	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ReactiveCellMutGuardExclusive<'r, T>
 	where
 		Self: Sized,
+		T: 'r,
 	{
 		let touch = self.touch();
 		ReactiveCellMutGuardExclusive(touch.write().unwrap())
 	}
 
 	type ReadExclusive<'r> = ReactiveCellMutGuardExclusive<'r, T>
-			where
-				Self: 'r + Sized;
-
-	fn read_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>>
 	where
-		T: Sync,
+		Self: 'r + Sized,
+		T: 'r;
+
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>> {
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r,
+	{
 		Box::new(self.read_exclusive())
 	}
 

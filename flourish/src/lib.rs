@@ -12,12 +12,14 @@
 //!
 //! [`impl FnMut`](`FnMut`) closures that appear in parameters with "`fn_pin`" in their name are guaranteed to be [pinned](`core::pin`) when called.
 
+mod opaque;
+
 pub mod raw;
 
 //TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
 mod signal_cell;
-pub use signal_cell::{ErasedSignalCell, SignalCell, SignalCellSR};
+pub use signal_cell::{SignalCell, SignalCellDyn, SignalCellSR};
 
 mod signal;
 pub use signal::{Signal, SignalRef, SignalSR};
@@ -72,6 +74,10 @@ pub mod __ {
 /// ```
 #[macro_export]
 macro_rules! shadow_clone {
+	($ident:ident$(,)?) => {
+		// This would warn because of extra parentheses… and it's fewer tokens.
+		let $ident = ::std::clone::Clone::clone(&$ident);
+	};
     ($($ident:ident),*$(,)?) => {
 		let ($($ident),*) = ($(::std::clone::Clone::clone(&$ident)),*);
 	};

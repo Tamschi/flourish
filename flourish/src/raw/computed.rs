@@ -137,37 +137,42 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<T, SR> for C
 	fn read<'r>(self: Pin<&'r Self>) -> ComputedGuard<'r, T>
 	where
 		Self: Sized,
-		T: Sync,
+		T: 'r + Sync,
 	{
 		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
 		ComputedGuard(touch.read().unwrap())
 	}
 
 	type Read<'r> = ComputedGuard<'r, T>
-			where
-				Self: 'r + Sized,
-				T: Sync;
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
 
 	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ComputedGuardExclusive<'r, T>
 	where
 		Self: Sized,
+		T: 'r,
 	{
 		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
 		ComputedGuardExclusive(touch.write().unwrap())
 	}
 
 	type ReadExclusive<'r> = ComputedGuardExclusive<'r, T>
-			where
-				Self: 'r + Sized;
-
-	fn read_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>>
 	where
-		T: Sync,
+		Self: 'r + Sized,
+		T: 'r;
+
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>> {
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r,
+	{
 		Box::new(self.read_exclusive())
 	}
 

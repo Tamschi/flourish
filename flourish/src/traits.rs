@@ -55,33 +55,37 @@ pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync 
 	fn read<'r>(self: Pin<&'r Self>) -> Self::Read<'r>
 	where
 		Self: Sized,
-		T: Sync;
+		T: 'r + Sync;
 
 	type Read<'r>: 'r + Borrow<T>
 	where
 		Self: 'r + Sized,
-		T: Sync;
+		T: 'r + Sync;
 
 	/// Records `self` as dependency and allows borrowing the value.
 	///
 	/// Prefer [`Source::read`] where available.
 	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Self::ReadExclusive<'r>
 	where
-		Self: Sized;
+		Self: Sized,
+		T: 'r;
 
 	type ReadExclusive<'r>: 'r + Borrow<T>
 	where
-		Self: 'r + Sized;
+		Self: 'r + Sized,
+		T: 'r;
 
 	/// The same as [`Source::read`], but object-safe.
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
 	where
-		T: Sync;
+		T: 'r + Sync;
 
 	/// The same as [`Source::read_exclusive`], but object-safe.
 	///
 	/// Prefer [`Source::read_dyn`] where available.
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>;
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r;
 
 	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
 	fn clone_runtime_ref(&self) -> SR
@@ -136,33 +140,37 @@ pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sy
 	fn read<'r>(&'r self) -> Self::Read<'r>
 	where
 		Self: Sized,
-		T: Sync;
+		T: 'r + Sync;
 
 	type Read<'r>: 'r + Borrow<T>
 	where
 		Self: 'r + Sized,
-		T: Sync;
+		T: 'r + Sync;
 
 	/// Records `self` as dependency and allows borrowing the value.
 	///
 	/// Prefer [`SourcePin::read`] where available.
 	fn read_exclusive<'r>(&'r self) -> Self::ReadExclusive<'r>
 	where
-		Self: Sized;
+		Self: Sized,
+		T: 'r;
 
 	type ReadExclusive<'r>: 'r + Borrow<T>
 	where
-		Self: 'r + Sized;
+		Self: 'r + Sized,
+		T: 'r;
 
 	/// The same as [`SourcePin::read`], but object-safe.
 	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
 	where
-		T: Sync;
+		T: 'r + Sync;
 
 	/// The same as [`SourcePin::read_exclusive`], but object-safe.
 	///
 	/// Prefer [`SourcePin::read_dyn`] where available.
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>;
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r;
 
 	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
 	fn clone_runtime_ref(&self) -> SR

@@ -97,7 +97,7 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> Source<T, SR>
 	fn read<'r>(self: Pin<&'r Self>) -> T
 	where
 		Self: Sized,
-		T: Sync,
+		T: 'r + Sync,
 	{
 		self.read_exclusive()
 	}
@@ -105,11 +105,12 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> Source<T, SR>
 	type Read<'r> = T
 	where
 		Self: 'r + Sized,
-		T: Sync;
+		T: 'r + Sync;
 
 	fn read_exclusive<'r>(self: Pin<&'r Self>) -> T
 	where
 		Self: Sized,
+		T: 'r,
 	{
 		let fn_pin = self.touch();
 		self.project_ref()
@@ -119,16 +120,20 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> Source<T, SR>
 
 	type ReadExclusive<'r> = T
 	where
-		Self: 'r + Sized;
+		Self: 'r + Sized,
+		T: 'r;
 
-	fn read_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
 	where
-		T: Sync,
+		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<T>> {
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r,
+	{
 		Box::new(self.read_exclusive())
 	}
 

@@ -25,3 +25,6 @@ fn flushing() {
 	drop(a);
 	seen.expect([]);
 }
+
+//TODO: Make flushing affect unsubscribed dependents too!
+//      (Maybe with a Propagation::FlushOut variant that transitively affects unsubscribed dependencies unless stopped by Propagation::Halt?)

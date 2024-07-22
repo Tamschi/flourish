@@ -11,11 +11,15 @@ Flourish is a signals library inspired by [🚦 JavaScript Signals standard prop
 
 When combined with for example [`Option`](https://doc.rust-lang.org/stable/core/option/enum.Option.html) and [`Future`](https://doc.rust-lang.org/stable/core/future/trait.Future.html), `flourish` can model asynchronous-and-cancellable resource loads. See the crate `flourish-extra` for example combinators and `flourish-extensions` to use them conveniently through constructor extensions.
 
-This makes it a suitable replacement for most standard use cases of RxJS-style observables.
+This makes it a suitable replacement for most standard use cases of RxJS-style observables, though with the included runtime it may debounce propagation and as such isn't suited for sequences. (You should probably prefer channels for those. flourish does work well with reference-counted resources, however, and can flush them from stale unsubscribed signals. //TODO)
 
 ## Known Issues
 
-⚠️ The update task queue is currently not fair whatsoever, so one thread looping inside signal processing will block all others.
+⚠️ The update task queue is currently not fair whatsoever, so one thread looping inside signal processing will block all others.  
+(You *can* substitute your own `SignalsRuntimeRef` implementation if you'd like to experiment. Nearly all types in this crate are generic over the runtime, so that which you're working with is easy to identify.)
+
+⚠️ The panic handling in the included runtime really isn't good.  
+Fixing this doesn't incur API changes, and I don't need it right now, so I haven't implemented panic routing that would preserve the runtime when callbacks fail.
 
 ## Prelude
 
@@ -160,6 +164,10 @@ The default `GlobalSignalsRuntime` notifies signals iteratively from earlier to 
 
 ("uncached" signals run their closure whenever their value is retrieved instead, not on update.)
 
+## Unsizing
+
+TODO
+
 ## Using a different runtime
 
 You can use a different [`isoprenoid`] runtime with the included types and macros (but ideally, alias these items for your own use):
@@ -193,3 +201,15 @@ signals_helper! {
 ```
 
 Runtimes have some leeway regarding in which order they invoke the callbacks. A different runtime may also choose to combine propagation from distinct updates, reducing the amount of callback runs.
+
+## Compiler Wishlist
+
+Several improvements to this library are postponed pending certain compiler features (getting stabilised).
+
+This mainly affects certain optimisations not being in place yet, but does have some small effects on the API where I had to use workarounds.
+
+|Feature|What it would enable|
+|-|-|
+|[`coerce_unsized`](https://github.com/rust-lang/rust/issues/18598)|Unsizing coercions for various `SourcePin` (handle) types.<br>For now, please use `.into_dyn()` or the `From`/`Into` conversions instead.|
+|[`trait_upcasting`](https://github.com/rust-lang/rust/issues/65991)|Shrink `SignalCellSR` and `SignalCellRef` by at least half.|
+|Fix for [Unexpected higher-ranked lifetime error in GAT usage](https://github.com/rust-lang/rust/issues/100013)|(Cleanly) avoid boxing the inner closure in many "`_eager`" methods.|

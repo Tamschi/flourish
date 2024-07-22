@@ -10,7 +10,7 @@ fn use_constructors() {
 	let x = &Validator::new();
 
 	let a = SignalCell::new(1);
-	let (b, b_cell) = SignalCell::new(2).into_signal_and_erased();
+	let (b, b_cell) = SignalCell::new(2).into_signal_and_dyn();
 	let c = Signal::computed({
 		shadow_clone!(a, b);
 		move || {
