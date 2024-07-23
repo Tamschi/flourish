@@ -3,7 +3,6 @@ use std::{
 	future::Future,
 	marker::PhantomData,
 	mem,
-	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Mutex, Weak},
 };
@@ -16,7 +15,7 @@ use crate::{
 	opaque::Opaque,
 	raw::{InertCell, ReactiveCell, ReactiveCellMut},
 	shadow_clone,
-	traits::{Source, SourceCell, Subscribable},
+	traits::{Guard, Source, SourceCell, Subscribable},
 	SignalRef, SignalSR, SourceCellPin, SourcePin,
 };
 
@@ -508,14 +507,14 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		Source::read_dyn(self.source_cell.as_ref())
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
@@ -553,40 +552,40 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
 		self.source_cell.as_ref().get_clone_exclusive()
 	}
 
-	fn read<'r>(&'r self) -> private::BoxedDerefDyn<'r, T>
+	fn read<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		private::BoxedDerefDyn(self.source_cell.as_ref().read_dyn())
+		private::BoxedGuardDyn(self.source_cell.as_ref().read_dyn())
 	}
 
-	type Read<'r> = private::BoxedDerefDyn<'r, T>
+	type Read<'r> = private::BoxedGuardDyn<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
 
-	fn read_exclusive<'r>(&'r self) -> private::BoxedDerefDyn<'r, T>
+	fn read_exclusive<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		private::BoxedDerefDyn(self.source_cell.as_ref().read_exclusive_dyn())
+		private::BoxedGuardDyn(self.source_cell.as_ref().read_exclusive_dyn())
 	}
 
-	type ReadExclusive<'r> = private::BoxedDerefDyn<'r, T>
+	type ReadExclusive<'r> = private::BoxedGuardDyn<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		self.source_cell.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
@@ -1260,6 +1259,7 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 /// Duplicated to avoid identities.
 mod private {
 	use std::{
+		borrow::Borrow,
 		future::Future,
 		ops::Deref,
 		pin::Pin,
@@ -1267,6 +1267,8 @@ mod private {
 	};
 
 	use futures_lite::FutureExt;
+
+	use crate::traits::Guard;
 
 	#[must_use = "Eager futures may still cancel their effect iff dropped."]
 	pub struct DetachedEagerFuture<'f, Output: 'f>(
@@ -1294,13 +1296,21 @@ mod private {
 		}
 	}
 
-	pub struct BoxedDerefDyn<'r, T: ?Sized>(pub(super) Box<dyn 'r + Deref<Target = T>>);
+	pub struct BoxedGuardDyn<'r, T: ?Sized>(pub(super) Box<dyn 'r + Guard<T>>);
 
-	impl<T: ?Sized> Deref for BoxedDerefDyn<'_, T> {
+	impl<T: ?Sized> Guard<T> for BoxedGuardDyn<'_, T> {}
+
+	impl<T: ?Sized> Deref for BoxedGuardDyn<'_, T> {
 		type Target = T;
 
 		fn deref(&self) -> &Self::Target {
 			self.0.deref()
+		}
+	}
+
+	impl<T: ?Sized> Borrow<T> for BoxedGuardDyn<'_, T> {
+		fn borrow(&self) -> &T {
+			self.0.borrow()
 		}
 	}
 }

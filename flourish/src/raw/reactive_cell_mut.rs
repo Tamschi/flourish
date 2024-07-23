@@ -1,5 +1,5 @@
 use std::{
-	borrow::BorrowMut,
+	borrow::{Borrow, BorrowMut},
 	fmt::{self, Debug, Formatter},
 	future::Future,
 	mem,
@@ -14,7 +14,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::shadow_clone;
+use crate::{shadow_clone, traits::Guard};
 
 use super::{Source, SourceCell, Subscribable};
 
@@ -97,6 +97,9 @@ impl<T: Debug + ?Sized, HandlerFnPin: Debug> Debug
 struct ReactiveCellMutGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 struct ReactiveCellMutGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
+impl<'a, T: ?Sized> Guard<T> for ReactiveCellMutGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for ReactiveCellMutGuardExclusive<'a, T> {}
+
 impl<'a, T: ?Sized> Deref for ReactiveCellMutGuard<'a, T> {
 	type Target = T;
 
@@ -110,6 +113,18 @@ impl<'a, T: ?Sized> Deref for ReactiveCellMutGuardExclusive<'a, T> {
 
 	fn deref(&self) -> &Self::Target {
 		self.0.deref()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for ReactiveCellMutGuard<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for ReactiveCellMutGuardExclusive<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
 	}
 }
 
@@ -150,7 +165,7 @@ impl<
 		}
 	}
 
-	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Deref<Target = T>
+	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Guard<T>
 	where
 		T: Sync,
 	{
@@ -158,7 +173,7 @@ impl<
 		ReactiveCellMutGuard(this.touch().read().unwrap())
 	}
 
-	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Deref<Target = T> {
+	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Guard<T> {
 		let this = &self;
 		ReactiveCellMutGuardExclusive(this.touch().write().unwrap())
 	}
@@ -271,14 +286,14 @@ impl<
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{

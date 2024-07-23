@@ -1,7 +1,6 @@
 use std::{
 	fmt::{self, Debug, Formatter},
 	marker::PhantomData,
-	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Weak},
 };
@@ -11,7 +10,7 @@ use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 use crate::{
 	opaque::Opaque,
 	raw::{computed, folded, reduced},
-	traits::Subscribable,
+	traits::{Guard, Subscribable},
 	SignalRef, SignalSR, SourcePin,
 };
 
@@ -309,14 +308,14 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{

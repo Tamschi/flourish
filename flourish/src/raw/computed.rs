@@ -1,4 +1,5 @@
 use std::{
+	borrow::Borrow,
 	ops::Deref,
 	pin::Pin,
 	sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -11,7 +12,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::Subscribable;
+use crate::traits::{Guard, Subscribable};
 
 use super::Source;
 
@@ -28,6 +29,9 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 struct ComputedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 struct ComputedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
+impl<'a, T: ?Sized> Guard<T> for ComputedGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for ComputedGuardExclusive<'a, T> {}
+
 impl<'a, T: ?Sized> Deref for ComputedGuard<'a, T> {
 	type Target = T;
 
@@ -41,6 +45,18 @@ impl<'a, T: ?Sized> Deref for ComputedGuardExclusive<'a, T> {
 
 	fn deref(&self) -> &Self::Target {
 		self.0.deref()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for ComputedGuard<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for ComputedGuardExclusive<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
 	}
 }
 
@@ -165,14 +181,14 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<T, SR> for C
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{

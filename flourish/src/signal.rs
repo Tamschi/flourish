@@ -1,7 +1,6 @@
 use std::{
 	fmt::{self, Debug, Formatter},
 	marker::PhantomData,
-	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Weak},
 };
@@ -12,7 +11,7 @@ use crate::{
 	opaque::Opaque,
 	raw::{computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced},
 	subscription::SubscriptionDyn,
-	traits::Subscribable,
+	traits::{Guard, Subscribable},
 	SourcePin, SubscriptionSR,
 };
 
@@ -402,14 +401,14 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 	where
 		Self: 'r + Sized;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
@@ -471,14 +470,14 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
@@ -617,14 +616,14 @@ impl<'r, T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsR
 		Self: 'r_ + Sized,
 		T: 'r_;
 
-	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Deref<Target = T>>
+	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Guard<T>>
 	where
 		T: 'r_ + Sync,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Deref<Target = T>>
+	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Guard<T>>
 	where
 		T: 'r_,
 	{
@@ -702,14 +701,14 @@ impl<'r, 'a, T: 'a + ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourcePin<T,
 		Self: 'r_ + Sized,
 		T: 'r_;
 
-	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Deref<Target = T>>
+	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Guard<T>>
 	where
 		T: 'r_ + Sync,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Deref<Target = T>>
+	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Guard<T>>
 	where
 		T: 'r_,
 	{

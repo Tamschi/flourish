@@ -1,4 +1,5 @@
 use std::{
+	borrow::Borrow,
 	cell::UnsafeCell,
 	ops::Deref,
 	pin::Pin,
@@ -12,7 +13,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::Subscribable;
+use crate::traits::{Guard, Subscribable};
 
 use super::Source;
 
@@ -32,6 +33,9 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 struct ReducedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 struct ReducedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
+impl<'a, T: ?Sized> Guard<T> for ReducedGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for ReducedGuardExclusive<'a, T> {}
+
 impl<'a, T: ?Sized> Deref for ReducedGuard<'a, T> {
 	type Target = T;
 
@@ -45,6 +49,18 @@ impl<'a, T: ?Sized> Deref for ReducedGuardExclusive<'a, T> {
 
 	fn deref(&self) -> &Self::Target {
 		self.0.deref()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for ReducedGuard<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for ReducedGuardExclusive<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
 	}
 }
 
@@ -201,14 +217,14 @@ impl<
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{

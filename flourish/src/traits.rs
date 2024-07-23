@@ -1,4 +1,4 @@
-use std::{future::Future, ops::Deref, pin::Pin};
+use std::{borrow::Borrow, future::Future, ops::Deref, pin::Pin};
 
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
@@ -57,7 +57,7 @@ pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync 
 		Self: Sized,
 		T: 'r + Sync;
 
-	type Read<'r>: 'r + Deref<Target = T>
+	type Read<'r>: 'r + Guard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -70,20 +70,20 @@ pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync 
 		Self: Sized,
 		T: 'r;
 
-	type ReadExclusive<'r>: 'r + Deref<Target = T>
+	type ReadExclusive<'r>: 'r + Guard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
 
 	/// The same as [`Source::read`], but object-safe.
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync;
 
 	/// The same as [`Source::read_exclusive`], but object-safe.
 	///
 	/// Prefer [`Source::read_dyn`] where available.
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r;
 
@@ -142,7 +142,7 @@ pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sy
 		Self: Sized,
 		T: 'r + Sync;
 
-	type Read<'r>: 'r + Deref<Target = T>
+	type Read<'r>: 'r + Guard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -155,20 +155,20 @@ pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sy
 		Self: Sized,
 		T: 'r;
 
-	type ReadExclusive<'r>: 'r + Deref<Target = T>
+	type ReadExclusive<'r>: 'r + Guard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
 
 	/// The same as [`SourcePin::read`], but object-safe.
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync;
 
 	/// The same as [`SourcePin::read_exclusive`], but object-safe.
 	///
 	/// Prefer [`SourcePin::read_dyn`] where available.
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r;
 
@@ -739,3 +739,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// The same as [`update_blocking`](`SourceCellPin::update_blocking`), but object-safe.
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>);
 }
+
+//FIXME: This really should just specify `Borrow<Self::Target>`,
+//       but that makes it not object-safe currently.
+pub trait Guard<T: ?Sized>: Deref<Target = T> + Borrow<T> {}

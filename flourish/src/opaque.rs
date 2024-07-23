@@ -1,4 +1,5 @@
 use std::{
+	borrow::Borrow,
 	future::Future,
 	marker::PhantomData,
 	ops::Deref,
@@ -8,83 +9,83 @@ use std::{
 
 use isoprenoid::runtime::SignalsRuntimeRef;
 
-use crate::traits::{Source, SourceCell, Subscribable};
+use crate::traits::{Guard, Source, SourceCell, Subscribable};
 
 pub enum Opaque {}
 
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque {
 	fn touch(self: Pin<&Self>) {
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn get_clone(self: Pin<&Self>) -> T
 	where
 		T: Sync + Clone,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Clone,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> OpaqueDeref<T>
+	fn read<'r>(self: Pin<&'r Self>) -> OpaqueGuard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
-	type Read<'r> = OpaqueDeref<T>
+	type Read<'r> = OpaqueGuard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
 
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> OpaqueDeref<T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> OpaqueGuard<T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
-	type ReadExclusive<'r> = OpaqueDeref<T>
+	type ReadExclusive<'r> = OpaqueGuard<T>
 	where
 		Self: 'r + Sized, T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn clone_runtime_ref(&self) -> SR
 	where
 		SR: Sized,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 }
 
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for Opaque {
 	fn subscribe_inherently(self: Pin<&Self>) -> bool {
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
-		unreachable!()
+		const { unreachable!() }
 	}
 }
 
@@ -93,14 +94,14 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		T: 'static + Sized + PartialEq,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn replace(self: Pin<&Self>, _: T)
 	where
 		T: 'static + Sized,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn update(
@@ -110,7 +111,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 		Self: Sized,
 		T: 'static,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn update_dyn(
@@ -119,7 +120,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	) where
 		T: 'static,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn change_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueFuture<Result<Result<T, T>, T>>
@@ -127,7 +128,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	type ChangeEager<'f> = OpaqueFuture<Result<Result<T, T>, T>>
@@ -140,7 +141,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	type ReplaceEager<'f> = OpaqueFuture<Result<T, T>>
@@ -159,7 +160,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		Self: 'f + Sized,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	type UpdateEager<'f, U: 'f, F: 'f> = OpaqueFuture<Result<U, F>>
@@ -173,7 +174,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn replace_eager_dyn<'f>(
@@ -183,7 +184,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		T: 'f + Sized,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn update_eager_dyn<'f>(
@@ -202,21 +203,21 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		T: 'f,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn change_blocking(&self, _: T) -> Result<T, T>
 	where
 		T: Sized + PartialEq,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn replace_blocking(&self, _: T) -> T
 	where
 		T: Sized,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn update_blocking<U>(
@@ -226,14 +227,14 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		Self: Sized,
 	{
-		unreachable!()
+		const { unreachable!() }
 	}
 
 	fn update_blocking_dyn(
 		&self,
 		_: Box<dyn '_ + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
 	) {
-		unreachable!()
+		const { unreachable!() }
 	}
 }
 
@@ -251,19 +252,27 @@ impl<T> Future for OpaqueFuture<T> {
 	type Output = T;
 
 	fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-		unreachable!()
+		const { unreachable!() }
 	}
 }
 
-pub(crate) struct OpaqueDeref<T: ?Sized> {
+pub(crate) struct OpaqueGuard<T: ?Sized> {
 	pub(crate) _phantom: PhantomData<T>,
 	pub(crate) _vacant: Opaque,
 }
 
-impl<T: ?Sized> Deref for OpaqueDeref<T> {
+impl<T: ?Sized> Guard<T> for OpaqueGuard<T> {}
+
+impl<T: ?Sized> Deref for OpaqueGuard<T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		unreachable!()
+		const { unreachable!() }
+	}
+}
+
+impl<T: ?Sized> Borrow<T> for OpaqueGuard<T> {
+	fn borrow(&self) -> &T {
+		const { unreachable!() }
 	}
 }

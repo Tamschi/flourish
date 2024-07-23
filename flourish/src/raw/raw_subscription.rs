@@ -1,9 +1,9 @@
-use std::{ops::Deref, pin::Pin};
+use std::{borrow::Borrow, ops::Deref, pin::Pin};
 
 use isoprenoid::runtime::SignalsRuntimeRef;
 use pin_project::pin_project;
 
-use crate::traits::Subscribable;
+use crate::traits::{Guard, Subscribable};
 
 use super::{
 	cached::{CachedGuard, CachedGuardExclusive},
@@ -26,6 +26,9 @@ pub(crate) struct RawSubscription<
 struct RawSubscriptionGuard<'a, T: ?Sized>(CachedGuard<'a, T>);
 struct RawSubscriptionGuardExclusive<'a, T: ?Sized>(CachedGuardExclusive<'a, T>);
 
+impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuardExclusive<'a, T> {}
+
 impl<'a, T: ?Sized> Deref for RawSubscriptionGuard<'a, T> {
 	type Target = T;
 
@@ -39,6 +42,18 @@ impl<'a, T: ?Sized> Deref for RawSubscriptionGuardExclusive<'a, T> {
 
 	fn deref(&self) -> &Self::Target {
 		self.0.deref()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for RawSubscriptionGuard<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for RawSubscriptionGuardExclusive<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
 	}
 }
 
@@ -130,14 +145,14 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		self.project_ref().0.read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{

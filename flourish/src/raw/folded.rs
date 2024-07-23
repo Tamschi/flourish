@@ -1,4 +1,5 @@
 use std::{
+	borrow::Borrow,
 	cell::UnsafeCell,
 	ops::Deref,
 	pin::Pin,
@@ -12,7 +13,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::Subscribable;
+use crate::traits::{Guard, Subscribable};
 
 use super::Source;
 
@@ -29,6 +30,9 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 struct FoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 struct FoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
+impl<'a, T: ?Sized> Guard<T> for FoldedGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for FoldedGuardExclusive<'a, T> {}
+
 impl<'a, T: ?Sized> Deref for FoldedGuard<'a, T> {
 	type Target = T;
 
@@ -42,6 +46,18 @@ impl<'a, T: ?Sized> Deref for FoldedGuardExclusive<'a, T> {
 
 	fn deref(&self) -> &Self::Target {
 		self.0.deref()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for FoldedGuard<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for FoldedGuardExclusive<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
 	}
 }
 
@@ -172,14 +188,14 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Sou
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
