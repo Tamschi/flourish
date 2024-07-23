@@ -457,7 +457,7 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
 		(self.as_signal_ref().to_signal(), self)
 	}
 
-	pub fn into_signal_and_dyn<'a>(self) -> (SignalSR<T, S, SR>, SignalCellDyn<'a, T, SR>)
+	pub fn into_signal_and_self_dyn<'a>(self) -> (SignalSR<T, S, SR>, SignalCellDyn<'a, T, SR>)
 	where
 		S: 'a + Sized,
 	{

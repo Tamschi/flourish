@@ -94,8 +94,8 @@ impl<T: Debug + ?Sized, HandlerFnPin: Debug> Debug
 	}
 }
 
-struct ReactiveCellMutGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct ReactiveCellMutGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct ReactiveCellMutGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct ReactiveCellMutGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
 impl<'a, T: ?Sized> Guard<T> for ReactiveCellMutGuard<'a, T> {}
 impl<'a, T: ?Sized> Guard<T> for ReactiveCellMutGuardExclusive<'a, T> {}
@@ -686,7 +686,7 @@ mod private {
 	use futures_lite::FutureExt;
 
 	#[must_use = "Eager futures may still cancel their effect iff dropped."]
-	pub struct DetachedFuture<'f, Output: 'f>(
+	pub(crate) struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 	);
 

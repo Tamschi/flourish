@@ -27,8 +27,8 @@ pub(crate) struct Folded<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: Si
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-struct FoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct FoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct FoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct FoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
 impl<'a, T: ?Sized> Guard<T> for FoldedGuard<'a, T> {}
 impl<'a, T: ?Sized> Guard<T> for FoldedGuardExclusive<'a, T> {}

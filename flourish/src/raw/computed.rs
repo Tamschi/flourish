@@ -26,8 +26,8 @@ pub(crate) struct Computed<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRe
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-struct ComputedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct ComputedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct ComputedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct ComputedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
 impl<'a, T: ?Sized> Guard<T> for ComputedGuard<'a, T> {}
 impl<'a, T: ?Sized> Guard<T> for ComputedGuardExclusive<'a, T> {}

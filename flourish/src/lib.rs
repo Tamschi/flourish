@@ -19,19 +19,21 @@ pub mod raw;
 //TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
 mod signal_cell;
-pub use signal_cell::{SignalCell, SignalCellDyn, SignalCellSR};
+pub use signal_cell::{SignalCell, SignalCellDyn, SignalCellSR, WeakSignalCell, WeakSignalCellDyn};
 
 mod signal;
-pub use signal::{Signal, SignalRef, SignalSR};
+pub use signal::{Signal, SignalDyn, SignalRef, SignalRefDyn, SignalSR, WeakSignal, WeakSignalDyn};
 
 mod subscription;
-pub use subscription::{Subscription, SubscriptionSR};
+pub use subscription::{
+	Subscription, SubscriptionDyn, SubscriptionSR, WeakSubscription, WeakSubscriptionDyn,
+};
 
 mod effect;
 pub use effect::{Effect, EffectSR};
 
 mod traits;
-pub use traits::{SourceCellPin, SourcePin, Guard, Subscribable};
+pub use traits::{Guard, SourceCellPin, SourcePin};
 
 pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
@@ -48,7 +50,7 @@ pub mod __ {
 	pub use super::raw::{
 		raw_effect::new_raw_unsubscribed_effect,
 		raw_subscription::{
-			new_raw_unsubscribed_subscription, pin_into_pin_impl_source, pull_subscription,
+			new_raw_unsubscribed_subscription, pin_into_pin_impl_source, pull_new_subscription,
 		},
 	};
 }

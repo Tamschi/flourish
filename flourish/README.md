@@ -80,7 +80,7 @@ let _ = Effect::new(|| (), drop);
 
 // "Splitting":
 let (_signal, _cell) = SignalCell::new(()).into_signal_and_self();
-let (_signal, _type_erased_cell) = SignalCell::new(()).into_signal_and_erased();
+let (_signal, _type_erased_cell) = SignalCell::new(()).into_signal_and_self_dyn();
 ```
 
 You can also put signals on the stack:

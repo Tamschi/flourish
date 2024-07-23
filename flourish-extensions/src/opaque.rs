@@ -7,9 +7,10 @@ use std::{
 	task::{Context, Poll},
 };
 
-use isoprenoid::runtime::SignalsRuntimeRef;
-
-use crate::traits::{Guard, Source, SourceCell, Subscribable};
+use flourish::{
+	raw::{Source, SourceCell, Subscribable},
+	Guard, Propagation, SignalsRuntimeRef,
+};
 
 pub enum Opaque {}
 
@@ -104,20 +105,16 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 		const { unreachable!() }
 	}
 
-	fn update(
-		self: Pin<&Self>,
-		_: impl 'static + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation,
-	) where
+	fn update(self: Pin<&Self>, _: impl 'static + Send + FnOnce(&mut T) -> Propagation)
+	where
 		Self: Sized,
 		T: 'static,
 	{
 		const { unreachable!() }
 	}
 
-	fn update_dyn(
-		self: Pin<&Self>,
-		_: Box<dyn 'static + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
-	) where
+	fn update_dyn(self: Pin<&Self>, _: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
+	where
 		T: 'static,
 	{
 		const { unreachable!() }
@@ -149,11 +146,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 			    Self: 'f + Sized,
 			    T: 'f + Sized;
 
-	fn update_eager<
-		'f,
-		U: 'f + Send,
-		F: 'f + Send + FnOnce(&mut T) -> (isoprenoid::runtime::Propagation, U),
-	>(
+	fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		self: Pin<&Self>,
 		_: F,
 	) -> OpaqueFuture<Result<U, F>>
@@ -189,16 +182,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 
 	fn update_eager_dyn<'f>(
 		self: Pin<&Self>,
-		_: Box<dyn 'f + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
+		_: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
 	) -> Box<
 		dyn 'f
 			+ Send
-			+ Future<
-				Output = Result<
-					(),
-					Box<dyn 'f + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
-				>,
-			>,
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
 	>
 	where
 		T: 'f,
@@ -220,20 +208,14 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 		const { unreachable!() }
 	}
 
-	fn update_blocking<U>(
-		&self,
-		_: impl FnOnce(&mut T) -> (isoprenoid::runtime::Propagation, U),
-	) -> U
+	fn update_blocking<U>(&self, _: impl FnOnce(&mut T) -> (Propagation, U)) -> U
 	where
 		Self: Sized,
 	{
 		const { unreachable!() }
 	}
 
-	fn update_blocking_dyn(
-		&self,
-		_: Box<dyn '_ + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
-	) {
+	fn update_blocking_dyn(&self, _: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		const { unreachable!() }
 	}
 }

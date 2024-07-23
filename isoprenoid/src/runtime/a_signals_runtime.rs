@@ -8,15 +8,12 @@ use std::{
 };
 
 use async_lock::OnceCell;
-use core::{num::NonZeroU64, sync::atomic::AtomicU64};
+use core::sync::atomic::AtomicU64;
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use scopeguard::{guard, ScopeGuard};
 use unwind_safe::try_eval;
 
-use super::{
-	private, ACallbackTableTypes, ASymbol, CallbackTable, CallbackTableTypes, Propagation,
-	SignalsRuntimeRef,
-};
+use super::{private, ACallbackTableTypes, ASymbol, CallbackTable, Propagation, SignalsRuntimeRef};
 
 #[derive(Debug)]
 pub(crate) struct ASignalsRuntime {

@@ -13,7 +13,7 @@ use super::{
 #[pin_project]
 #[must_use = "Subscriptions are cancelled when dropped."]
 #[repr(transparent)]
-pub(crate) struct RawSubscription<
+pub struct RawSubscription<
 	//FIXME: Remove the `T: Clone` bound here, likely by using a different inner source,
 	// without always caching. This would unlock **various** bounds relaxations! It may be
 	// necessary to add a generic way to subscribe to sources, but it's possible that this
@@ -23,8 +23,8 @@ pub(crate) struct RawSubscription<
 	SR: SignalsRuntimeRef,
 >(#[pin] Cached<T, S, SR>);
 
-struct RawSubscriptionGuard<'a, T: ?Sized>(CachedGuard<'a, T>);
-struct RawSubscriptionGuardExclusive<'a, T: ?Sized>(CachedGuardExclusive<'a, T>);
+pub struct RawSubscriptionGuard<'a, T: ?Sized>(CachedGuard<'a, T>);
+pub struct RawSubscriptionGuardExclusive<'a, T: ?Sized>(CachedGuardExclusive<'a, T>);
 
 impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuard<'a, T> {}
 impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuardExclusive<'a, T> {}
@@ -71,10 +71,10 @@ pub fn new_raw_unsubscribed_subscription<
 }
 
 #[doc(hidden)]
-pub fn pull_subscription<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>(
+pub fn pull_new_subscription<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>(
 	subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
-	subscription.project_ref().0.subscribe_inherently();
+	assert!(subscription.project_ref().0.subscribe_inherently());
 }
 
 #[doc(hidden)]

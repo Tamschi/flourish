@@ -30,8 +30,8 @@ pub(crate) struct Reduced<
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
-struct ReducedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct ReducedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct ReducedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct ReducedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
 impl<'a, T: ?Sized> Guard<T> for ReducedGuard<'a, T> {}
 impl<'a, T: ?Sized> Guard<T> for ReducedGuardExclusive<'a, T> {}

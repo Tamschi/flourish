@@ -54,8 +54,8 @@ impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
 	}
 }
 
-struct InertCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct InertCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct InertCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct InertCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
 impl<'a, T: ?Sized> Guard<T> for InertCellGuard<'a, T> {}
 impl<'a, T: ?Sized> Guard<T> for InertCellGuardExclusive<'a, T> {}
@@ -536,7 +536,7 @@ mod private {
 	use futures_lite::FutureExt;
 
 	#[must_use = "Eager futures may still cancel their effect iff dropped."]
-	pub struct DetachedFuture<'f, Output: 'f>(
+	pub(crate) struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 	);
 

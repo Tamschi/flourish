@@ -113,6 +113,7 @@ dependencies = [
  "async-lock",
  "flourish",
  "num-traits",
+ "pin-project",
 ]
 
 [[package]]

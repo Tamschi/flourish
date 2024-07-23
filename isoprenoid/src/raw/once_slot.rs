@@ -1,9 +1,4 @@
-use std::{
-	cell::{OnceCell, UnsafeCell},
-	marker::PhantomData,
-	mem::MaybeUninit,
-	sync::{Mutex, Once},
-};
+use std::{cell::OnceCell, sync::Mutex};
 
 #[derive(Debug)]
 pub(super) struct OnceSlot<T> {
