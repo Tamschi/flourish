@@ -10,10 +10,6 @@ use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 ///
 /// Note that dropping the [`dyn Source<_>`](`Source`) dynamically **transmutes back**.
 pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
-	//FIXME: `T` should be an associated type `Output` for better inference,
-	//       but this appears to break object-safety because it appears in associated
-	//       type's bounds.
-
 	/// Records `self` as dependency without accessing the value.
 	fn touch(self: Pin<&Self>);
 
@@ -95,10 +91,6 @@ pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync 
 
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
 pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
-	//FIXME: `T` should be an associated type `Output` for better inference,
-	//       but this appears to break object-safety because it appears in associated
-	//       type's bounds.
-
 	/// Records `self` as dependency without accessing the value.
 	fn touch(&self);
 
@@ -182,10 +174,6 @@ pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sy
 pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + Source<T, SR>
 {
-	//FIXME: `T` should be an (inherited!) associated type `Output` for better inference,
-	//       but this appears to break object-safety because it appears in associated
-	//       type's bounds.
-
 	/// Subscribes this [`Subscribable`] (only regarding innate subscription)!
 	///
 	/// If necessary, this instance is initialised first, so that callbacks are active for it.
@@ -218,10 +206,6 @@ pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + Subscribable<T, SR>
 {
-	//FIXME: Should `T` be an associated type `Output` for better inference?
-	//       Currently, this apparently would break object-safety because it appears in
-	//       associated type's bounds.
-
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Logic
@@ -450,10 +434,6 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + SourcePin<T, SR>
 {
-	//FIXME: Should `T` be an associated type `Output` for better inference?
-	//       Currently, this apparently would break object-safety because it appears in
-	//       associated type's bounds.
-
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Logic
