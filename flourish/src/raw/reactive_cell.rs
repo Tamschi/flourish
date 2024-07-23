@@ -3,6 +3,7 @@ use std::{
 	fmt::{self, Debug, Formatter},
 	future::Future,
 	mem,
+	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -13,13 +14,13 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::shadow_clone;
+use crate::{shadow_clone, traits::Guard};
 
 use super::{Source, SourceCell, Subscribable};
 
 #[pin_project]
 #[repr(transparent)]
-pub struct ReactiveCell<
+pub(crate) struct ReactiveCell<
 	T: ?Sized + Send,
 	HandlerFnPin: Send
 		+ FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
@@ -90,8 +91,27 @@ impl<T: Debug + ?Sized, HandlerFnPin: Debug> Debug
 	}
 }
 
-struct ReactiveCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct ReactiveCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct ReactiveCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct ReactiveCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+
+impl<'a, T: ?Sized> Guard<T> for ReactiveCellGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for ReactiveCellGuardExclusive<'a, T> {}
+
+impl<'a, T: ?Sized> Deref for ReactiveCellGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
+	}
+}
+
+impl<'a, T: ?Sized> Deref for ReactiveCellGuardExclusive<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
+	}
+}
 
 impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuard<'a, T> {
 	fn borrow(&self) -> &T {
@@ -142,7 +162,7 @@ impl<
 		}
 	}
 
-	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
+	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Guard<T>
 	where
 		T: Sync,
 	{
@@ -150,7 +170,7 @@ impl<
 		ReactiveCellGuard(this.touch().read().unwrap())
 	}
 
-	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Guard<T> {
 		let this = &self;
 		ReactiveCellGuardExclusive(this.touch().write().unwrap())
 	}
@@ -200,7 +220,7 @@ impl<
 			HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 			SR: SignalsRuntimeRef,
 		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>, eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation{
-			eager.0.0.lock().unwrap()(eager.0.1.read().unwrap().borrow(), status)
+			eager.0.0.lock().unwrap()(&*eager.0.1.read().unwrap(), status)
 		}
 
 		Some(on_subscribed_change_fn_pin::<T,HandlerFnPin,SR>)
@@ -215,36 +235,65 @@ impl<
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalsRuntimeRef,
-	> Source<SR> for ReactiveCell<T, HandlerFnPin, SR>
+	> Source<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
-	type Output = T;
-
 	fn touch(self: Pin<&Self>) {
 		self.touch();
 	}
 
-	fn get_clone(self: Pin<&Self>) -> Self::Output
+	fn get_clone(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Sync + Clone,
 	{
-		self.read().borrow().clone()
+		self.read().clone()
 	}
 
-	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
+	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
-		Self::Output: Clone,
+		T: Clone,
 	{
-		self.touch().write().unwrap().clone()
+		self.read_exclusive().clone()
 	}
 
-	fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
+	fn read<'r>(self: Pin<&'r Self>) -> ReactiveCellGuard<'r, T>
 	where
-		Self::Output: Sync,
+		Self: Sized,
+		T: 'r + Sync,
+	{
+		let touch = self.touch();
+		ReactiveCellGuard(touch.read().unwrap())
+	}
+
+	type Read<'r> = ReactiveCellGuard<'r, T>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ReactiveCellGuardExclusive<'r, T>
+	where
+		Self: Sized,
+		T: 'r,
+	{
+		let touch = self.touch();
+		ReactiveCellGuardExclusive(touch.write().unwrap())
+	}
+
+	type ReadExclusive<'r> = ReactiveCellGuardExclusive<'r, T>
+	where
+		Self: 'r + Sized,
+		T: 'r;
+
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r,
+	{
 		Box::new(self.read_exclusive())
 	}
 
@@ -264,20 +313,13 @@ impl<
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalsRuntimeRef,
-	> Subscribable<SR> for ReactiveCell<T, HandlerFnPin, SR>
+	> Subscribable<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
-		//FIXME: This is inefficient.
-		if self
-			.project_ref()
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+		self.project_ref()
 			.signal
 			.subscribe_inherently_or_init::<E>(|_, slot| slot.write(()))
 			.is_some()
-		{
-			Some(Source::read_exclusive(self))
-		} else {
-			None
-		}
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
@@ -639,7 +681,7 @@ mod private {
 	use futures_lite::FutureExt;
 
 	#[must_use = "Eager futures may still cancel their effect iff dropped."]
-	pub struct DetachedFuture<'f, Output: 'f>(
+	pub(crate) struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 	);
 

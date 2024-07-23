@@ -1,5 +1,4 @@
 use std::{
-	borrow::Borrow,
 	fmt::Debug,
 	future::Future,
 	marker::PhantomData,
@@ -13,19 +12,20 @@ use isoprenoid::runtime::{
 };
 
 use crate::{
+	opaque::Opaque,
 	raw::{InertCell, ReactiveCell, ReactiveCellMut},
 	shadow_clone,
-	traits::{Source, SourceCell, Subscribable},
+	traits::{Guard, Source, SourceCell, Subscribable},
 	SignalRef, SignalSR, SourceCellPin, SourcePin,
 };
 
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalsRuntime`]).
 pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalsRuntime>;
 
-/// Type of [`SignalCellSR`]s after type-erasure. Less convenient API.
-pub type ErasedSignalCell<'a, T, SR> = SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>;
+/// Type of [`SignalCellSR`]s after type-erasure. Dynamic dispatch.
+pub type SignalCellDyn<'a, T, SR> = SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>;
 
-pub type ErasedWeakSignalCell<'a, T, SR> = WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>;
+pub type WeakSignalCellDyn<'a, T, SR> = WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>;
 
 pub struct WeakSignalCell<
 	T: ?Sized + Send,
@@ -35,7 +35,7 @@ pub struct WeakSignalCell<
 	source_cell: Weak<S>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
 	/// being unstable. Once that's stabilised, this field can be removed.
-	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
+	upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
@@ -58,7 +58,7 @@ pub struct SignalCellSR<
 	source_cell: Pin<Arc<S>>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
 	/// being unstable. Once that's stabilised, this field can be removed.
-	upcast: AssertSendSync<*const dyn Subscribable<SR, Output = T>>,
+	upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
@@ -89,29 +89,36 @@ struct AssertSendSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Send for AssertSendSync<T> {}
 unsafe impl<T: ?Sized> Sync for AssertSendSync<T> {}
 
+//TODO: Conversion from raw SourceCell.
+
 impl<T> From<T> for AssertSendSync<T> {
 	fn from(value: T) -> Self {
 		Self(value)
 	}
 }
 
-impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, InertCell<T, SR>, SR> {
-	pub fn new(initial_value: T) -> Self
+impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
+	pub fn new<'a>(initial_value: T) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
-		SR: Default,
+		T: 'a,
+		SR: 'a + Default,
 	{
 		Self::with_runtime(initial_value, SR::default())
 	}
 
-	pub fn with_runtime(initial_value: T, runtime: SR) -> Self
+	pub fn with_runtime<'a>(
+		initial_value: T,
+		runtime: SR,
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
-		SR: Default,
+		T: 'a,
+		SR: 'a + Default,
 	{
 		let arc = Arc::pin(InertCell::with_runtime(initial_value, runtime));
-		Self {
+		SignalCellSR {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
-					as *const (dyn '_ + Subscribable<SR, Output = T>);
+					as *const (dyn '_ + Subscribable<T, SR>);
 				Arc::decrement_strong_count(ptr);
 				ptr
 			}
@@ -121,8 +128,8 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, InertCell<T, SR>, SR> {
 	}
 
 	pub fn new_cyclic<'a>(
-		make_initial_value: impl FnOnce(ErasedWeakSignalCell<'a, T, SR>) -> T,
-	) -> Self
+		make_initial_value: impl 'a + FnOnce(WeakSignalCellDyn<'a, T, SR>) -> T,
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -131,9 +138,9 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, InertCell<T, SR>, SR> {
 	}
 
 	pub fn new_cyclic_with_runtime<'a>(
-		make_initial_value: impl FnOnce(ErasedWeakSignalCell<'a, T, SR>) -> T,
+		make_initial_value: impl 'a + FnOnce(WeakSignalCellDyn<'a, T, SR>) -> T,
 		runtime: SR,
-	) -> Self
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -143,16 +150,16 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, InertCell<T, SR>, SR> {
 				InertCell::with_runtime(
 					make_initial_value(WeakSignalCell {
 						source_cell: weak.clone() as Weak<dyn 'a + SourceCell<T, SR>>,
-						upcast: (weak.as_ptr() as *const dyn Subscribable<SR, Output = T>).into(),
+						upcast: (weak.as_ptr() as *const dyn Subscribable<T, SR>).into(),
 					}),
 					runtime,
 				)
 			}))
 		};
-		Self {
+		SignalCellSR {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
-					as *const (dyn '_ + Subscribable<SR, Output = T>);
+					as *const (dyn '_ + Subscribable<T, SR>);
 				Arc::decrement_strong_count(ptr);
 				ptr
 			}
@@ -161,53 +168,51 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, InertCell<T, SR>, SR> {
 		}
 	}
 
-	pub fn read<'r>(&'r self) -> impl 'r + Borrow<T>
-	where
-		T: Sync,
-	{
-		self.source_cell.as_ref().read()
-	}
-
-	pub fn read_exclusive<'r>(&'r self) -> impl 'r + Borrow<T> {
-		self.source_cell.as_ref().read_exclusive()
-	}
-}
-
-// TODO: Make `HandlerFnPin` return `Update`, combined propagation!
-impl<
-		T: Send,
-		HandlerFnPin: Send
+	pub fn new_reactive<
+		'a,
+		HandlerFnPin: 'a
+			+ Send
 			+ FnMut(
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalsRuntimeRef,
-	> SignalCellSR<T, ReactiveCell<T, HandlerFnPin, SR>, SR>
-{
-	pub fn new_reactive(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
+	>(
+		initial_value: T,
+		on_subscribed_change_fn_pin: HandlerFnPin,
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
-		SR: Default,
+		T: 'a,
+		SR: 'a + Default,
 	{
 		Self::new_reactive_with_runtime(initial_value, on_subscribed_change_fn_pin, SR::default())
 	}
 
-	pub fn new_reactive_with_runtime(
+	pub fn new_reactive_with_runtime<
+		'a,
+		HandlerFnPin: 'a
+			+ Send
+			+ FnMut(
+				&T,
+				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			) -> Propagation,
+	>(
 		initial_value: T,
 		on_subscribed_change_fn_pin: HandlerFnPin,
 		runtime: SR,
-	) -> Self
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
-		SR: Default,
+		T: 'a,
+		SR: 'a + Default,
 	{
 		let arc = Arc::pin(ReactiveCell::with_runtime(
 			initial_value,
 			on_subscribed_change_fn_pin,
 			runtime,
 		));
-		Self {
+		SignalCellSR {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
-					as *const (dyn '_ + Subscribable<SR, Output = T>);
+					as *const (dyn '_ + Subscribable<T, SR>);
 				Arc::decrement_strong_count(ptr);
 				ptr
 			}
@@ -216,14 +221,21 @@ impl<
 		}
 	}
 
-	pub fn new_cyclic_reactive<'a>(
+	pub fn new_cyclic_reactive<
+		'a,
+		HandlerFnPin: 'a
+			+ Send
+			+ FnMut(
+				&T,
+				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			) -> Propagation,
+	>(
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
-			ErasedWeakSignalCell<'a, T, SR>,
+			WeakSignalCellDyn<'a, T, SR>,
 		) -> (T, HandlerFnPin),
-	) -> Self
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
 		T: 'a,
-		HandlerFnPin: 'a,
 		SR: 'a + Default,
 	{
 		Self::new_cyclic_reactive_with_runtime(
@@ -232,15 +244,22 @@ impl<
 		)
 	}
 
-	pub fn new_cyclic_reactive_with_runtime<'a>(
+	pub fn new_cyclic_reactive_with_runtime<
+		'a,
+		HandlerFnPin: 'a
+			+ Send
+			+ FnMut(
+				&T,
+				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			) -> Propagation,
+	>(
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
-			ErasedWeakSignalCell<'a, T, SR>,
+			WeakSignalCellDyn<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 		runtime: SR,
-	) -> Self
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
 		T: 'a,
-		HandlerFnPin: 'a,
 		SR: 'a + Default,
 	{
 		let arc = unsafe {
@@ -248,15 +267,15 @@ impl<
 				let (initial_value, on_subscribed_change_fn_pin) =
 					make_initial_value_and_on_subscribed_change_fn_pin(WeakSignalCell {
 						source_cell: weak.clone() as Weak<dyn 'a + SourceCell<T, SR>>,
-						upcast: (weak.as_ptr() as *const dyn Subscribable<SR, Output = T>).into(),
+						upcast: (weak.as_ptr() as *const dyn Subscribable<T, SR>).into(),
 					});
 				ReactiveCell::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 			}))
 		};
-		Self {
+		SignalCellSR {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
-					as *const (dyn '_ + Subscribable<SR, Output = T>);
+					as *const (dyn '_ + Subscribable<T, SR>);
 				Arc::decrement_strong_count(ptr);
 				ptr
 			}
@@ -265,32 +284,18 @@ impl<
 		}
 	}
 
-	pub fn read<'r>(&'r self) -> impl 'r + Borrow<T>
-	where
-		T: Sync,
-	{
-		self.source_cell.as_ref().read()
-	}
-
-	pub fn read_exclusive<'r>(&'r self) -> impl 'r + Borrow<T> {
-		self.source_cell.as_ref().read_exclusive()
-	}
-}
-
-// TODO: Make `HandlerFnPin` return `Update`, combined propagation!
-impl<
-		T: Send,
-		HandlerFnPin: Send
+	pub fn new_reactive_mut<'a>(
+		initial_value: T,
+		on_subscribed_change_fn_pin: impl 'a
+			+ Send
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-		SR: SignalsRuntimeRef,
-	> SignalCellSR<T, ReactiveCellMut<T, HandlerFnPin, SR>, SR>
-{
-	pub fn new_reactive_mut(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
-		SR: Default,
+		T: 'a,
+		SR: 'a + Default,
 	{
 		Self::new_reactive_mut_with_runtime(
 			initial_value,
@@ -299,23 +304,29 @@ impl<
 		)
 	}
 
-	pub fn new_reactive_mut_with_runtime(
+	pub fn new_reactive_mut_with_runtime<'a>(
 		initial_value: T,
-		on_subscribed_change_fn_pin: HandlerFnPin,
+		on_subscribed_change_fn_pin: impl 'a
+			+ Send
+			+ FnMut(
+				&mut T,
+				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			) -> Propagation,
 		runtime: SR,
-	) -> Self
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
-		SR: Default,
+		T: 'a,
+		SR: 'a + Default,
 	{
 		let arc = Arc::pin(ReactiveCellMut::with_runtime(
 			initial_value,
 			on_subscribed_change_fn_pin,
 			runtime,
 		));
-		Self {
+		SignalCellSR {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
-					as *const (dyn '_ + Subscribable<SR, Output = T>);
+					as *const (dyn '_ + Subscribable<T, SR>);
 				Arc::decrement_strong_count(ptr);
 				ptr
 			}
@@ -324,14 +335,21 @@ impl<
 		}
 	}
 
-	pub fn new_cyclic_reactive_mut<'a>(
+	pub fn new_cyclic_reactive_mut<
+		'a,
+		HandlerFnPin: 'a
+			+ Send
+			+ FnMut(
+				&mut T,
+				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			) -> Propagation,
+	>(
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
-			ErasedWeakSignalCell<'a, T, SR>,
+			WeakSignalCellDyn<'a, T, SR>,
 		) -> (T, HandlerFnPin),
-	) -> Self
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
 		T: 'a,
-		HandlerFnPin: 'a,
 		SR: 'a + Default,
 	{
 		Self::new_cyclic_reactive_mut_with_runtime(
@@ -340,12 +358,21 @@ impl<
 		)
 	}
 
-	pub fn new_cyclic_reactive_mut_with_runtime<'a>(
+	//TODO: Pinning versions of these constructors.
+	pub fn new_cyclic_reactive_mut_with_runtime<
+		'a,
+		HandlerFnPin: 'a
+			+ Send
+			+ FnMut(
+				&mut T,
+				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			) -> Propagation,
+	>(
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
-			ErasedWeakSignalCell<'a, T, SR>,
+			WeakSignalCellDyn<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 		runtime: SR,
-	) -> Self
+	) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
 		T: 'a,
 		HandlerFnPin: 'a,
@@ -356,15 +383,15 @@ impl<
 				let (initial_value, on_subscribed_change_fn_pin) =
 					make_initial_value_and_on_subscribed_change_fn_pin(WeakSignalCell {
 						source_cell: weak.clone() as Weak<dyn 'a + SourceCell<T, SR>>,
-						upcast: (weak.as_ptr() as *const dyn Subscribable<SR, Output = T>).into(),
+						upcast: (weak.as_ptr() as *const dyn Subscribable<T, SR>).into(),
 					});
 				ReactiveCellMut::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 			}))
 		};
-		Self {
+		SignalCellSR {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
-					as *const (dyn '_ + Subscribable<SR, Output = T>);
+					as *const (dyn '_ + Subscribable<T, SR>);
 				Arc::decrement_strong_count(ptr);
 				ptr
 			}
@@ -372,47 +399,41 @@ impl<
 			source_cell: arc,
 		}
 	}
-
-	pub fn read<'r>(&'r self) -> impl 'r + Borrow<T>
-	where
-		T: Sync,
-	{
-		self.source_cell.as_ref().read()
-	}
-
-	pub fn read_exclusive<'r>(&'r self) -> impl 'r + Borrow<T> {
-		self.source_cell.as_ref().read_exclusive()
-	}
 }
 
-impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef> SignalCellSR<T, S, SR> {
+impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
+	SignalCellSR<T, S, SR>
+{
 	//TODO: `as_ref` as `SignalCellRef`?
 
 	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
-	pub fn as_signal_ref<'a>(&self) -> SignalRef<'_, 'a, T, SR>
-	where
-		T: 'a,
-		SR: 'a,
-	{
+	pub fn as_signal_ref(&self) -> SignalRef<'_, T, S, SR> {
 		SignalRef {
-			source: self.upcast.0,
+			source: unsafe {
+				let ptr = Pin::clone(&self.source_cell);
+				let ptr = Arc::into_raw(Pin::into_inner_unchecked(ptr));
+				Arc::decrement_strong_count(ptr);
+				ptr
+			},
 			_phantom: PhantomData,
 		}
 	}
 
 	/// Cheaply creates a [`SignalSR`] handle to the managed [`SourceCell`].
-	pub fn to_signal<'a>(&self) -> SignalSR<'a, T, SR>
+	//TODO: Make this available also for the dyn version.
+	pub fn to_signal<'a>(&self) -> SignalSR<T, S, SR>
 	where
 		T: 'a,
 		S: 'a + Sized,
 		SR: 'a,
 	{
 		SignalSR {
-			source: Pin::clone(&self.source_cell) as Pin<Arc<dyn Subscribable<SR, Output = T>>>,
+			source: Pin::clone(&self.source_cell),
+			_phantom: PhantomData,
 		}
 	}
 
-	pub fn into_erased<'a>(self) -> ErasedSignalCell<'a, T, SR>
+	pub fn into_dyn<'a>(self) -> SignalCellDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
 	{
@@ -431,53 +452,80 @@ impl<T: Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef> SignalCellSR
 		}
 	}
 
-	pub fn into_signal_and_self<'a>(self) -> (SignalSR<'a, T, SR>, Self)
+	pub fn into_signal_and_self<'a>(self) -> (SignalSR<T, S, SR>, Self)
 	where
 		S: 'a + Sized,
 	{
 		(self.as_signal_ref().to_signal(), self)
 	}
 
-	pub fn into_signal_and_erased<'a>(self) -> (SignalSR<'a, T, SR>, ErasedSignalCell<'a, T, SR>)
+	pub fn into_signal_and_self_dyn<'a>(self) -> (SignalSR<T, S, SR>, SignalCellDyn<'a, T, SR>)
 	where
 		S: 'a + Sized,
 	{
-		(self.as_signal_ref().to_signal(), self.into_erased())
+		(self.as_signal_ref().to_signal(), self.into_dyn())
 	}
 }
 
-impl<T: Send + Sized + ?Sized, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	SourcePin<SR> for SignalCellSR<T, S, SR>
+impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	SourcePin<T, SR> for SignalCellSR<T, S, SR>
 {
-	type Output = T;
-
 	fn touch(&self) {
 		self.source_cell.as_ref().touch()
 	}
 
-	fn get_clone(&self) -> Self::Output
+	fn get_clone(&self) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Sync + Clone,
 	{
 		self.source_cell.as_ref().get_clone()
 	}
 
-	fn get_clone_exclusive(&self) -> Self::Output
+	fn get_clone_exclusive(&self) -> T
 	where
-		Self::Output: Clone,
+		T: Clone,
 	{
 		self.source_cell.as_ref().get_clone_exclusive()
 	}
 
-	fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
+	fn read<'r>(&'r self) -> S::Read<'r>
 	where
-		Self::Output: 'r + Sync,
+		Self: Sized,
+		T: 'r + Sync,
 	{
-		Source::read(self.source_cell.as_ref())
+		self.source_cell.as_ref().read()
 	}
 
-	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>> {
-		Source::read_exclusive(self.source_cell.as_ref())
+	type Read<'r> = S::Read<'r>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
+
+	fn read_exclusive<'r>(&'r self) -> S::ReadExclusive<'r>
+	where
+		Self: Sized,
+		T: 'r,
+	{
+		self.source_cell.as_ref().read_exclusive()
+	}
+
+	type ReadExclusive<'r> = S::ReadExclusive<'r>
+	where
+		Self: 'r + Sized,
+		T: 'r;
+
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r + Sync,
+	{
+		Source::read_dyn(self.source_cell.as_ref())
+	}
+
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r,
+	{
+		Source::read_exclusive_dyn(self.source_cell.as_ref())
 	}
 
 	fn clone_runtime_ref(&self) -> SR
@@ -488,7 +536,78 @@ impl<T: Send + Sized + ?Sized, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
-impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+/// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
+/// bound, which is a bit less performant than using those accessors without type erasure.
+impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
+	for SignalCellDyn<'a, T, SR>
+{
+	fn touch(&self) {
+		self.source_cell.as_ref().touch()
+	}
+
+	fn get_clone(&self) -> T
+	where
+		T: Sync + Clone,
+	{
+		self.source_cell.as_ref().get_clone()
+	}
+
+	fn get_clone_exclusive(&self) -> T
+	where
+		T: Clone,
+	{
+		self.source_cell.as_ref().get_clone_exclusive()
+	}
+
+	fn read<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
+	where
+		Self: Sized,
+		T: 'r + Sync,
+	{
+		private::BoxedGuardDyn(self.source_cell.as_ref().read_dyn())
+	}
+
+	type Read<'r> = private::BoxedGuardDyn<'r, T>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
+
+	fn read_exclusive<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
+	where
+		Self: Sized,
+		T: 'r,
+	{
+		private::BoxedGuardDyn(self.source_cell.as_ref().read_exclusive_dyn())
+	}
+
+	type ReadExclusive<'r> = private::BoxedGuardDyn<'r, T>
+	where
+		Self: 'r + Sized,
+		T: 'r;
+
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r + Sync,
+	{
+		self.source_cell.as_ref().read_dyn()
+	}
+
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r,
+	{
+		self.source_cell.as_ref().read_exclusive_dyn()
+	}
+
+	fn clone_runtime_ref(&self) -> SR
+	where
+		SR: Sized,
+	{
+		self.source_cell.as_ref().clone_runtime_ref()
+	}
+}
+
+impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SourceCellPin<T, SR> for SignalCellSR<T, S, SR>
 {
 	fn change(&self, new_value: T)
@@ -784,8 +903,8 @@ impl<T: Send + Sized + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + Signal
 
 /// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
 /// bound, which is a bit less performant than using those accessors without type erasure.
-impl<'a, T: Send + Sized + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
-	for ErasedSignalCell<'a, T, SR>
+impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
+	for SignalCellDyn<'a, T, SR>
 {
 	fn change(&self, new_value: T)
 	where
@@ -1147,12 +1266,16 @@ impl<'a, T: Send + Sized + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin
 /// Duplicated to avoid identities.
 mod private {
 	use std::{
+		borrow::Borrow,
 		future::Future,
+		ops::Deref,
 		pin::Pin,
 		task::{Context, Poll},
 	};
 
 	use futures_lite::FutureExt;
+
+	use crate::traits::Guard;
 
 	#[must_use = "Eager futures may still cancel their effect iff dropped."]
 	pub struct DetachedEagerFuture<'f, Output: 'f>(
@@ -1177,6 +1300,24 @@ mod private {
 
 		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 			self.0.poll(cx)
+		}
+	}
+
+	pub struct BoxedGuardDyn<'r, T: ?Sized>(pub(super) Box<dyn 'r + Guard<T>>);
+
+	impl<T: ?Sized> Guard<T> for BoxedGuardDyn<'_, T> {}
+
+	impl<T: ?Sized> Deref for BoxedGuardDyn<'_, T> {
+		type Target = T;
+
+		fn deref(&self) -> &Self::Target {
+			self.0.deref()
+		}
+	}
+
+	impl<T: ?Sized> Borrow<T> for BoxedGuardDyn<'_, T> {
+		fn borrow(&self) -> &T {
+			(*self.0).borrow()
 		}
 	}
 }

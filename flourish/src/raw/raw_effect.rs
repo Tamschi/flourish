@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, pin::Pin, sync::Mutex};
+use std::{ops::DerefMut as _, pin::Pin, sync::Mutex};
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
@@ -47,7 +47,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
 			lazy.0
 				.try_lock()
 				.unwrap()
-				.borrow_mut()
+				.deref_mut()
 				.take()
 				.map(|value| drop(value));
 		});

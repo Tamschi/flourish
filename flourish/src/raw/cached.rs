@@ -1,6 +1,5 @@
 use std::{
 	borrow::Borrow,
-	mem,
 	ops::Deref,
 	pin::Pin,
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -13,13 +12,13 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::Subscribable;
+use crate::traits::{Guard, Subscribable};
 
 use super::Source;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct Cached<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef>(
+pub(crate) struct Cached<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>(
 	#[pin] RawSignal<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>,
 );
 
@@ -28,19 +27,16 @@ struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 
 pub(crate) struct CachedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct CachedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct CachedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+
+impl<'a, T: ?Sized> Guard<T> for CachedGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for CachedGuardExclusive<'a, T> {}
 
 impl<'a, T: ?Sized> Deref for CachedGuard<'a, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		self.borrow()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for CachedGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+		self.0.deref()
 	}
 }
 
@@ -48,7 +44,13 @@ impl<'a, T: ?Sized> Deref for CachedGuardExclusive<'a, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		self.borrow()
+		self.0.deref()
+	}
+}
+
+impl<'a, T: ?Sized> Borrow<T> for CachedGuard<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
 	}
 }
 
@@ -59,59 +61,18 @@ impl<'a, T: ?Sized> Borrow<T> for CachedGuardExclusive<'a, T> {
 }
 
 // TODO: Safety documentation.
-unsafe impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef + Sync> Sync
+unsafe impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef + Sync> Sync
 	for Cached<T, S, SR>
 {
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
+impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
 	pub(crate) fn new(source: S) -> Self {
 		let runtime = source.clone_runtime_ref();
 		Self(RawSignal::with_runtime(
 			ForceSyncUnpin(source.into()),
 			runtime,
 		))
-	}
-
-	fn get(self: Pin<&Self>) -> T
-	where
-		T: Sync + Copy,
-	{
-		*self.read().borrow()
-	}
-
-	fn get_clone(self: Pin<&Self>) -> T
-	where
-		T: Sync + Clone,
-	{
-		self.read().borrow().clone()
-	}
-
-	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
-	where
-		T: Sync,
-	{
-		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
-		CachedGuard(touch.read().unwrap())
-	}
-
-	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
-		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
-		CachedGuardExclusive(touch.write().unwrap())
-	}
-
-	fn get_exclusive(self: Pin<&Self>) -> T
-	where
-		T: Copy,
-	{
-		self.get_clone_exclusive()
-	}
-
-	fn get_clone_exclusive(self: Pin<&Self>) -> T
-	where
-		T: Clone,
-	{
-		self.touch().write().unwrap().clone()
 	}
 
 	pub(crate) fn touch(self: Pin<&Self>) -> Pin<&RwLock<T>> {
@@ -124,32 +85,16 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Ca
 				.0
 		}
 	}
-
-	pub(crate) fn subscribe_inherently(self: Pin<&Self>) -> Option<CachedGuard<T>> {
-		Some(unsafe {
-			//TODO: SAFETY COMMENT.
-			mem::transmute::<CachedGuard<T>, CachedGuard<T>>(CachedGuard(
-				self.project_ref()
-					.0
-					.subscribe_inherently_or_init::<E>(|source, cache| Self::init(source, cache))?
-					.1
-					.project_ref()
-					.0
-					.read()
-					.unwrap(),
-			))
-		})
-	}
 }
 
 enum E {}
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef>
+impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	Callbacks<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
 	const UPDATE: Option<
 		fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Propagation,
 	> = {
-		fn eval<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef>(
+		fn eval<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>(
 			source: Pin<&ForceSyncUnpin<S>>,
 			cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
 		) -> Propagation {
@@ -175,7 +120,7 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
+impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
 	unsafe fn init<'a>(
 		source: Pin<&'a ForceSyncUnpin<S>>,
 		cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
@@ -187,51 +132,66 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Ca
 	}
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Source<SR>
+impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, SR>
 	for Cached<T, S, SR>
 {
-	type Output = T;
-
 	fn touch(self: Pin<&Self>) {
 		self.touch();
 	}
 
-	fn get(self: Pin<&Self>) -> Self::Output
+	fn get_clone(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Copy,
+		T: Sync + Clone,
 	{
-		self.get()
+		self.read().clone()
 	}
 
-	fn get_clone(self: Pin<&Self>) -> Self::Output
+	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Clone,
 	{
-		self.get_clone()
+		self.touch().write().unwrap().clone()
 	}
 
-	fn get_exclusive(self: Pin<&Self>) -> Self::Output
+	fn read<'r>(self: Pin<&'r Self>) -> CachedGuard<'r, T>
 	where
-		Self::Output: Copy,
+		Self: Sized,
+		T: 'r + Sync,
 	{
-		self.get_exclusive()
+		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
+		CachedGuard(touch.read().unwrap())
 	}
 
-	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
+	type Read<'r> = CachedGuard<'r, T>
 	where
-		Self::Output: Clone,
+		Self: 'r + Sized,
+		T: Sync;
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> CachedGuardExclusive<'r, T>
+	where
+		Self: Sized,
+		T: 'r,
 	{
-		self.get_clone_exclusive()
+		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
+		CachedGuardExclusive(touch.write().unwrap())
 	}
 
-	fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
+	type ReadExclusive<'r> = CachedGuardExclusive<'r, T>
 	where
-		Self::Output: Sync,
+		Self: 'r + Sized,
+		T: 'r;
+
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r,
+	{
 		Box::new(self.read_exclusive())
 	}
 
@@ -243,11 +203,14 @@ impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> So
 	}
 }
 
-impl<T: Send + Clone, S: Subscribable<SR, Output = T>, SR: SignalsRuntimeRef> Subscribable<SR>
+impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Subscribable<T, SR>
 	for Cached<T, S, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
-		self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+		self.project_ref()
+			.0
+			.subscribe_inherently_or_init::<E>(|source, cache| unsafe { Self::init(source, cache) })
+			.is_some()
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {

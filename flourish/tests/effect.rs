@@ -8,7 +8,7 @@ use _validator::Validator;
 fn heap() {
 	let v = &Validator::new();
 
-	let (a, a_cell) = SignalCell::new(()).into_signal_and_erased();
+	let (a, a_cell) = SignalCell::new(()).into_signal_and_self_dyn();
 
 	let e = Effect::new(
 		move || {

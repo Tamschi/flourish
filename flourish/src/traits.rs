@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, future::Future, pin::Pin};
+use std::{borrow::Borrow, future::Future, ops::Deref, pin::Pin};
 
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
@@ -9,9 +9,10 @@ use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 /// It's sound to transmute [`dyn Source<_>`](`Source`) between different associated `Value`s as long as that's sound and they're ABI-compatible.
 ///
 /// Note that dropping the [`dyn Source<_>`](`Source`) dynamically **transmutes back**.
-pub trait Source<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
-	/// The type of value presented by the [`Source`].
-	type Output: ?Sized + Send;
+pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
+	//FIXME: `T` should be an associated type `Output` for better inference,
+	//       but this appears to break object-safety because it appears in associated
+	//       type's bounds.
 
 	/// Records `self` as dependency without accessing the value.
 	fn touch(self: Pin<&Self>);
@@ -19,9 +20,9 @@ pub trait Source<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
 	/// Prefer [`Source::touch`] where possible.
-	fn get(self: Pin<&Self>) -> Self::Output
+	fn get(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Copy,
+		T: Sync + Copy,
 	{
 		self.get_clone()
 	}
@@ -29,16 +30,16 @@ pub trait Source<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency and retrieves a clone of the value.
 	///
 	/// Prefer [`Source::get`] where available.
-	fn get_clone(self: Pin<&Self>) -> Self::Output
+	fn get_clone(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Clone;
+		T: Sync + Clone;
 
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
 	/// Prefer [`Source::get`] where available.
-	fn get_exclusive(self: Pin<&Self>) -> Self::Output
+	fn get_exclusive(self: Pin<&Self>) -> T
 	where
-		Self::Output: Copy,
+		T: Copy,
 	{
 		self.get_clone_exclusive()
 	}
@@ -46,23 +47,45 @@ pub trait Source<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency and retrieves a clone of the value.
 	///
 	/// Prefer [`Source::get_clone`] where available.
-	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
+	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
-		Self::Output: Clone;
+		T: Clone;
+
+	/// Records `self` as dependency and allows borrowing the value.
+	fn read<'r>(self: Pin<&'r Self>) -> Self::Read<'r>
+	where
+		Self: Sized,
+		T: 'r + Sync;
+
+	type Read<'r>: 'r + Guard<T>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
 
 	/// Records `self` as dependency and allows borrowing the value.
 	///
-	/// Prefer a type-associated `.read()` method where available.
-	fn read<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>>
+	/// Prefer [`Source::read`] where available.
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Self::ReadExclusive<'r>
 	where
-		Self::Output: Sync;
+		Self: Sized,
+		T: 'r;
 
-	/// Records `self` as dependency and allows borrowing the value.
+	type ReadExclusive<'r>: 'r + Guard<T>
+	where
+		Self: 'r + Sized,
+		T: 'r;
+
+	/// The same as [`Source::read`], but object-safe.
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r + Sync;
+
+	/// The same as [`Source::read_exclusive`], but object-safe.
 	///
-	/// Prefer a type-associated `.read()` method where available.  
-	/// Otherwise, prefer a type-associated `.read_exclusive()` method where available.  
-	/// Otherwise, prefer [`Source::read`] where available.
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<Self::Output>>;
+	/// Prefer [`Source::read_dyn`] where available.
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r;
 
 	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
 	fn clone_runtime_ref(&self) -> SR
@@ -71,9 +94,10 @@ pub trait Source<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 }
 
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
-pub trait SourcePin<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
-	/// The type of value presented by the [`SourcePin`].
-	type Output: ?Sized + Send;
+pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
+	//FIXME: `T` should be an associated type `Output` for better inference,
+	//       but this appears to break object-safety because it appears in associated
+	//       type's bounds.
 
 	/// Records `self` as dependency without accessing the value.
 	fn touch(&self);
@@ -81,9 +105,9 @@ pub trait SourcePin<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
 	/// Prefer [`SourcePin::touch`] where possible.
-	fn get(&self) -> Self::Output
+	fn get(&self) -> T
 	where
-		Self::Output: Sync + Copy,
+		T: Sync + Copy,
 	{
 		self.get_clone()
 	}
@@ -91,16 +115,16 @@ pub trait SourcePin<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency and retrieves a clone of the value.
 	///
 	/// Prefer [`SourcePin::get`] where available.
-	fn get_clone(&self) -> Self::Output
+	fn get_clone(&self) -> T
 	where
-		Self::Output: Sync + Clone;
+		T: Sync + Clone;
 
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
 	/// Prefer [`SourcePin::get`] where available.
-	fn get_exclusive(&self) -> Self::Output
+	fn get_exclusive(&self) -> T
 	where
-		Self::Output: Copy,
+		T: Copy,
 	{
 		self.get_clone_exclusive()
 	}
@@ -108,23 +132,45 @@ pub trait SourcePin<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency and retrieves a clone of the value.
 	///
 	/// Prefer [`SourcePin::get_clone`] where available.
-	fn get_clone_exclusive(&self) -> Self::Output
+	fn get_clone_exclusive(&self) -> T
 	where
-		Self::Output: Clone;
+		T: Clone;
+
+	/// Records `self` as dependency and allows borrowing the value.
+	fn read<'r>(&'r self) -> Self::Read<'r>
+	where
+		Self: Sized,
+		T: 'r + Sync;
+
+	type Read<'r>: 'r + Guard<T>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
 
 	/// Records `self` as dependency and allows borrowing the value.
 	///
-	/// Prefer a type-associated `.read()` method where available.
-	fn read<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>
+	/// Prefer [`SourcePin::read`] where available.
+	fn read_exclusive<'r>(&'r self) -> Self::ReadExclusive<'r>
 	where
-		Self::Output: 'r + Sync;
+		Self: Sized,
+		T: 'r;
 
-	/// Records `self` as dependency and allows borrowing the value.
+	type ReadExclusive<'r>: 'r + Guard<T>
+	where
+		Self: 'r + Sized,
+		T: 'r;
+
+	/// The same as [`SourcePin::read`], but object-safe.
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r + Sync;
+
+	/// The same as [`SourcePin::read_exclusive`], but object-safe.
 	///
-	/// Prefer a type-associated `.read()` method where available.  
-	/// Otherwise, prefer a type-associated `.read_exclusive()` method where available.  
-	/// Otherwise, prefer [`SourcePin::read`] where available.
-	fn read_exclusive<'r>(&'r self) -> Box<dyn 'r + Borrow<Self::Output>>;
+	/// Prefer [`SourcePin::read_dyn`] where available.
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r;
 
 	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
 	fn clone_runtime_ref(&self) -> SR
@@ -133,7 +179,13 @@ pub trait SourcePin<SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 }
 
 /// **Combinators should implement this.** Allows [`SignalSR`](`crate::SignalSR`) and [`SubscriptionSR`](`crate::SubscriptionSR`) to manage subscriptions through conversions between each other.
-pub trait Subscribable<SR: ?Sized + SignalsRuntimeRef>: Send + Sync + Source<SR> {
+pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
+	Send + Sync + Source<T, SR>
+{
+	//FIXME: `T` should be an (inherited!) associated type `Output` for better inference,
+	//       but this appears to break object-safety because it appears in associated
+	//       type's bounds.
+
 	/// Subscribes this [`Subscribable`] (only regarding innate subscription)!
 	///
 	/// If necessary, this instance is initialised first, so that callbacks are active for it.
@@ -146,8 +198,9 @@ pub trait Subscribable<SR: ?Sized + SignalsRuntimeRef>: Send + Sync + Source<SR>
 	///
 	/// # Returns
 	///
-	/// [`Some`] iff the inherent subscription is new, otherwise [`None`].
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>>;
+	/// `true` iff the inherent subscription is new, otherwise `false`.
+	#[must_use = "Only one inherent subscription can exist at a time for each signal."]
+	fn subscribe_inherently(self: Pin<&Self>) -> bool;
 
 	/// Unsubscribes this [`Subscribable`] (only regarding innate subscription!).
 	///
@@ -163,8 +216,12 @@ pub trait Subscribable<SR: ?Sized + SignalsRuntimeRef>: Send + Sync + Source<SR>
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
 pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
-	Send + Sync + Subscribable<SR, Output = T>
+	Send + Sync + Subscribable<T, SR>
 {
+	//FIXME: Should `T` be an associated type `Output` for better inference?
+	//       Currently, this apparently would break object-safety because it appears in
+	//       associated type's bounds.
+
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Logic
@@ -379,10 +436,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 
 	fn as_source_and_cell(
 		self: Pin<&Self>,
-	) -> (
-		Pin<&impl Source<SR, Output = T>>,
-		Pin<&impl SourceCell<T, SR>>,
-	)
+	) -> (Pin<&impl Source<T, SR>>, Pin<&impl SourceCell<T, SR>>)
 	where
 		Self: Sized,
 	{
@@ -394,8 +448,12 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
 pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
-	Send + Sync + SourcePin<SR, Output = T>
+	Send + Sync + SourcePin<T, SR>
 {
+	//FIXME: Should `T` be an associated type `Output` for better inference?
+	//       Currently, this apparently would break object-safety because it appears in
+	//       associated type's bounds.
+
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Logic
@@ -681,3 +739,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// The same as [`update_blocking`](`SourceCellPin::update_blocking`), but object-safe.
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>);
 }
+
+//FIXME: This really should just specify `Borrow<Self::Target>`,
+//       but that makes it not object-safe currently.
+pub trait Guard<T: ?Sized>: Deref<Target = T> + Borrow<T> {}

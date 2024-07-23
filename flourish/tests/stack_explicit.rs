@@ -25,7 +25,7 @@ fn use_macros() {
 		},
 		GlobalSignalsRuntime
 	));
-	let c = Pin::into_ref(c) as Pin<&dyn Source<_, Output = _>>;
+	let c = Pin::into_ref(c) as Pin<&dyn Source<_, _>>;
 	let d = pin!(flourish::raw::computed(
 		|| {
 			x.push("d");
@@ -33,7 +33,7 @@ fn use_macros() {
 		},
 		GlobalSignalsRuntime
 	));
-	let d = Pin::into_ref(d) as Pin<&dyn Source<_, Output = _>>;
+	let d = Pin::into_ref(d) as Pin<&dyn Source<_, _>>;
 	let aa = pin!(flourish::raw::computed_uncached(
 		|| {
 			x.push("aa");
@@ -41,7 +41,7 @@ fn use_macros() {
 		},
 		GlobalSignalsRuntime
 	));
-	let aa = Pin::into_ref(aa) as Pin<&dyn Source<_, Output = _>>;
+	let aa = Pin::into_ref(aa) as Pin<&dyn Source<_, _>>;
 	v.expect([]);
 	x.expect([]);
 
@@ -56,7 +56,7 @@ fn use_macros() {
 			)
 		));
 		let _sub_aa = Pin::into_ref(_sub_aa);
-		flourish::__::pull_subscription(_sub_aa);
+		flourish::__::pull_new_subscription(_sub_aa);
 		let _sub_aa = flourish::__::pin_into_pin_impl_source(_sub_aa);
 		v.expect([2]);
 		x.expect(["sub_aa", "aa", "c", "d"]);
@@ -87,7 +87,7 @@ fn use_macros() {
 		)
 	));
 	let _sub_c = Pin::into_ref(_sub_c);
-	flourish::__::pull_subscription(_sub_c);
+	flourish::__::pull_new_subscription(_sub_c);
 	let _sub_c = flourish::__::pin_into_pin_impl_source(_sub_c);
 	let _sub_d = pin!(flourish::__::new_raw_unsubscribed_subscription(
 		flourish::raw::computed(
@@ -99,7 +99,7 @@ fn use_macros() {
 		)
 	));
 	let _sub_d = Pin::into_ref(_sub_d);
-	flourish::__::pull_subscription(_sub_d);
+	flourish::__::pull_new_subscription(_sub_d);
 	let _sub_d = flourish::__::pin_into_pin_impl_source(_sub_d);
 	v.expect([8, 2]);
 	x.expect(["sub_c", "c", "sub_d", "d"]);

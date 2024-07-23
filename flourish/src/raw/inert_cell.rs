@@ -3,6 +3,7 @@ use std::{
 	fmt::{self, Debug, Formatter},
 	future::Future,
 	mem,
+	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -13,12 +14,12 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::shadow_clone;
+use crate::{shadow_clone, traits::Guard};
 
 use super::{Source, SourceCell, Subscribable};
 
 #[pin_project]
-pub struct InertCell<T: ?Sized + Send, SR: SignalsRuntimeRef> {
+pub(crate) struct InertCell<T: ?Sized + Send, SR: SignalsRuntimeRef> {
 	#[pin]
 	signal: RawSignal<AssertSync<RwLock<T>>, (), SR>,
 }
@@ -53,8 +54,27 @@ impl<T: Debug + ?Sized> Debug for AssertSync<RwLock<T>> {
 	}
 }
 
-struct InertCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-struct InertCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct InertCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
+pub(crate) struct InertCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+
+impl<'a, T: ?Sized> Guard<T> for InertCellGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for InertCellGuardExclusive<'a, T> {}
+
+impl<'a, T: ?Sized> Deref for InertCellGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
+	}
+}
+
+impl<'a, T: ?Sized> Deref for InertCellGuardExclusive<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
+	}
+}
 
 impl<'a, T: ?Sized> Borrow<T> for InertCellGuard<'a, T> {
 	fn borrow(&self) -> &T {
@@ -86,14 +106,14 @@ impl<T: ?Sized + Send, SR: SignalsRuntimeRef> InertCell<T, SR> {
 		}
 	}
 
-	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
+	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Guard<T>
 	where
 		T: Sync,
 	{
 		InertCellGuard(self.touch().read().unwrap())
 	}
 
-	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Guard<T> {
 		InertCellGuardExclusive(self.touch().write().unwrap())
 	}
 
@@ -110,35 +130,64 @@ impl<T: ?Sized + Send, SR: SignalsRuntimeRef> InertCell<T, SR> {
 	}
 }
 
-impl<T: Send + ?Sized, SR: SignalsRuntimeRef> Source<SR> for InertCell<T, SR> {
-	type Output = T;
-
+impl<T: Send + ?Sized, SR: SignalsRuntimeRef> Source<T, SR> for InertCell<T, SR> {
 	fn touch(self: Pin<&Self>) {
 		self.touch();
 	}
 
-	fn get_clone(self: Pin<&Self>) -> Self::Output
+	fn get_clone(self: Pin<&Self>) -> T
 	where
-		Self::Output: Sync + Clone,
+		T: Sync + Clone,
 	{
-		self.read().borrow().clone()
+		self.read().clone()
 	}
 
-	fn get_clone_exclusive(self: Pin<&Self>) -> Self::Output
+	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
-		Self::Output: Clone,
+		T: Clone,
 	{
-		self.touch().write().unwrap().clone()
+		self.read_exclusive().clone()
 	}
 
-	fn read<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>>
+	fn read<'r>(self: Pin<&'r Self>) -> InertCellGuard<'r, T>
 	where
-		Self::Output: Sync,
+		Self: Sized,
+		T: 'r + Sync,
+	{
+		let touch = self.touch();
+		InertCellGuard(touch.read().unwrap())
+	}
+
+	type Read<'r> = InertCellGuard<'r, T>
+	where
+		Self: 'r + Sized,
+		T: 'r + Sync;
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> InertCellGuardExclusive<'r, T>
+	where
+		Self: Sized,
+		T: 'r,
+	{
+		let touch = self.touch();
+		InertCellGuardExclusive(touch.write().unwrap())
+	}
+
+	type ReadExclusive<'r> = InertCellGuardExclusive<'r, T>
+	where
+		Self: 'r + Sized,
+		T: 'r;
+
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive<'a>(self: Pin<&'a Self>) -> Box<dyn 'a + Borrow<Self::Output>> {
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+	where
+		T: 'r,
+	{
 		Box::new(self.read_exclusive())
 	}
 
@@ -150,19 +199,12 @@ impl<T: Send + ?Sized, SR: SignalsRuntimeRef> Source<SR> for InertCell<T, SR> {
 	}
 }
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscribable<SR> for InertCell<T, SR> {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<Self::Output>>> {
-		//FIXME: This is inefficient.
-		if self
-			.project_ref()
+impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for InertCell<T, SR> {
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+		self.project_ref()
 			.signal
 			.subscribe_inherently_or_init::<NoCallbacks>(|_, slot| slot.write(()))
 			.is_some()
-		{
-			Some(Source::read_exclusive(self))
-		} else {
-			None
-		}
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
@@ -494,7 +536,7 @@ mod private {
 	use futures_lite::FutureExt;
 
 	#[must_use = "Eager futures may still cancel their effect iff dropped."]
-	pub struct DetachedFuture<'f, Output: 'f>(
+	pub(crate) struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 	);
 
