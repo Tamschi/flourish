@@ -144,8 +144,9 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 		make_fn_pin: impl FnOnce(Self) -> FnPin,
 	) -> SubscriptionDyn<'a, T, SR>
 	where
-		T: Sized,
-		SR: Sized,
+		T: 'a + Sized,
+		S: 'a,
+		SR: 'a,
 	{
 		self.try_subscribe()
 			.map(|subscription| subscription.into_dyn())
@@ -168,7 +169,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalDyn<'
 		SR: Sized,
 	{
 		self.try_subscribe()
-			.map(|subscription| subscription.into_dyn())
+			.map(|subscription| subscription)
 			.unwrap_or_else(move |this| {
 				let runtime = this.clone_runtime_ref();
 				SubscriptionSR::computed_with_runtime(make_fn_pin(this), runtime).into_dyn()
@@ -423,6 +424,8 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 	}
 }
 
+/// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
+/// bound, which is a bit less performant than using those accessors without type erasure.
 impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
 	for SignalDyn<'a, T, SR>
 {
@@ -444,28 +447,28 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 		self.source.as_ref().get_clone_exclusive()
 	}
 
-	fn read<'r>(&'r self) -> S::Read<'r>
+	fn read<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync,
 	{
-		self.source.as_ref().read_dyn()
+		private::BoxedGuardDyn(self.source.as_ref().read_dyn())
 	}
 
-	type Read<'r> = S::Read<'r>
+	type Read<'r> = private::BoxedGuardDyn<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
 
-	fn read_exclusive<'r>(&'r self) -> S::ReadExclusive<'r>
+	fn read_exclusive<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r,
 	{
-		self.source.as_ref().read_exclusive_dyn()
+		private::BoxedGuardDyn(self.source.as_ref().read_exclusive_dyn())
 	}
 
-	type ReadExclusive<'r> = S::ReadExclusive<'r>
+	type ReadExclusive<'r> = private::BoxedGuardDyn<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
@@ -652,6 +655,8 @@ impl<'r, T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
+/// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
+/// bound, which is a bit less performant than using those accessors without type erasure.
 impl<'r, 'a, T: 'a + ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
 	for SignalRefDyn<'r, 'a, T, SR>
 {
@@ -675,28 +680,28 @@ impl<'r, 'a, T: 'a + ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourcePin<T,
 		unsafe { Pin::new_unchecked(&*self.source) }.get_clone_exclusive()
 	}
 
-	fn read<'r_>(&'r_ self) -> S::Read<'r_>
+	fn read<'r_>(&'r_ self) -> private::BoxedGuardDyn<'r_, T>
 	where
 		Self: Sized,
 		T: 'r_ + Sync,
 	{
-		unsafe { Pin::new_unchecked(&*self.source) }.read_dyn()
+		private::BoxedGuardDyn(unsafe { Pin::new_unchecked(&*self.source) }.read_dyn())
 	}
 
-	type Read<'r_> = S::Read<'r_>
+	type Read<'r_> = private::BoxedGuardDyn<'r_, T>
 	where
 		Self: 'r_ + Sized,
 		T: 'r_ + Sync;
 
-	fn read_exclusive<'r_>(&'r_ self) -> S::ReadExclusive<'r_>
+	fn read_exclusive<'r_>(&'r_ self) -> private::BoxedGuardDyn<'r_, T>
 	where
 		Self: Sized,
 		T: 'r_,
 	{
-		unsafe { Pin::new_unchecked(&*self.source) }.read_exclusive_dyn()
+		private::BoxedGuardDyn(unsafe { Pin::new_unchecked(&*self.source) }.read_exclusive_dyn())
 	}
 
-	type ReadExclusive<'r_> = S::ReadExclusive<'r_>
+	type ReadExclusive<'r_> = private::BoxedGuardDyn<'r_, T>
 	where
 		Self: 'r_ + Sized,
 		T: 'r_;
@@ -734,5 +739,30 @@ impl<'r, 'a, T: 'a + ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourcePin<T,
 		T: Copy,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.get_exclusive()
+	}
+}
+
+/// Duplicated to avoid identities.
+mod private {
+	use std::{borrow::Borrow, ops::Deref};
+
+	use crate::traits::Guard;
+
+	pub struct BoxedGuardDyn<'r, T: ?Sized>(pub(super) Box<dyn 'r + Guard<T>>);
+
+	impl<T: ?Sized> Guard<T> for BoxedGuardDyn<'_, T> {}
+
+	impl<T: ?Sized> Deref for BoxedGuardDyn<'_, T> {
+		type Target = T;
+
+		fn deref(&self) -> &Self::Target {
+			self.0.deref()
+		}
+	}
+
+	impl<T: ?Sized> Borrow<T> for BoxedGuardDyn<'_, T> {
+		fn borrow(&self) -> &T {
+			(*self.0).borrow()
+		}
 	}
 }

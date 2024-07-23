@@ -216,3 +216,4 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |[`coerce_unsized`](https://github.com/rust-lang/rust/issues/18598)|Unsizing coercions for various `SourcePin` (handle) types.<br>For now, please use `.into_dyn()` or the `From`/`Into` conversions instead.|
 |[`trait_upcasting`](https://github.com/rust-lang/rust/issues/65991)|Shrink `SignalCellSR` and `SignalCellRef` by at least half.|
 |Fix for [Unexpected higher-ranked lifetime error in GAT usage](https://github.com/rust-lang/rust/issues/100013)|(Cleanly) avoid boxing the inner closure in many "`_eager`" methods.|
+|Object-safety for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of self or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type.|

@@ -31,7 +31,7 @@ mod effect;
 pub use effect::{Effect, EffectSR};
 
 mod traits;
-pub use traits::{SourceCellPin, SourcePin};
+pub use traits::{SourceCellPin, SourcePin, Guard, Subscribable};
 
 pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 

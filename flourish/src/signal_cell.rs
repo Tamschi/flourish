@@ -1310,7 +1310,7 @@ mod private {
 
 	impl<T: ?Sized> Borrow<T> for BoxedGuardDyn<'_, T> {
 		fn borrow(&self) -> &T {
-			self.0.borrow()
+			(*self.0).borrow()
 		}
 	}
 }
