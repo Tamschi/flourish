@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, pin::Pin, sync::Mutex};
+use std::{ops::Deref, pin::Pin, sync::Mutex};
 
 use isoprenoid::{
 	raw::{NoCallbacks, RawSignal},
@@ -51,23 +51,6 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> ComputedUncachedMut
 				.0
 				.map_unchecked(|r| &r.0)
 		}
-	}
-
-	fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
-		let fn_pin = unsafe {
-			self.project_ref()
-				.0
-				.subscribe_inherently_or_init::<NoCallbacks>(|fn_pin, cache| {
-					Self::init(fn_pin, cache)
-				})?
-				.0
-				.map_unchecked(|r| &r.0)
-		};
-		Some(
-			self.project_ref()
-				.0
-				.update_dependency_set(move |_, _| fn_pin.lock().unwrap()()),
-		)
 	}
 }
 
@@ -132,14 +115,14 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<T, SR>
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -157,8 +140,13 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<T, SR>
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Subscribable<T, SR>
 	for ComputedUncachedMut<T, F, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
-		self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+		self.project_ref()
+			.0
+			.subscribe_inherently_or_init::<NoCallbacks>(|fn_pin, cache| unsafe {
+				Self::init(fn_pin, cache)
+			})
+			.is_some()
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {

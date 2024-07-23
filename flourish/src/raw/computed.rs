@@ -1,6 +1,5 @@
 use std::{
-	borrow::Borrow,
-	mem,
+	ops::Deref,
 	pin::Pin,
 	sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -29,15 +28,19 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 struct ComputedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 struct ComputedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for ComputedGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+impl<'a, T: ?Sized> Deref for ComputedGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for ComputedGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+impl<'a, T: ?Sized> Deref for ComputedGuardExclusive<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
 	}
 }
 
@@ -124,14 +127,14 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<T, SR> for C
 	where
 		T: Sync + Clone,
 	{
-		Borrow::<T>::borrow(&self.read()).clone()
+		self.read().clone()
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Clone,
 	{
-		Borrow::<T>::borrow(&self.read_exclusive()).clone()
+		self.read_exclusive().clone()
 	}
 
 	fn read<'r>(self: Pin<&'r Self>) -> ComputedGuard<'r, T>
@@ -162,14 +165,14 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<T, SR> for C
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -187,20 +190,11 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<T, SR> for C
 impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Subscribable<T, SR>
 	for Computed<T, F, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
-		Some(Box::new(unsafe {
-			//TODO: SAFETY COMMENT.
-			mem::transmute::<ComputedGuard<T>, ComputedGuard<T>>(ComputedGuard(
-				self.project_ref()
-					.0
-					.subscribe_inherently_or_init::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
-					.1
-					.project_ref()
-					.0
-					.read()
-					.unwrap(),
-			))
-		}))
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+		self.project_ref()
+			.0
+			.subscribe_inherently_or_init::<E>(|fn_pin, cache| unsafe { Self::init(fn_pin, cache) })
+			.is_some()
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {

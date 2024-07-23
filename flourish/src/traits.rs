@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, future::Future, pin::Pin};
+use std::{future::Future, ops::Deref, pin::Pin};
 
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
@@ -57,7 +57,7 @@ pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync 
 		Self: Sized,
 		T: 'r + Sync;
 
-	type Read<'r>: 'r + Borrow<T>
+	type Read<'r>: 'r + Deref<Target = T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -70,20 +70,20 @@ pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync 
 		Self: Sized,
 		T: 'r;
 
-	type ReadExclusive<'r>: 'r + Borrow<T>
+	type ReadExclusive<'r>: 'r + Deref<Target = T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
 
 	/// The same as [`Source::read`], but object-safe.
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync;
 
 	/// The same as [`Source::read_exclusive`], but object-safe.
 	///
 	/// Prefer [`Source::read_dyn`] where available.
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r;
 
@@ -142,7 +142,7 @@ pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sy
 		Self: Sized,
 		T: 'r + Sync;
 
-	type Read<'r>: 'r + Borrow<T>
+	type Read<'r>: 'r + Deref<Target = T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -155,20 +155,20 @@ pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sy
 		Self: Sized,
 		T: 'r;
 
-	type ReadExclusive<'r>: 'r + Borrow<T>
+	type ReadExclusive<'r>: 'r + Deref<Target = T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
 
 	/// The same as [`SourcePin::read`], but object-safe.
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync;
 
 	/// The same as [`SourcePin::read_exclusive`], but object-safe.
 	///
 	/// Prefer [`SourcePin::read_dyn`] where available.
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r;
 
@@ -198,8 +198,9 @@ pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Returns
 	///
-	/// [`Some`] iff the inherent subscription is new, otherwise [`None`].
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>>;
+	/// `true` iff the inherent subscription is new, otherwise `false`.
+	#[must_use = "Only one inherent subscription can exist at a time for each signal."]
+	fn subscribe_inherently(self: Pin<&Self>) -> bool;
 
 	/// Unsubscribes this [`Subscribable`] (only regarding innate subscription!).
 	///

@@ -1,9 +1,9 @@
 use std::{
-	borrow::Borrow,
 	fmt::Debug,
 	future::Future,
 	marker::PhantomData,
 	mem,
+	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Mutex, Weak},
 };
@@ -508,14 +508,14 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		Source::read_dyn(self.source_cell.as_ref())
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -553,40 +553,40 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
 		self.source_cell.as_ref().get_clone_exclusive()
 	}
 
-	fn read<'r>(&'r self) -> private::BoxedBorrowDyn<'r, T>
+	fn read<'r>(&'r self) -> private::BoxedDerefDyn<'r, T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		private::BoxedBorrowDyn(self.source_cell.as_ref().read_dyn())
+		private::BoxedDerefDyn(self.source_cell.as_ref().read_dyn())
 	}
 
-	type Read<'r> = private::BoxedBorrowDyn<'r, T>
+	type Read<'r> = private::BoxedDerefDyn<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
 
-	fn read_exclusive<'r>(&'r self) -> private::BoxedBorrowDyn<'r, T>
+	fn read_exclusive<'r>(&'r self) -> private::BoxedDerefDyn<'r, T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		private::BoxedBorrowDyn(self.source_cell.as_ref().read_exclusive_dyn())
+		private::BoxedDerefDyn(self.source_cell.as_ref().read_exclusive_dyn())
 	}
 
-	type ReadExclusive<'r> = private::BoxedBorrowDyn<'r, T>
+	type ReadExclusive<'r> = private::BoxedDerefDyn<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		self.source_cell.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -1260,8 +1260,8 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 /// Duplicated to avoid identities.
 mod private {
 	use std::{
-		borrow::Borrow,
 		future::Future,
+		ops::Deref,
 		pin::Pin,
 		task::{Context, Poll},
 	};
@@ -1294,11 +1294,13 @@ mod private {
 		}
 	}
 
-	pub struct BoxedBorrowDyn<'r, T: ?Sized>(pub(super) Box<dyn 'r + Borrow<T>>);
+	pub struct BoxedDerefDyn<'r, T: ?Sized>(pub(super) Box<dyn 'r + Deref<Target = T>>);
 
-	impl<T: ?Sized> Borrow<T> for BoxedBorrowDyn<'_, T> {
-		fn borrow(&self) -> &T {
-			(*self.0).borrow()
+	impl<T: ?Sized> Deref for BoxedDerefDyn<'_, T> {
+		type Target = T;
+
+		fn deref(&self) -> &Self::Target {
+			self.0.deref()
 		}
 	}
 }

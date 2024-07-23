@@ -1,7 +1,7 @@
 use std::{
-	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
 	marker::PhantomData,
+	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Weak},
 };
@@ -64,10 +64,7 @@ where
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		self.source.clone_runtime_ref().run_detached(|| {
 			f.debug_struct("SubscriptionSR")
-				.field(
-					"(value)",
-					&(&*self.source.as_ref().read_exclusive_dyn()).borrow(),
-				)
+				.field("(value)", &&**self.source.as_ref().read_exclusive_dyn())
 				.finish_non_exhaustive()
 		})
 	}
@@ -107,9 +104,10 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	{
 		source.clone_runtime_ref().run_detached(|| {
 			let arc = Arc::pin(source);
-			arc.as_ref()
-				.subscribe_inherently()
-				.expect("Couldn't subscribe to the subscribable.");
+			assert!(
+				arc.as_ref().subscribe_inherently(),
+				"Couldn't subscribe to the subscribable."
+			);
 			Self {
 				source: arc,
 				_phantom: PhantomData,
@@ -311,14 +309,14 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{

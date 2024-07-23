@@ -1,6 +1,4 @@
 use std::{
-	borrow::Borrow,
-	mem,
 	ops::Deref,
 	pin::Pin,
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -34,13 +32,7 @@ impl<'a, T: ?Sized> Deref for CachedGuard<'a, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		self.borrow()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for CachedGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+		self.0.deref()
 	}
 }
 
@@ -48,13 +40,7 @@ impl<'a, T: ?Sized> Deref for CachedGuardExclusive<'a, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		self.borrow()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for CachedGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+		self.0.deref()
 	}
 }
 
@@ -82,22 +68,6 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Cached<T, S
 				.project_ref()
 				.0
 		}
-	}
-
-	pub(crate) fn subscribe_inherently(self: Pin<&Self>) -> Option<CachedGuard<T>> {
-		Some(unsafe {
-			//TODO: SAFETY COMMENT.
-			mem::transmute::<CachedGuard<T>, CachedGuard<T>>(CachedGuard(
-				self.project_ref()
-					.0
-					.subscribe_inherently_or_init::<E>(|source, cache| Self::init(source, cache))?
-					.1
-					.project_ref()
-					.0
-					.read()
-					.unwrap(),
-			))
-		})
 	}
 }
 
@@ -157,7 +127,7 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 	where
 		T: Sync + Clone,
 	{
-		Borrow::<T>::borrow(&self.read()).clone()
+		self.read().clone()
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
@@ -195,14 +165,14 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -220,8 +190,11 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Subscribable<T, SR>
 	for Cached<T, S, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
-		self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+		self.project_ref()
+			.0
+			.subscribe_inherently_or_init::<E>(|source, cache| unsafe { Self::init(source, cache) })
+			.is_some()
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {

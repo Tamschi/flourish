@@ -1,7 +1,7 @@
 use std::{
-	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
 	marker::PhantomData,
+	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Weak},
 };
@@ -79,10 +79,7 @@ where
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		self.source.clone_runtime_ref().run_detached(|| {
 			f.debug_struct("SignalSR")
-				.field(
-					"(value)",
-					&(&*self.source.as_ref().read_exclusive_dyn()).borrow(),
-				)
+				.field("(value)", &&**self.source.as_ref().read_exclusive_dyn())
 				.finish_non_exhaustive()
 		})
 	}
@@ -127,7 +124,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
 
 	pub fn try_subscribe(self) -> Result<SubscriptionSR<T, S, SR>, Self> {
-		if (|| self.source.as_ref().subscribe_inherently().is_some())() {
+		if self.source.as_ref().subscribe_inherently() {
 			Ok(SubscriptionSR {
 				source: self.source,
 				_phantom: PhantomData,
@@ -405,14 +402,14 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 	where
 		Self: 'r + Sized;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -474,14 +471,14 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -620,14 +617,14 @@ impl<'r, T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsR
 		Self: 'r_ + Sized,
 		T: 'r_;
 
-	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Borrow<T>>
+	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Deref<Target = T>>
 	where
 		T: 'r_ + Sync,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Borrow<T>>
+	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Deref<Target = T>>
 	where
 		T: 'r_,
 	{
@@ -705,14 +702,14 @@ impl<'r, 'a, T: 'a + ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourcePin<T,
 		Self: 'r_ + Sized,
 		T: 'r_;
 
-	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Borrow<T>>
+	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Deref<Target = T>>
 	where
 		T: 'r_ + Sync,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Borrow<T>>
+	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Deref<Target = T>>
 	where
 		T: 'r_,
 	{

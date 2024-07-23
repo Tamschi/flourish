@@ -1,8 +1,8 @@
 use std::{
-	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
 	future::Future,
 	mem,
+	ops::Deref,
 	pin::Pin,
 	sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -93,15 +93,19 @@ impl<T: Debug + ?Sized, HandlerFnPin: Debug> Debug
 struct ReactiveCellGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 struct ReactiveCellGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+impl<'a, T: ?Sized> Deref for ReactiveCellGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+impl<'a, T: ?Sized> Deref for ReactiveCellGuardExclusive<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
 	}
 }
 
@@ -142,7 +146,7 @@ impl<
 		}
 	}
 
-	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T>
+	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Deref<Target = T>
 	where
 		T: Sync,
 	{
@@ -150,7 +154,7 @@ impl<
 		ReactiveCellGuard(this.touch().read().unwrap())
 	}
 
-	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Borrow<T> {
+	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Deref<Target = T> {
 		let this = &self;
 		ReactiveCellGuardExclusive(this.touch().write().unwrap())
 	}
@@ -200,7 +204,7 @@ impl<
 			HandlerFnPin: Send + FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 			SR: SignalsRuntimeRef,
 		>(_: Pin<&RawSignal<AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>, (), SR>>, eager: Pin<&AssertSync<(Mutex<HandlerFnPin>, RwLock<T>)>>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation{
-			eager.0.0.lock().unwrap()(eager.0.1.read().unwrap().borrow(), status)
+			eager.0.0.lock().unwrap()(&*eager.0.1.read().unwrap(), status)
 		}
 
 		Some(on_subscribed_change_fn_pin::<T,HandlerFnPin,SR>)
@@ -225,14 +229,14 @@ impl<
 	where
 		T: Sync + Clone,
 	{
-		Borrow::<T>::borrow(&self.read()).clone()
+		self.read().clone()
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Clone,
 	{
-		Borrow::<T>::borrow(&self.read_exclusive()).clone()
+		self.read_exclusive().clone()
 	}
 
 	fn read<'r>(self: Pin<&'r Self>) -> ReactiveCellGuard<'r, T>
@@ -263,14 +267,14 @@ impl<
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -295,18 +299,11 @@ impl<
 		SR: SignalsRuntimeRef,
 	> Subscribable<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
-		//FIXME: This is inefficient.
-		if self
-			.project_ref()
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+		self.project_ref()
 			.signal
 			.subscribe_inherently_or_init::<E>(|_, slot| slot.write(()))
 			.is_some()
-		{
-			Some(Source::read_exclusive_dyn(self))
-		} else {
-			None
-		}
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {

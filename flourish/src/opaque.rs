@@ -1,7 +1,7 @@
 use std::{
-	borrow::Borrow,
 	future::Future,
 	marker::PhantomData,
+	ops::Deref,
 	pin::Pin,
 	task::{Context, Poll},
 };
@@ -31,7 +31,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque 
 		unreachable!()
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> OpaqueBorrow<T>
+	fn read<'r>(self: Pin<&'r Self>) -> OpaqueDeref<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
@@ -39,12 +39,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque 
 		unreachable!()
 	}
 
-	type Read<'r> = OpaqueBorrow<T>
+	type Read<'r> = OpaqueDeref<T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
 
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> OpaqueBorrow<T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> OpaqueDeref<T>
 	where
 		Self: Sized,
 		T: 'r,
@@ -52,18 +52,18 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque 
 		unreachable!()
 	}
 
-	type ReadExclusive<'r> = OpaqueBorrow<T>
+	type ReadExclusive<'r> = OpaqueDeref<T>
 	where
 		Self: 'r + Sized, T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		unreachable!()
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -79,7 +79,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque 
 }
 
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for Opaque {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
 		unreachable!()
 	}
 
@@ -255,13 +255,15 @@ impl<T> Future for OpaqueFuture<T> {
 	}
 }
 
-pub(crate) struct OpaqueBorrow<T: ?Sized> {
+pub(crate) struct OpaqueDeref<T: ?Sized> {
 	pub(crate) _phantom: PhantomData<T>,
 	pub(crate) _vacant: Opaque,
 }
 
-impl<T: ?Sized> Borrow<T> for OpaqueBorrow<T> {
-	fn borrow(&self) -> &T {
+impl<T: ?Sized> Deref for OpaqueDeref<T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
 		unreachable!()
 	}
 }

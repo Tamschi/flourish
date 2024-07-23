@@ -1,7 +1,6 @@
 use std::{
-	borrow::{Borrow, BorrowMut},
 	cell::UnsafeCell,
-	mem,
+	ops::Deref,
 	pin::Pin,
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -30,15 +29,19 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 struct FoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 struct FoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for FoldedGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+impl<'a, T: ?Sized> Deref for FoldedGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for FoldedGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+impl<'a, T: ?Sized> Deref for FoldedGuardExclusive<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
 	}
 }
 
@@ -67,22 +70,6 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Fol
 			.0
 			 .0
 		}
-	}
-
-	fn subscribe_inherently<'a>(self: Pin<&'a Self>) -> Option<impl 'a + Borrow<T>> {
-		Some(unsafe {
-			//TODO: SAFETY COMMENT.
-			mem::transmute::<FoldedGuard<T>, FoldedGuard<T>>(FoldedGuard(
-				self.project_ref()
-					.0
-					.subscribe_inherently_or_init::<E>(|fn_pin, cache| Self::init(fn_pin, cache))?
-					.0
-					 .0
-					 .0
-					.read()
-					.unwrap(),
-			))
-		})
 	}
 }
 
@@ -131,7 +118,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Fol
 		lazy: Slot<'a, ()>,
 	) -> Token<'a> {
 		let mut guard = state.0 .0.try_write().expect("unreachable");
-		let _ = (&mut *state.1 .0.get())(guard.borrow_mut());
+		let _ = (&mut *state.1 .0.get())(&mut *guard);
 		lazy.write(())
 	}
 }
@@ -147,14 +134,14 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Sou
 	where
 		T: Sync + Clone,
 	{
-		Borrow::<T>::borrow(&self.read()).clone()
+		self.read().clone()
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Clone,
 	{
-		Borrow::<T>::borrow(&self.read_exclusive()).clone()
+		self.read_exclusive().clone()
 	}
 
 	fn read<'r>(self: Pin<&'r Self>) -> FoldedGuard<'r, T>
@@ -185,14 +172,14 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Sou
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -210,8 +197,11 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Sou
 impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Subscribable<T, SR>
 	for Folded<T, F, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
-		self.subscribe_inherently().map(|b| Box::new(b) as Box<_>)
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+		self.project_ref()
+			.0
+			.subscribe_inherently_or_init::<E>(|fn_pin, cache| unsafe { Self::init(fn_pin, cache) })
+			.is_some()
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {

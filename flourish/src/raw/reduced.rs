@@ -1,7 +1,6 @@
 use std::{
-	borrow::Borrow,
 	cell::UnsafeCell,
-	mem,
+	ops::Deref,
 	pin::Pin,
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
@@ -33,15 +32,19 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 struct ReducedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 struct ReducedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Borrow<T> for ReducedGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+impl<'a, T: ?Sized> Deref for ReducedGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for ReducedGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
+impl<'a, T: ?Sized> Deref for ReducedGuardExclusive<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0.deref()
 	}
 }
 
@@ -160,14 +163,14 @@ impl<
 	where
 		T: Sync + Clone,
 	{
-		Borrow::<T>::borrow(&self.read()).clone()
+		self.read().clone()
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Clone,
 	{
-		Borrow::<T>::borrow(&self.read_exclusive()).clone()
+		self.read_exclusive().clone()
 	}
 
 	fn read<'r>(self: Pin<&'r Self>) -> ReducedGuard<'r, T>
@@ -198,14 +201,14 @@ impl<
 		Self: 'r + Sized,
 		T: 'r;
 
-	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r + Sync,
 	{
 		Box::new(self.read())
 	}
 
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Borrow<T>>
+	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Deref<Target = T>>
 	where
 		T: 'r,
 	{
@@ -227,19 +230,11 @@ impl<
 		SR: SignalsRuntimeRef,
 	> Subscribable<T, SR> for Reduced<T, S, M, SR>
 {
-	fn subscribe_inherently<'r>(self: Pin<&'r Self>) -> Option<Box<dyn 'r + Borrow<T>>> {
-		Some(Box::new(unsafe {
-			//TODO: SAFETY COMMENT.
-			mem::transmute::<ReducedGuard<T>, ReducedGuard<T>>(ReducedGuard(
-				self.project_ref()
-					.0
-					.subscribe_inherently_or_init::<E>(|f, cache| Self::init(f, cache))?
-					.1
-					 .0
-					.read()
-					.unwrap(),
-			))
-		}))
+	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+		self.project_ref()
+			.0
+			.subscribe_inherently_or_init::<E>(|f, cache| unsafe { Self::init(f, cache) })
+			.is_some()
 	}
 
 	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
