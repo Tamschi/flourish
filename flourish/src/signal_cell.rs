@@ -407,7 +407,12 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
 	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
 	pub fn as_signal_ref(&self) -> SignalRef<'_, T, S, SR> {
 		SignalRef {
-			source: self.upcast.0,
+			source: unsafe {
+				let ptr = Pin::clone(&self.source_cell);
+				let ptr = Arc::into_raw(Pin::into_inner_unchecked(ptr));
+				Arc::decrement_strong_count(ptr);
+				ptr
+			},
 			_phantom: PhantomData,
 		}
 	}
