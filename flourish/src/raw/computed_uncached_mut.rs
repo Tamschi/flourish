@@ -69,14 +69,6 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> ComputedUncachedMut
 		))
 	}
 
-	fn get(self: Pin<&Self>) -> T {
-		let mutex = self.touch();
-		let mut fn_pin = mutex.lock().expect("unreachable");
-		self.project_ref()
-			.0
-			.update_dependency_set(move |_, _| fn_pin())
-	}
-
 	pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&Mutex<F>> {
 		unsafe {
 			self.project_ref()
