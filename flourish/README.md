@@ -21,6 +21,9 @@ This makes it a suitable replacement for most standard use cases of RxJS-style o
 ⚠️ The panic handling in the included runtime really isn't good.  
 Fixing this doesn't incur API changes, and I don't need it right now, so I haven't implemented panic routing that would preserve the runtime when callbacks fail.
 
+❔ There may be some holes in the API where I forgot something.  
+Feel free to [file issues](https://github.com/Tamschi/flourish/issues) for these!
+
 ## Prelude
 
 Flourish's prelude re-exports its accessor traits anonymously.

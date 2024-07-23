@@ -138,6 +138,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 		//FIXME: This could avoid refcounting up and down and the associated memory barriers.
 		SignalSR {
 			source: Pin::clone(&self.source),
+			_phantom: PhantomData,
 		}
 	} // Implicit drop(self) unsubscribes.
 
@@ -148,6 +149,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	pub fn to_signal(self) -> SignalSR<T, S, SR> {
 		SignalSR {
 			source: Pin::clone(&self.source),
+			_phantom: PhantomData,
 		}
 	}
 }
@@ -316,7 +318,10 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>> {
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r,
+	{
 		self.source.as_ref().read_exclusive_dyn()
 	}
 

@@ -407,12 +407,15 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 
 	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
 	where
-		T: Sync,
+		T: 'r + Sync,
 	{
 		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>> {
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r,
+	{
 		self.source.as_ref().read_exclusive_dyn()
 	}
 
@@ -473,12 +476,15 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 
 	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
 	where
-		T: Sync,
+		T: 'r + Sync,
 	{
 		self.source.as_ref().read_dyn()
 	}
 
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>> {
+	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Borrow<T>>
+	where
+		T: 'r,
+	{
 		self.source.as_ref().read_exclusive_dyn()
 	}
 
@@ -489,6 +495,9 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 		self.source.as_ref().clone_runtime_ref()
 	}
 }
+
+/// Type of [`SignalSR`]s after type-erasure. Dynamic dispatch.
+pub type SignalRefDyn<'r, 'a, T, SR> = SignalRef<'r, T, dyn 'a + Subscribable<T, SR>, SR>;
 
 /// A very cheap [`SignalSR`]-like borrow that's [`Copy`].
 ///
@@ -520,14 +529,15 @@ impl<'r, T: Send + ?Sized, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + Signals
 
 	/// Creates a computed (cached) [`SubscriptionSR`] based on this [`SignalRef`].
 	///
-	/// This is a shortcut past `self.to_signal().subscribe_or_computed(make_fn_pin)`.
+	/// This is a shortcut past `self.to_signal().subscribe_or_computed(make_fn_pin)`.  
 	/// (This method may be slightly more efficient.)
-	pub fn subscribe_computed<FnPin: 'a + Send + FnMut() -> T>(
+	pub fn subscribe_computed<'a, FnPin: 'a + Send + FnMut() -> T>(
 		&self,
 		make_fn_pin: impl FnOnce(SignalSR<T, S, SR>) -> FnPin,
-	) -> SubscriptionSR<T, S, SR>
+	) -> SubscriptionSR<T, impl 'a + Subscribable<T, SR>, SR>
 	where
-		T: Sized,
+		T: 'a + Sized,
+		SR: 'a,
 	{
 		SubscriptionSR::computed_with_runtime(
 			make_fn_pin(self.to_signal()),
@@ -536,33 +546,33 @@ impl<'r, T: Send + ?Sized, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + Signals
 	}
 }
 
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Clone
-	for SignalRef<'r, 'a, T, SR>
+impl<'r, T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+	for SignalRef<'r, T, S, SR>
 {
 	fn clone(&self) -> Self {
 		*self
 	}
 }
 
-impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Copy
-	for SignalRef<'r, 'a, T, SR>
+impl<'r, T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Copy
+	for SignalRef<'r, T, S, SR>
 {
 }
 
-unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Send
-	for SignalRef<'r, 'a, T, SR>
-{
-	// SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
-}
-
-unsafe impl<'r, 'a, T: 'a + Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> Sync
-	for SignalRef<'r, 'a, T, SR>
+unsafe impl<'r, T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Send for SignalRef<'r, T, S, SR>
 {
 	// SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
 }
 
-impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
-	for SignalRef<'r, 'a, T, SR>
+unsafe impl<'r, T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Sync for SignalRef<'r, T, S, SR>
+{
+	// SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
+}
+
+impl<'r, T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	SourcePin<T, SR> for SignalRef<'r, T, S, SR>
 {
 	//SAFETY: `self.source` is a payload pointer that's valid for at least 'r.
 
@@ -584,14 +594,128 @@ impl<'r, 'a, T: Send + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T,
 		unsafe { Pin::new_unchecked(&*self.source) }.get_clone_exclusive()
 	}
 
-	fn read_dyn<'s>(&'s self) -> Box<dyn 's + Borrow<T>>
+	fn read<'r_>(&'r_ self) -> S::Read<'r_>
 	where
-		T: 's + Sync,
+		Self: Sized,
+		T: 'r_ + Sync,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.read()
+	}
+
+	type Read<'r_> = S::Read<'r_>
+	where
+		Self: 'r_ + Sized,
+		T: 'r_ + Sync;
+
+	fn read_exclusive<'r_>(&'r_ self) -> S::ReadExclusive<'r_>
+	where
+		Self: Sized,
+		T: 'r_,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.read_exclusive()
+	}
+
+	type ReadExclusive<'r_> = S::ReadExclusive<'r_>
+	where
+		Self: 'r_ + Sized,
+		T: 'r_;
+
+	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Borrow<T>>
+	where
+		T: 'r_ + Sync,
 	{
 		unsafe { Pin::new_unchecked(&*self.source) }.read_dyn()
 	}
 
-	fn read_exclusive_dyn<'s>(&'s self) -> Box<dyn 's + Borrow<T>> {
+	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Borrow<T>>
+	where
+		T: 'r_,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.read_exclusive_dyn()
+	}
+
+	fn clone_runtime_ref(&self) -> SR
+	where
+		SR: Sized,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.clone_runtime_ref()
+	}
+
+	fn get(&self) -> T
+	where
+		T: Sync + Copy,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.get()
+	}
+
+	fn get_exclusive(&self) -> T
+	where
+		T: Copy,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.get_exclusive()
+	}
+}
+
+impl<'r, 'a, T: 'a + ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
+	for SignalRefDyn<'r, 'a, T, SR>
+{
+	//SAFETY: `self.source` is a payload pointer that's valid for at least 'r.
+
+	fn touch(&self) {
+		unsafe { Pin::new_unchecked(&*self.source) }.touch()
+	}
+
+	fn get_clone(&self) -> T
+	where
+		T: Sync + Clone,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.get_clone()
+	}
+
+	fn get_clone_exclusive(&self) -> T
+	where
+		T: Clone,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.get_clone_exclusive()
+	}
+
+	fn read<'r_>(&'r_ self) -> S::Read<'r_>
+	where
+		Self: Sized,
+		T: 'r_ + Sync,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.read_dyn()
+	}
+
+	type Read<'r_> = S::Read<'r_>
+	where
+		Self: 'r_ + Sized,
+		T: 'r_ + Sync;
+
+	fn read_exclusive<'r_>(&'r_ self) -> S::ReadExclusive<'r_>
+	where
+		Self: Sized,
+		T: 'r_,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.read_exclusive_dyn()
+	}
+
+	type ReadExclusive<'r_> = S::ReadExclusive<'r_>
+	where
+		Self: 'r_ + Sized,
+		T: 'r_;
+
+	fn read_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Borrow<T>>
+	where
+		T: 'r_ + Sync,
+	{
+		unsafe { Pin::new_unchecked(&*self.source) }.read_dyn()
+	}
+
+	fn read_exclusive_dyn<'r_>(&'r_ self) -> Box<dyn 'r_ + Borrow<T>>
+	where
+		T: 'r_,
+	{
 		unsafe { Pin::new_unchecked(&*self.source) }.read_exclusive_dyn()
 	}
 
