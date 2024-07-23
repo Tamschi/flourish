@@ -495,12 +495,12 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 	}
 }
 
-/// Type of [`SignalSR`]s after type-erasure. Dynamic dispatch.
+/// Type of [`SignalRef`]s after type-erasure. Dynamic dispatch.
 pub type SignalRefDyn<'r, 'a, T, SR> = SignalRef<'r, T, dyn 'a + Subscribable<T, SR>, SR>;
 
 /// A very cheap [`SignalSR`]-like borrow that's [`Copy`].
 ///
-/// Can be cloned into an additional [`SignalSR`] or subscribed to.
+/// Can be cloned into an additional [`SignalSR`] and indirectly subscribed to.
 #[derive(Debug)]
 pub struct SignalRef<
 	'r,
