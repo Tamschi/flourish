@@ -17,7 +17,7 @@ use crate::{
 	raw::{InertCell, ReactiveCell, ReactiveCellMut},
 	shadow_clone,
 	traits::{Guard, Source, SourceCell, Subscribable},
-	Signal, SignalDyn, SignalRef, SignalRefDyn, SignalSR, SourceCellPin, SourcePin,
+	SignalDyn, SignalRef, SignalRefDyn, SignalSR, SourceCellPin, SourcePin,
 };
 
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalsRuntime`]).
@@ -34,10 +34,10 @@ pub struct WeakSignalCell<
 	S: ?Sized + SourceCell<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	source_cell: Weak<S>,
+	pub(crate) source_cell: Weak<S>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
 	/// being unstable. Once that's stabilised, this field can be removed.
-	upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
+	pub(crate) upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
@@ -52,15 +52,17 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntim
 	}
 }
 
+//TODO: Unwrapping.
+
 pub struct SignalCellSR<
 	T: ?Sized + Send,
 	S: ?Sized + SourceCell<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	source_cell: Pin<Arc<S>>,
+	pub(crate) source_cell: Pin<Arc<S>>,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
 	/// being unstable. Once that's stabilised, this field can be removed.
-	upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
+	pub(crate) upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
@@ -86,69 +88,10 @@ where
 	}
 }
 
-#[derive(Clone, Copy)]
-struct AssertSendSync<T: ?Sized>(T);
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AssertSendSync<T: ?Sized>(pub(crate) T);
 unsafe impl<T: ?Sized> Send for AssertSendSync<T> {}
 unsafe impl<T: ?Sized> Sync for AssertSendSync<T> {}
-
-impl<
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + SourceCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalCellSR<T, S, SR>> for SignalCellDyn<'a, T, SR>
-{
-	fn from(value: SignalCellSR<T, S, SR>) -> Self {
-		value.into_dyn()
-	}
-}
-
-impl<T: ?Sized + Send, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	From<SignalCellSR<T, S, SR>> for SignalSR<T, S, SR>
-{
-	fn from(value: SignalCellSR<T, S, SR>) -> Self {
-		let SignalCellSR {
-			source_cell,
-			upcast: _,
-		} = value;
-		Self {
-			source: source_cell,
-			_phantom: PhantomData,
-		}
-	}
-}
-
-impl<
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + SourceCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalCellSR<T, S, SR>> for SignalDyn<'a, T, SR>
-{
-	fn from(value: SignalCellSR<T, S, SR>) -> Self {
-		value.into_dyn().into()
-	}
-}
-
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> From<SignalCellDyn<'a, T, SR>>
-	for SignalDyn<'a, T, SR>
-{
-	fn from(value: SignalCellDyn<'a, T, SR>) -> Self {
-		let SignalCellDyn {
-			source_cell,
-			upcast,
-		} = value;
-		Self {
-			source: unsafe {
-				mem::forget(source_cell);
-				Pin::new_unchecked(Arc::from_raw(upcast.0))
-			},
-			_phantom: PhantomData,
-		}
-	}
-}
-
-//TODO: Conversion from raw SourceCell.
 
 impl<T> From<T> for AssertSendSync<T> {
 	fn from(value: T) -> Self {
@@ -1366,6 +1309,26 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		self.source_cell.as_ref().update_blocking_dyn(update)
 	}
+}
+
+/// Type of [`SignalCellRef`]s after type-erasure. Dynamic dispatch.
+pub type SignalCellRefDyn<'r, 'a, T, SR> = SignalCellRef<'r, T, dyn 'a + Subscribable<T, SR>, SR>;
+
+/// A very cheap [`SignalCellSR`]-like borrow that's [`Copy`].
+///
+/// Can be cloned into an additional [`SignalCellSR`] and indirectly subscribed to.
+#[derive(Debug)]
+pub struct SignalCellRef<
+	'r,
+	T: ?Sized + Send,
+	S: ?Sized + Subscribable<T, SR>,
+	SR: ?Sized + SignalsRuntimeRef,
+> {
+	pub(crate) source_cell: *const S,
+	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
+	/// being unstable. Once that's stabilised, this field can be removed.
+	pub(crate) upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
+	pub(crate) _phantom: PhantomData<&'r ()>,
 }
 
 /// Duplicated to avoid identities.

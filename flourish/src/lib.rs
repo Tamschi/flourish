@@ -12,6 +12,7 @@
 //!
 //! [`impl FnMut`](`FnMut`) closures that appear in parameters with "`fn_pin`" in their name are guaranteed to be [pinned](`core::pin`) when called.
 
+pub mod conversions;
 mod opaque;
 
 pub mod raw;
@@ -19,7 +20,10 @@ pub mod raw;
 //TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
 mod signal_cell;
-pub use signal_cell::{SignalCell, SignalCellDyn, SignalCellSR, WeakSignalCell, WeakSignalCellDyn};
+pub use signal_cell::{
+	SignalCell, SignalCellDyn, SignalCellRef, SignalCellRefDyn, SignalCellSR, WeakSignalCell,
+	WeakSignalCellDyn,
+};
 
 mod signal;
 pub use signal::{Signal, SignalDyn, SignalRef, SignalRefDyn, SignalSR, WeakSignal, WeakSignalDyn};
