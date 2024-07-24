@@ -7,6 +7,7 @@ use std::{
 	sync::{Arc, Mutex, Weak},
 };
 
+use futures_lite::FutureExt;
 use isoprenoid::runtime::{
 	CallbackTableTypes, GlobalSignalsRuntime, Propagation, SignalsRuntimeRef,
 };
@@ -649,7 +650,8 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		private::DetachedAsyncFuture(
 			Box::pin(async move {
 				if let Some(this) = this.upgrade() {
-					this.change_eager(new_value).await
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.change_eager(new_value).boxed().await
 				} else {
 					Err(new_value)
 				}
@@ -672,7 +674,8 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		private::DetachedAsyncFuture(
 			Box::pin(async move {
 				if let Some(this) = this.upgrade() {
-					this.replace_eager(new_value).await
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.replace_eager(new_value).boxed().await
 				} else {
 					Err(new_value)
 				}
@@ -697,7 +700,8 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		private::DetachedAsyncFuture(
 			Box::pin(async move {
 				if let Some(this) = this.upgrade() {
-					this.update_eager(update).await
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.update_eager(update).boxed().await
 				} else {
 					Err(update)
 				}
@@ -720,7 +724,8 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		let this = self.downgrade();
 		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
-				this.change_eager(new_value).await
+				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+				this.change_eager(new_value).boxed().await
 			} else {
 				Err(new_value)
 			}
@@ -746,7 +751,8 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		let this = self.downgrade();
 		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
-				this.replace_eager(new_value).await
+				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+				this.replace_eager(new_value).boxed().await
 			} else {
 				Err(new_value)
 			}
@@ -805,37 +811,28 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		}
 	}
 
-	fn change_eager<'f>(
-		&self,
-		new_value: T,
-	) -> private::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
+	fn change_eager<'f>(&self, new_value: T) -> S::ChangeEager<'f>
 	where
 		Self: 'f + Sized,
-		T: Sized + PartialEq,
+		T: 'f + Sized + PartialEq,
 	{
-		private::DetachedEagerFuture(
-			Box::pin(self.source_cell.as_ref().change_eager(new_value)),
-			PhantomPinned,
-		)
+		self.source_cell.as_ref().change_eager(new_value)
 	}
 
-	type ChangeEager<'f> = private::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
+	type ChangeEager<'f> = S::ChangeEager<'f>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
 
-	fn replace_eager<'f>(&self, new_value: T) -> private::DetachedEagerFuture<'f, Result<T, T>>
+	fn replace_eager<'f>(&self, new_value: T) -> S::ReplaceEager<'f>
 	where
 		Self: 'f + Sized,
 		T: Sized,
 	{
-		private::DetachedEagerFuture(
-			Box::pin(self.source_cell.as_ref().replace_eager(new_value)),
-			PhantomPinned,
-		)
+		self.source_cell.as_ref().replace_eager(new_value)
 	}
 
-	type ReplaceEager<'f> = private::DetachedEagerFuture<'f, Result<T, T>>
+	type ReplaceEager<'f> = S::ReplaceEager<'f>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -843,17 +840,14 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 	fn update_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
-	) -> private::DetachedEagerFuture<'f, Result<U, F>>
+	) -> S::UpdateEager<'f, U, F>
 	where
 		Self: 'f + Sized,
 	{
-		private::DetachedEagerFuture(
-			Box::pin(self.source_cell.as_ref().update_eager(update)),
-			PhantomPinned,
-		)
+		self.source_cell.as_ref().update_eager(update)
 	}
 
-	type UpdateEager<'f, U: 'f, F: 'f> = private::DetachedEagerFuture<'f, Result<U, F>>
+	type UpdateEager<'f, U: 'f, F: 'f> = S::UpdateEager<'f, U, F>
 	where
 		Self: 'f + Sized;
 
@@ -1194,7 +1188,7 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 			.into();
 		private2::DetachedEagerFuture(
 			Box::pin(async move {
-				f.await;
+				f.await.ok();
 				Arc::into_inner(shelve)
 					.expect("unreachable")
 					.into_inner()
@@ -1310,23 +1304,6 @@ mod private {
 	use pin_project::pin_project;
 
 	use crate::traits::Guard;
-
-	#[must_use = "Eager futures may still cancel their effect iff dropped."]
-	#[pin_project]
-	pub struct DetachedEagerFuture<'f, Output: 'f>(
-		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
-		/// For forwards-compatibility with TAITIT-enabled data inlining.
-		#[pin]
-		pub(super) PhantomPinned,
-	);
-
-	impl<'f, Output: 'f> Future for DetachedEagerFuture<'f, Output> {
-		type Output = Output;
-
-		fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-			self.project().0.poll(cx)
-		}
-	}
 
 	#[must_use = "Async futures do nothing unless awaited."]
 	#[pin_project]
