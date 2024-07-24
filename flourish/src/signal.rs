@@ -21,6 +21,7 @@ pub type Signal<T, S> = SignalSR<T, S, GlobalSignalsRuntime>;
 /// Type of [`SignalSR`]s after type-erasure. Dynamic dispatch.
 pub type SignalDyn<'a, T, SR> = SignalSR<T, dyn 'a + Subscribable<T, SR>, SR>;
 
+/// Type of [`WeakSignal`]s after type-erasure or [`SignalDyn`] after downgrade. Dynamic dispatch.
 pub type WeakSignalDyn<'a, T, SR> = WeakSignal<T, dyn 'a + Subscribable<T, SR>, SR>;
 
 pub struct WeakSignal<

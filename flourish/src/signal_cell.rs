@@ -1,7 +1,7 @@
 use std::{
 	fmt::Debug,
 	future::Future,
-	marker::PhantomData,
+	marker::{PhantomData, PhantomPinned},
 	mem,
 	pin::Pin,
 	sync::{Arc, Mutex, Weak},
@@ -646,13 +646,16 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		T: 'f + Sized + PartialEq,
 	{
 		let this = self.downgrade();
-		private::DetachedAsyncFuture(Box::pin(async move {
-			if let Some(this) = this.upgrade() {
-				this.change_eager(new_value).await
-			} else {
-				Err(new_value)
-			}
-		}))
+		private::DetachedAsyncFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					this.change_eager(new_value).await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
 	}
 
 	type ChangeAsync<'f> = private::DetachedAsyncFuture<'f, Result<Result<T,T>, T>>
@@ -666,13 +669,16 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		T: 'f + Sized,
 	{
 		let this = self.downgrade();
-		private::DetachedAsyncFuture(Box::pin(async move {
-			if let Some(this) = this.upgrade() {
-				this.replace_eager(new_value).await
-			} else {
-				Err(new_value)
-			}
-		}))
+		private::DetachedAsyncFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					this.replace_eager(new_value).await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
 	}
 
 	type ReplaceAsync<'f> = private::DetachedAsyncFuture<'f, Result<T, T>>
@@ -688,13 +694,16 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		Self: 'f + Sized,
 	{
 		let this = self.downgrade();
-		private::DetachedAsyncFuture(Box::pin(async move {
-			if let Some(this) = this.upgrade() {
-				this.update_eager(update).await
-			} else {
-				Err(update)
-			}
-		}))
+		private::DetachedAsyncFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					this.update_eager(update).await
+				} else {
+					Err(update)
+				}
+			}),
+			PhantomPinned,
+		)
 	}
 
 	type UpdateAsync<'f, U: 'f, F: 'f>=private::DetachedAsyncFuture<'f, Result<U, F>>
@@ -804,7 +813,10 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		Self: 'f + Sized,
 		T: Sized + PartialEq,
 	{
-		private::DetachedEagerFuture(Box::pin(self.source_cell.as_ref().change_eager(new_value)))
+		private::DetachedEagerFuture(
+			Box::pin(self.source_cell.as_ref().change_eager(new_value)),
+			PhantomPinned,
+		)
 	}
 
 	type ChangeEager<'f> = private::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
@@ -817,7 +829,10 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 		Self: 'f + Sized,
 		T: Sized,
 	{
-		private::DetachedEagerFuture(Box::pin(self.source_cell.as_ref().replace_eager(new_value)))
+		private::DetachedEagerFuture(
+			Box::pin(self.source_cell.as_ref().replace_eager(new_value)),
+			PhantomPinned,
+		)
 	}
 
 	type ReplaceEager<'f> = private::DetachedEagerFuture<'f, Result<T, T>>
@@ -832,7 +847,10 @@ impl<T: Send + ?Sized, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntime
 	where
 		Self: 'f + Sized,
 	{
-		private::DetachedEagerFuture(Box::pin(self.source_cell.as_ref().update_eager(update)))
+		private::DetachedEagerFuture(
+			Box::pin(self.source_cell.as_ref().update_eager(update)),
+			PhantomPinned,
+		)
 	}
 
 	type UpdateEager<'f, U: 'f, F: 'f> = private::DetachedEagerFuture<'f, Result<U, F>>
@@ -942,13 +960,16 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 		T: 'f + Sized + PartialEq,
 	{
 		let this = self.downgrade();
-		private2::DetachedAsyncFuture(Box::pin(async move {
-			if let Some(this) = this.upgrade() {
-				this.change_eager(new_value).await
-			} else {
-				Err(new_value)
-			}
-		}))
+		private2::DetachedAsyncFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					this.change_eager(new_value).await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
 	}
 
 	type ChangeAsync<'f> = private2::DetachedAsyncFuture<'f, Result<Result<T,T>, T>>
@@ -962,13 +983,16 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 		T: 'f + Sized,
 	{
 		let this = self.downgrade();
-		private2::DetachedAsyncFuture(Box::pin(async move {
-			if let Some(this) = this.upgrade() {
-				this.replace_eager(new_value).await
-			} else {
-				Err(new_value)
-			}
-		}))
+		private2::DetachedAsyncFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					this.replace_eager(new_value).await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
 	}
 
 	type ReplaceAsync<'f> = private2::DetachedAsyncFuture<'f, Result<T, T>>
@@ -984,13 +1008,16 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 		Self: 'f + Sized,
 	{
 		let this = self.downgrade();
-		private2::DetachedAsyncFuture(Box::pin(async move {
-			if let Some(this) = this.upgrade() {
-				this.update_eager(update).await
-			} else {
-				Err(update)
-			}
-		}))
+		private2::DetachedAsyncFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					this.update_eager(update).await
+				} else {
+					Err(update)
+				}
+			}),
+			PhantomPinned,
+		)
 	}
 
 	type UpdateAsync<'f, U: 'f, F: 'f>=private2::DetachedAsyncFuture<'f, Result<U, F>>
@@ -1100,7 +1127,10 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 		Self: 'f + Sized,
 		T: Sized + PartialEq,
 	{
-		private2::DetachedEagerFuture(self.source_cell.as_ref().change_eager_dyn(new_value).into())
+		private2::DetachedEagerFuture(
+			self.source_cell.as_ref().change_eager_dyn(new_value).into(),
+			PhantomPinned,
+		)
 	}
 
 	type ChangeEager<'f> = private2::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
@@ -1118,6 +1148,7 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 				.as_ref()
 				.replace_eager_dyn(new_value)
 				.into(),
+			PhantomPinned,
 		)
 	}
 
@@ -1161,14 +1192,17 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCellPin<T, SR>
 				}
 			}))
 			.into();
-		private2::DetachedEagerFuture(Box::pin(async move {
-			f.await;
-			Arc::into_inner(shelve)
-				.expect("unreachable")
-				.into_inner()
-				.expect("can't be poisoned")
-				.expect("can't be `None`")
-		}))
+		private2::DetachedEagerFuture(
+			Box::pin(async move {
+				f.await;
+				Arc::into_inner(shelve)
+					.expect("unreachable")
+					.into_inner()
+					.expect("can't be poisoned")
+					.expect("can't be `None`")
+			}),
+			PhantomPinned,
+		)
 	}
 
 	type UpdateEager<'f, U: 'f, F: 'f> = private2::DetachedEagerFuture<'f, Result<U, F>>
@@ -1266,38 +1300,48 @@ mod private {
 	use std::{
 		borrow::Borrow,
 		future::Future,
+		marker::PhantomPinned,
 		ops::Deref,
 		pin::Pin,
 		task::{Context, Poll},
 	};
 
 	use futures_lite::FutureExt;
+	use pin_project::pin_project;
 
 	use crate::traits::Guard;
 
 	#[must_use = "Eager futures may still cancel their effect iff dropped."]
+	#[pin_project]
 	pub struct DetachedEagerFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+		/// For forwards-compatibility with TAITIT-enabled data inlining.
+		#[pin]
+		pub(super) PhantomPinned,
 	);
 
 	impl<'f, Output: 'f> Future for DetachedEagerFuture<'f, Output> {
 		type Output = Output;
 
-		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-			self.0.poll(cx)
+		fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.project().0.poll(cx)
 		}
 	}
 
 	#[must_use = "Async futures do nothing unless awaited."]
+	#[pin_project]
 	pub struct DetachedAsyncFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+		/// For forwards-compatibility with TAITIT-enabled data inlining.
+		#[pin]
+		pub(super) PhantomPinned,
 	);
 
 	impl<'f, Output: 'f> Future for DetachedAsyncFuture<'f, Output> {
 		type Output = Output;
 
-		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-			self.0.poll(cx)
+		fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.project().0.poll(cx)
 		}
 	}
 
@@ -1324,35 +1368,45 @@ mod private {
 mod private2 {
 	use std::{
 		future::Future,
+		marker::PhantomPinned,
 		pin::Pin,
 		task::{Context, Poll},
 	};
 
 	use futures_lite::FutureExt;
+	use pin_project::pin_project;
 
 	#[must_use = "Eager futures may still cancel their effect iff dropped."]
+	#[pin_project]
 	pub struct DetachedEagerFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+		/// For forwards-compatibility with TAITIT-enabled data inlining.
+		#[pin]
+		pub(super) PhantomPinned,
 	);
 
 	impl<'f, Output: 'f> Future for DetachedEagerFuture<'f, Output> {
 		type Output = Output;
 
-		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-			self.0.poll(cx)
+		fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.project().0.poll(cx)
 		}
 	}
 
 	#[must_use = "Async futures do nothing unless awaited."]
+	#[pin_project]
 	pub struct DetachedAsyncFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+		/// For forwards-compatibility with TAITIT-enabled data inlining.
+		#[pin]
+		pub(super) PhantomPinned,
 	);
 
 	impl<'f, Output: 'f> Future for DetachedAsyncFuture<'f, Output> {
 		type Output = Output;
 
-		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-			self.0.poll(cx)
+		fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.project().0.poll(cx)
 		}
 	}
 }
