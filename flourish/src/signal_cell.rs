@@ -411,7 +411,7 @@ impl<T: ?Sized + Send, S: Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef> Sign
 		}
 	}
 
-	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
+	/// Cheaply borrows this [`SignalCellSR`] as [`SignalRef`], which is [`Copy`].
 	pub fn as_signal_ref(&self) -> SignalRef<'_, T, S, SR> {
 		SignalRef {
 			source: unsafe {
@@ -426,7 +426,7 @@ impl<T: ?Sized + Send, S: Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef> Sign
 }
 
 impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalCellDyn<'a, T, SR> {
-	/// Cheaply creates a [`SignalSR`] handle to the managed [`SourceCell`].
+	/// Cheaply creates a [`SignalDyn`] handle to the managed [`SourceCell`].
 	pub fn to_signal(&self) -> SignalDyn<'a, T, SR> {
 		SignalSR {
 			source: unsafe {
@@ -437,7 +437,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalCellDyn<'a, T,
 		}
 	}
 
-	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
+	/// Cheaply borrows this [`SignalCellDyn`] as [`SignalRefDyn`], which is [`Copy`].
 	pub fn as_signal_ref(&self) -> SignalRefDyn<'_, 'a, T, SR> {
 		SignalRef {
 			source: self.upcast.0,
