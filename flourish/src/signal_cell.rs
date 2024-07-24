@@ -17,7 +17,7 @@ use crate::{
 	raw::{InertCell, ReactiveCell, ReactiveCellMut},
 	shadow_clone,
 	traits::{Guard, Source, SourceCell, Subscribable},
-	SignalRef, SignalSR, SourceCellPin, SourcePin,
+	SignalDyn, SignalRef, SignalRefDyn, SignalSR, SourceCellPin, SourcePin,
 };
 
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalsRuntime`]).
@@ -402,9 +402,15 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
-	SignalCellSR<T, S, SR>
-{
+impl<T: ?Sized + Send, S: Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef> SignalCellSR<T, S, SR> {
+	/// Cheaply creates a [`SignalSR`] handle to the managed [`SourceCell`].
+	pub fn to_signal(&self) -> SignalSR<T, S, SR> {
+		SignalSR {
+			source: Pin::clone(&self.source_cell),
+			_phantom: PhantomData,
+		}
+	}
+
 	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
 	pub fn as_signal_ref(&self) -> SignalRef<'_, T, S, SR> {
 		SignalRef {
@@ -417,21 +423,32 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
 			_phantom: PhantomData,
 		}
 	}
+}
 
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalCellDyn<'a, T, SR> {
 	/// Cheaply creates a [`SignalSR`] handle to the managed [`SourceCell`].
-	//TODO: Make this available also for the dyn version.
-	pub fn to_signal<'a>(&self) -> SignalSR<T, S, SR>
-	where
-		T: 'a,
-		S: 'a + Sized,
-		SR: 'a,
-	{
+	pub fn to_signal(&self) -> SignalDyn<'a, T, SR> {
 		SignalSR {
-			source: Pin::clone(&self.source_cell),
+			source: unsafe {
+				Arc::increment_strong_count(self.upcast.0);
+				Pin::new_unchecked(Arc::from_raw(self.upcast.0))
+			},
 			_phantom: PhantomData,
 		}
 	}
 
+	/// Cheaply borrows this [`SignalCell`] as [`SignalRef`], which is [`Copy`].
+	pub fn as_signal_ref(&self) -> SignalRefDyn<'_, 'a, T, SR> {
+		SignalRef {
+			source: self.upcast.0,
+			_phantom: PhantomData,
+		}
+	}
+}
+
+impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
+	SignalCellSR<T, S, SR>
+{
 	pub fn into_dyn<'a>(self) -> SignalCellDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
@@ -451,6 +468,7 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
 		}
 	}
 
+	//TODO: Make this available for "`Dyn`"!
 	pub fn into_signal_and_self<'a>(self) -> (SignalSR<T, S, SR>, Self)
 	where
 		S: 'a + Sized,
@@ -458,6 +476,7 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
 		(self.as_signal_ref().to_signal(), self)
 	}
 
+	//TODO: Make this available for "`Dyn`"!
 	pub fn into_signal_and_self_dyn<'a>(self) -> (SignalSR<T, S, SR>, SignalCellDyn<'a, T, SR>)
 	where
 		S: 'a + Sized,
