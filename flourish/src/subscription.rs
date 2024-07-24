@@ -87,6 +87,18 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + Subscribable<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<SubscriptionSR<T, S, SR>> for SubscriptionDyn<'a, T, SR>
+{
+	fn from(value: SubscriptionSR<T, S, SR>) -> Self {
+		value.into_dyn()
+	}
+}
+
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	SubscriptionSR<T, S, SR>
 {
@@ -163,10 +175,18 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	{
 		let this = ManuallyDrop::new(self);
 
-		SubscriptionDyn {
+		let dyn_ = SubscriptionDyn {
 			source: Pin::clone(&this.source) as Pin<Arc<_>>,
 			_phantom: PhantomData,
+		};
+
+		unsafe {
+			let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&this.source)));
+			Arc::decrement_strong_count(ptr);
+			Arc::decrement_strong_count(ptr);
 		}
+
+		dyn_
 	}
 }
 

@@ -17,7 +17,7 @@ use crate::{
 	raw::{InertCell, ReactiveCell, ReactiveCellMut},
 	shadow_clone,
 	traits::{Guard, Source, SourceCell, Subscribable},
-	SignalDyn, SignalRef, SignalRefDyn, SignalSR, SourceCellPin, SourcePin,
+	Signal, SignalDyn, SignalRef, SignalRefDyn, SignalSR, SourceCellPin, SourcePin,
 };
 
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalsRuntime`]).
@@ -26,6 +26,7 @@ pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalsRuntime>;
 /// Type of [`SignalCellSR`]s after type-erasure. Dynamic dispatch.
 pub type SignalCellDyn<'a, T, SR> = SignalCellSR<T, dyn 'a + SourceCell<T, SR>, SR>;
 
+/// Type of [`WeakSignalCell`]s after type-erasure or [`SignalCellDyn`] after downgrade. Dynamic dispatch.
 pub type WeakSignalCellDyn<'a, T, SR> = WeakSignalCell<T, dyn 'a + SourceCell<T, SR>, SR>;
 
 pub struct WeakSignalCell<
@@ -89,6 +90,63 @@ where
 struct AssertSendSync<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Send for AssertSendSync<T> {}
 unsafe impl<T: ?Sized> Sync for AssertSendSync<T> {}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + SourceCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<SignalCellSR<T, S, SR>> for SignalCellDyn<'a, T, SR>
+{
+	fn from(value: SignalCellSR<T, S, SR>) -> Self {
+		value.into_dyn()
+	}
+}
+
+impl<T: ?Sized + Send, S: Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	From<SignalCellSR<T, S, SR>> for SignalSR<T, S, SR>
+{
+	fn from(value: SignalCellSR<T, S, SR>) -> Self {
+		let SignalCellSR {
+			source_cell,
+			upcast: _,
+		} = value;
+		Self {
+			source: source_cell,
+			_phantom: PhantomData,
+		}
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + SourceCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<SignalCellSR<T, S, SR>> for SignalDyn<'a, T, SR>
+{
+	fn from(value: SignalCellSR<T, S, SR>) -> Self {
+		value.into_dyn().into()
+	}
+}
+
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> From<SignalCellDyn<'a, T, SR>>
+	for SignalDyn<'a, T, SR>
+{
+	fn from(value: SignalCellDyn<'a, T, SR>) -> Self {
+		let SignalCellDyn {
+			source_cell,
+			upcast,
+		} = value;
+		Self {
+			source: unsafe {
+				mem::forget(source_cell);
+				Pin::new_unchecked(Arc::from_raw(upcast.0))
+			},
+			_phantom: PhantomData,
+		}
+	}
+}
 
 //TODO: Conversion from raw SourceCell.
 
@@ -469,19 +527,21 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: SignalsRuntimeRef>
 	}
 
 	//TODO: Make this available for "`Dyn`"!
-	pub fn into_signal_and_self<'a>(self) -> (SignalSR<T, S, SR>, Self)
+	pub fn into_signal_and_self(self) -> (SignalSR<T, S, SR>, Self)
 	where
-		S: 'a + Sized,
+		S: Sized,
 	{
 		(self.as_signal_ref().to_signal(), self)
 	}
 
 	//TODO: Make this available for "`Dyn`"!
-	pub fn into_signal_and_self_dyn<'a>(self) -> (SignalSR<T, S, SR>, SignalCellDyn<'a, T, SR>)
+	pub fn into_signal_and_self_dyn<'a>(self) -> (SignalDyn<'a, T, SR>, SignalCellDyn<'a, T, SR>)
 	where
+		T: 'a,
 		S: 'a + Sized,
+		SR: 'a,
 	{
-		(self.as_signal_ref().to_signal(), self.into_dyn())
+		(self.to_signal().into_dyn(), self.into_dyn())
 	}
 }
 

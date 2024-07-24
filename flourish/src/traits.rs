@@ -723,3 +723,5 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 //FIXME: This really should just specify `Borrow<Self::Target>`,
 //       but that makes it not object-safe currently.
 pub trait Guard<T: ?Sized>: Deref<Target = T> + Borrow<T> {}
+
+//TODO: `SubscribablePin`/`SubscribablePinRef` traits to unify `SignalCell`s, `Signal`s and their `Ref`-types.

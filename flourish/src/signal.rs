@@ -94,6 +94,19 @@ unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + Sign
 {
 }
 
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + Subscribable<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<SignalSR<T, S, SR>> for SignalDyn<'a, T, SR>
+{
+	fn from(value: SignalSR<T, S, SR>) -> Self {
+		let SignalSR { source, _phantom } = value;
+		Self { source, _phantom }
+	}
+}
+
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalSR<T, S, SR>
 {
@@ -132,6 +145,14 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 		} else {
 			Err(self)
 		}
+	}
+
+	pub fn into_dyn<'a>(self) -> SignalDyn<'a, T, SR>
+	where
+		S: 'a + Sized,
+	{
+		let Self { source, _phantom } = self;
+		SignalDyn { source, _phantom }
 	}
 }
 
