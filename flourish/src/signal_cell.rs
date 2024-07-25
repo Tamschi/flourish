@@ -59,10 +59,17 @@ pub struct SignalCellSR<
 	S: ?Sized + SourceCell<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	pub(crate) source_cell: Pin<Arc<S>>,
-	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
-	/// being unstable. Once that's stabilised, this field can be removed.
-	pub(crate) upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
+	/// [SignalCellRef::source_cell] of this field is semantically an [`Arc`],
+	/// but stored as content pointer in order to [`core::ops::Deref`] and [`core::borrow::Borrow`].
+	pub(crate) arc: SignalCellRef<'static, T, S, SR>,
+}
+
+impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+	for SignalCellSR<T, S, SR>
+{
+	fn drop(&mut self) {
+		unsafe { Arc::decrement_strong_count(self.arc.source_cell) }
+	}
 }
 
 impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
@@ -70,8 +77,10 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntim
 {
 	fn clone(&self) -> Self {
 		Self {
-			source_cell: self.source_cell.clone(),
-			upcast: self.upcast,
+			arc: unsafe {
+				Arc::increment_strong_count(self.arc.source_cell);
+				self.arc
+			},
 		}
 	}
 }
@@ -99,6 +108,19 @@ impl<T> From<T> for AssertSendSync<T> {
 	}
 }
 
+impl<T: Send, S: SourceCell<T, SR>, SR: SignalsRuntimeRef> SignalCellSR<T, S, SR> {
+	pub fn from_raw(source_cell: S) -> Self {
+		let arc = Arc::into_raw(Arc::new(source_cell));
+		Self {
+			arc: SignalCellRef {
+				upcast: AssertSendSync(arc as *const (dyn '_ + Subscribable<T, SR>)),
+				source_cell: arc,
+				_phantom: PhantomData,
+			},
+		}
+	}
+}
+
 impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 	pub fn new<'a>(initial_value: T) -> SignalCellSR<T, impl 'a + Sized + SourceCell<T, SR>, SR>
 	where
@@ -116,16 +138,13 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 		T: 'a,
 		SR: 'a + Default,
 	{
-		let arc = Arc::pin(InertCell::with_runtime(initial_value, runtime));
+		let arc = Arc::into_raw(Arc::new(InertCell::with_runtime(initial_value, runtime)));
 		SignalCellSR {
-			upcast: unsafe {
-				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
-					as *const (dyn '_ + Subscribable<T, SR>);
-				Arc::decrement_strong_count(ptr);
-				ptr
-			}
-			.into(),
-			source_cell: arc,
+			arc: SignalCellRef {
+				upcast: AssertSendSync(arc as *const (dyn '_ + Subscribable<T, SR>)),
+				source_cell: arc,
+				_phantom: PhantomData,
+			},
 		}
 	}
 
@@ -148,7 +167,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 		SR: 'a + Default,
 	{
 		let arc = unsafe {
-			Pin::new_unchecked(Arc::new_cyclic(|weak| {
+			Arc::into_raw(Arc::new_cyclic(|weak| {
 				InertCell::with_runtime(
 					make_initial_value(WeakSignalCell {
 						source_cell: weak.clone() as Weak<dyn 'a + SourceCell<T, SR>>,
@@ -159,14 +178,11 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 			}))
 		};
 		SignalCellSR {
-			upcast: unsafe {
-				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
-					as *const (dyn '_ + Subscribable<T, SR>);
-				Arc::decrement_strong_count(ptr);
-				ptr
-			}
-			.into(),
-			source_cell: arc,
+			arc: SignalCellRef {
+				upcast: AssertSendSync(arc as *const (dyn '_ + Subscribable<T, SR>)),
+				source_cell: arc,
+				_phantom: PhantomData,
+			},
 		}
 	}
 
