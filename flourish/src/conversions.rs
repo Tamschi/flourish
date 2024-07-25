@@ -36,6 +36,9 @@
 //! //TODO: Table for subscriptions.
 //! //TODO: Note that `Effects` aren't convertible.
 //!
+//! //TODO: On second thought, remove most of the convenience methods, implement [`Borrow`], [`ToOwned`], [`Deref`] and possibly [`AsRef`] instead.
+//! //      (Refcounting handles can wrap Refs!)
+//!
 //! [identity]: https://doc.rust-lang.org/stable/std/convert/trait.From.html#impl-From%3CT%3E-for-T
 //! [c1]: `SignalCellRef::clone`
 //! [id1]: `SignalCellSR::into_dyn`
