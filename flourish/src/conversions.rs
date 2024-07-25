@@ -32,6 +32,10 @@
 //! | [`SignalRef`]        | (`&`)&nbsp;[`.clone()`][c2]                                 | (`&`)&nbsp;[`.clone_dyn()`][cd2]                                      | [identity]                         | [`.into_dyn()`][id4]                  |
 //! | [`SignalRefDyn`]     | →                                                      | (`&`)&nbsp;[`.clone()`][c2]                                           | →                                  | [identity]                            |
 //!
+//! //TODO: Formatting!
+//! //TODO: Table for subscriptions.
+//! //TODO: Note that `Effects` aren't convertible.
+//!
 //! [identity]: https://doc.rust-lang.org/stable/std/convert/trait.From.html#impl-From%3CT%3E-for-T
 //! [c1]: `SignalCellRef::clone`
 //! [id1]: `SignalCellSR::into_dyn`
