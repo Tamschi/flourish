@@ -200,15 +200,16 @@ impl<T: Send + ?Sized, SR: SignalsRuntimeRef> Source<T, SR> for InertCell<T, SR>
 }
 
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for InertCell<T, SR> {
-	fn subscribe_inherently(self: Pin<&Self>) -> bool {
-		self.project_ref()
-			.signal
-			.subscribe_inherently_or_init::<NoCallbacks>(|_, slot| slot.write(()))
-			.is_some()
+	fn subscribe(self: Pin<&Self>) {
+		let signal = self.project_ref().signal;
+		signal.subscribe();
+		signal
+			.clone_runtime_ref()
+			.run_detached(|| signal.project_or_init::<NoCallbacks>(|_, slot| slot.write(())));
 	}
 
-	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
-		self.project_ref().signal.unsubscribe_inherently()
+	fn unsubscribe(self: Pin<&Self>) {
+		self.project_ref().signal.unsubscribe()
 	}
 }
 

@@ -111,12 +111,22 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// [`SignalsRuntimeRef::purge`]
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
 
-	/// Enables or disables the inherent subscription of `id`.
+	/// Increases the inherent subscription count of `id`.
 	///
 	/// An inherent subscription is one that is active regardless of dependents.
 	///
-	/// **Idempotent** aside from the return value.  
-	/// **Returns** whether there was a change in the inherent subscription.
+	/// # Logic
+	///
+	/// This function **must** be callable at any time with any valid `id`.
+	///
+	/// # See also
+	///
+	/// [`SignalsRuntimeRef::purge`]
+	fn subscribe(&self, id: Self::Symbol);
+
+	/// Decreases the inherent subscription count of `id`.
+	///
+	/// An inherent subscription is one that is active regardless of dependents.
 	///
 	/// # Logic
 	///
@@ -127,10 +137,21 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// This function **must** be callable at any time with any valid `id`.
 	///
+	/// # Panics
+	///
+	/// This function **should** panic iff the intrinsic subscription count falls below zero.
+	///
+	/// # Logic
+	///
+	/// However, the runtime **may** (but **should not**) avoid tracking this separately
+	/// and instead exhibit unexpected behaviour iff there wasn't an at-least-equal number
+	/// of `.subscribe(id)` calls with the same `id`. Note that `.purge(id)` is expected
+	/// to reset the net subscription count to zero.
+	///
 	/// # See also
 	///
 	/// [`SignalsRuntimeRef::purge`]
-	fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool;
+	fn unsubscribe(&self, id: Self::Symbol);
 
 	/// Submits `f` to run exclusively for `id` outside of recording dependencies.
 	///
@@ -343,8 +364,12 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).update_dependency_set(id.0, f)
 	}
 
-	fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).set_subscription(id.0, enabled)
+	fn subscribe(&self, id: Self::Symbol) {
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).subscribe(id.0)
+	}
+
+	fn unsubscribe(&self, id: Self::Symbol) {
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).unsubscribe(id.0)
 	}
 
 	fn update_or_enqueue(

@@ -16,7 +16,7 @@ fn inherent() {
 	drop(a);
 	v.expect([]);
 
-	let s = s.try_subscribe().unwrap();
+	let s = s.subscribe();
 	v.expect([true]);
 
 	drop(s);
@@ -83,7 +83,7 @@ fn lifecycle() {
 	let s = Signal::computed(move || v.push(s.get()));
 	v.expect([]);
 
-	let s = s.try_subscribe().unwrap();
+	let s = s.subscribe();
 	v.expect([true]);
 
 	let s = s.unsubscribe();

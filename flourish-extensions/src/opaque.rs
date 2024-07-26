@@ -81,11 +81,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque 
 }
 
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for Opaque {
-	fn subscribe_inherently(self: Pin<&Self>) -> bool {
+	fn subscribe(self: Pin<&Self>) {
 		const { unreachable!() }
 	}
 
-	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
+	fn unsubscribe(self: Pin<&Self>) {
 		const { unreachable!() }
 	}
 }

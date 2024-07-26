@@ -174,6 +174,8 @@ pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sy
 pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + Source<T, SR>
 {
+	//TODO: Update docs here!
+
 	/// Subscribes this [`Subscribable`] (only regarding innate subscription)!
 	///
 	/// If necessary, this instance is initialised first, so that callbacks are active for it.
@@ -188,7 +190,7 @@ pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// `true` iff the inherent subscription is new, otherwise `false`.
 	#[must_use = "Only one inherent subscription can exist at a time for each signal."]
-	fn subscribe_inherently(self: Pin<&Self>) -> bool;
+	fn subscribe(self: Pin<&Self>);
 
 	/// Unsubscribes this [`Subscribable`] (only regarding innate subscription!).
 	///
@@ -197,7 +199,7 @@ pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// Whether this instance was previously innately subscribed.
 	///
 	/// An innate subscription is a subscription not caused by a dependent subscriber.
-	fn unsubscribe_inherently(self: Pin<&Self>) -> bool;
+	fn unsubscribe(self: Pin<&Self>);
 }
 
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].

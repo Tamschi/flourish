@@ -246,14 +246,15 @@ impl<
 		SR: SignalsRuntimeRef,
 	> Subscribable<T, SR> for Reduced<T, S, M, SR>
 {
-	fn subscribe_inherently(self: Pin<&Self>) -> bool {
-		self.project_ref()
-			.0
-			.subscribe_inherently_or_init::<E>(|f, cache| unsafe { Self::init(f, cache) })
-			.is_some()
+	fn subscribe(self: Pin<&Self>) {
+		let signal = self.project_ref().0;
+		signal.subscribe();
+		signal.clone_runtime_ref().run_detached(|| {
+			signal.project_or_init::<E>(|f, cache| unsafe { Self::init(f, cache) })
+		});
 	}
 
-	fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
-		self.project_ref().0.unsubscribe_inherently()
+	fn unsubscribe(self: Pin<&Self>) {
+		self.project_ref().0.unsubscribe()
 	}
 }

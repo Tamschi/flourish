@@ -10,7 +10,6 @@ use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 use crate::{
 	opaque::Opaque,
 	raw::{computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced},
-	subscription::SubscriptionDyn,
 	traits::{Guard, Subscribable},
 	SourcePin, SubscriptionSR,
 };
@@ -123,14 +122,11 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 
 	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
 
-	pub fn try_subscribe(self) -> Result<SubscriptionSR<T, S, SR>, Self> {
-		if self.source.as_ref().subscribe_inherently() {
-			Ok(SubscriptionSR {
-				source: self.source,
-				_phantom: PhantomData,
-			})
-		} else {
-			Err(self)
+	pub fn subscribe(self) -> SubscriptionSR<T, S, SR> {
+		self.source.as_ref().subscribe();
+		SubscriptionSR {
+			source: self.source,
+			_phantom: PhantomData,
 		}
 	}
 
@@ -140,49 +136,6 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	{
 		let Self { source, _phantom } = self;
 		SignalDyn { source, _phantom }
-	}
-}
-
-impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	SignalSR<T, S, SR>
-{
-	/// First calls [`self.try_subscribe()`](`SignalSR::try_subscribe`) and, iff that fails,
-	/// falls back to constructing a computed (cached) subscription from `make_fn_pin(self)`'s output.
-	pub fn subscribe_or_computed_dyn<'a, FnPin: 'a + Send + FnMut() -> T>(
-		self,
-		make_fn_pin: impl FnOnce(Self) -> FnPin,
-	) -> SubscriptionDyn<'a, T, SR>
-	where
-		T: 'a + Sized,
-		S: 'a,
-		SR: 'a,
-	{
-		self.try_subscribe()
-			.map(|subscription| subscription.into_dyn())
-			.unwrap_or_else(move |this| {
-				let runtime = this.clone_runtime_ref();
-				SubscriptionSR::computed_with_runtime(make_fn_pin(this), runtime).into_dyn()
-			})
-	}
-}
-
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalDyn<'a, T, SR> {
-	/// First calls [`self.try_subscribe()`](`SignalSR::try_subscribe`) and, iff that fails,
-	/// falls back to constructing a computed (cached) subscription from `make_fn_pin(self)`'s output.
-	pub fn subscribe_or_computed_dyn<FnPin: 'a + Send + FnMut() -> T>(
-		self,
-		make_fn_pin: impl FnOnce(Self) -> FnPin,
-	) -> SubscriptionDyn<'a, T, SR>
-	where
-		T: Sized,
-		SR: Sized,
-	{
-		self.try_subscribe()
-			.map(|subscription| subscription)
-			.unwrap_or_else(move |this| {
-				let runtime = this.clone_runtime_ref();
-				SubscriptionSR::computed_with_runtime(make_fn_pin(this), runtime).into_dyn()
-			})
 	}
 }
 

@@ -227,12 +227,12 @@ unsafe fn assume_init_subscription<
 	impl<T: Send + Copy, S: Subscribable<MaybeUninit<T>, SR>, SR: SignalsRuntimeRef>
 		Subscribable<T, SR> for AbiShim<S>
 	{
-		fn subscribe_inherently(self: Pin<&Self>) -> bool {
-			self.project_ref().0.subscribe_inherently()
+		fn subscribe(self: Pin<&Self>) {
+			self.project_ref().0.subscribe()
 		}
 
-		fn unsubscribe_inherently(self: Pin<&Self>) -> bool {
-			self.project_ref().0.unsubscribe_inherently()
+		fn unsubscribe(self: Pin<&Self>) {
+			self.project_ref().0.unsubscribe()
 		}
 	}
 

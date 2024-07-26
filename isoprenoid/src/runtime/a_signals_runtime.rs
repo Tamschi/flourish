@@ -52,9 +52,32 @@ pub(crate) struct Interdependencies {
 	/// Note: While a symbol is flagged as subscribed explicitly,
 	///       it is present as its own subscriber here (by not in `all_by_dependency`!).
 	/// FIXME: This could store subscriber counts instead.
-	pub(crate) subscribers_by_dependency: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
+	pub(crate) subscribers_by_dependency: BTreeMap<ASymbol, Subscribers>,
 	pub(crate) all_by_dependent: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
 	pub(crate) all_by_dependency: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
+}
+
+#[derive(Debug, Default)]
+struct Subscribers {
+	intrinsic: u64,
+	extrinsic: BTreeSet<ASymbol>,
+}
+
+impl Subscribers {
+	fn is_empty(&self) -> bool {
+		self.intrinsic == 0 && self.extrinsic.is_empty()
+	}
+
+	fn total(&self) -> u64 {
+		self.intrinsic
+			.checked_add(
+				self.extrinsic
+					.len()
+					.try_into()
+					.expect("too many extrinsic subscriptions"),
+			)
+			.expect("too many subscriptions")
+	}
 }
 
 impl Interdependencies {
@@ -112,7 +135,16 @@ impl ASignalsRuntime {
 			.subscribers_by_dependency
 			.entry(dependency)
 			.or_default();
-		if subscribers.insert(dependent) && subscribers.len() == 1 {
+
+		if dependency == dependent {
+			subscribers.intrinsic = subscribers
+				.intrinsic
+				.checked_add(1)
+				.expect("The intrinsic subscription count became too high.");
+		} else {
+			assert!(subscribers.extrinsic.insert(dependent));
+		}
+		if subscribers.total() == 1 {
 			// First subscriber, so propagate upwards and then call the handler!
 
 			for transitive_dependency in borrow
@@ -179,8 +211,14 @@ impl ASignalsRuntime {
 			.subscribers_by_dependency
 			.entry(dependency)
 			.or_default();
-		if subscribers.len() == 1 && subscribers.iter().all(|s| *s == dependent) {
+		if subscribers.total() == 1
+			&& (if dependency == dependent {
+				subscribers.intrinsic == 1
+			} else {
+				subscribers.extrinsic.iter().all(|s| *s == dependent)
+			}) {
 			// Only subscriber, so propagate upwards and then refresh first!
+			// That should still be done even once `Propagation::FlushOut` exists.
 
 			for transitive_dependency in borrow
 				.interdependencies
@@ -202,7 +240,15 @@ impl ASignalsRuntime {
 			.entry(dependency)
 			.or_default();
 
-		if subscribers.remove(&dependent) && subscribers.is_empty() {
+		if dependency == dependent {
+			subscribers.intrinsic = subscribers
+				.intrinsic
+				.checked_sub(1)
+				.expect("Tried to lower intrinsic subscription count below zero.")
+		} else {
+			assert!(subscribers.extrinsic.remove(&dependent))
+		}
+		if subscribers.is_empty() {
 			// Just removed last subscriber, so call the change handler (if there is one).
 
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&dependency) {
@@ -591,30 +637,22 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		t
 	}
 
-	fn set_subscription(&self, id: Self::Symbol, enabled: bool) -> bool {
+	fn subscribe(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
 
-		let is_inherently_subscribed = borrow
-			.interdependencies
-			.subscribers_by_dependency
-			.get(&id)
-			.is_some_and(|subs| subs.contains(&id));
-
-		let result = match (enabled, is_inherently_subscribed) {
-			(true, false) => {
-				borrow = self.subscribe_to_with(id, id, &lock, borrow);
-				true
-			}
-			(false, true) => {
-				borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
-				true
-			}
-			(true, true) | (false, false) => false,
-		};
+		borrow = self.subscribe_to_with(id, id, &lock, borrow);
 
 		self.process_pending(&lock, borrow);
-		result
+	}
+
+	fn unsubscribe(&self, id: Self::Symbol) {
+		let lock = self.critical_mutex.lock();
+		let mut borrow = (*lock).borrow_mut();
+
+		borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
+
+		self.process_pending(&lock, borrow);
 	}
 
 	fn update_or_enqueue(
@@ -825,6 +863,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			);
 		}
 
+		//TODO: Make this conditional, and also unsubscribe all dependencies one by one.
 		borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
 
 		borrow.callbacks.remove(&id);
@@ -838,12 +877,17 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		for collection in [
 			&mut interdependencies.all_by_dependency,
 			&mut interdependencies.all_by_dependent,
-			&mut interdependencies.subscribers_by_dependency,
 		] {
 			assert!(!collection
 				.remove(&id)
-				.is_some_and(|dependencies| !dependencies.is_empty()))
+				.is_some_and(|linked| !linked.is_empty()))
 		}
+
+		assert!(!interdependencies
+			.subscribers_by_dependency
+			.remove(&id)
+			.is_some_and(|subscribers| !subscribers.is_empty()));
+
 		borrow.stale_queue.remove(&id);
 
 		self.process_pending(&lock, borrow);

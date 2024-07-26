@@ -83,7 +83,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	for SubscriptionSR<T, S, SR>
 {
 	fn drop(&mut self) {
-		self.source.as_ref().unsubscribe_inherently();
+		self.source.as_ref().unsubscribe();
 	}
 }
 
@@ -116,10 +116,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	{
 		source.clone_runtime_ref().run_detached(|| {
 			let arc = Arc::pin(source);
-			assert!(
-				arc.as_ref().subscribe_inherently(),
-				"Couldn't subscribe to the subscribable."
-			);
+			arc.as_ref().subscribe();
 			Self {
 				source: arc,
 				_phantom: PhantomData,

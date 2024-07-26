@@ -74,7 +74,7 @@ pub fn new_raw_unsubscribed_subscription<
 pub fn pull_new_subscription<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>(
 	subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
-	assert!(subscription.project_ref().0.subscribe_inherently());
+	subscription.project_ref().0.subscribe()
 }
 
 #[doc(hidden)]
