@@ -7,7 +7,7 @@ use crate::traits::{Guard, Subscribable};
 
 use super::{
 	cached::{CachedGuard, CachedGuardExclusive},
-	Cached, Source,
+	Cached, UnmanagedSignal,
 };
 
 #[pin_project]
@@ -79,12 +79,12 @@ pub fn pull_new_subscription<T: Send + Clone, S: Subscribable<T, SR>, SR: Signal
 
 #[doc(hidden)]
 pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalsRuntimeRef>(
-	pin: Pin<&'a impl Source<T, SR>>,
-) -> Pin<&'a impl Source<T, SR>> {
+	pin: Pin<&'a impl UnmanagedSignal<T, SR>>,
+) -> Pin<&'a impl UnmanagedSignal<T, SR>> {
 	pin
 }
 
-impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, SR>
+impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
 	for RawSubscription<T, S, SR>
 {
 	fn touch(self: Pin<&Self>) {
@@ -163,6 +163,6 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Source<T, S
 	where
 		SR: Sized,
 	{
-		Source::clone_runtime_ref(&self.0)
+		UnmanagedSignal::clone_runtime_ref(&self.0)
 	}
 }

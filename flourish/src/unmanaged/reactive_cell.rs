@@ -16,7 +16,7 @@ use pin_project::pin_project;
 
 use crate::{shadow_clone, traits::Guard};
 
-use super::{Source, SourceCell, Subscribable};
+use super::{Subscribable, UnmanagedSignal, UnmanagedSignalCell};
 
 #[pin_project]
 #[repr(transparent)]
@@ -235,7 +235,7 @@ impl<
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: SignalsRuntimeRef,
-	> Source<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
+	> UnmanagedSignal<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
 	fn touch(self: Pin<&Self>) {
 		self.touch();
@@ -336,7 +336,7 @@ impl<
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		SR: ?Sized + SignalsRuntimeRef,
-	> SourceCell<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
+	> UnmanagedSignalCell<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
 	fn change(self: Pin<&Self>, new_value: T)
 	where

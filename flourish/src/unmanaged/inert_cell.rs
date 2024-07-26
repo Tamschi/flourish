@@ -16,7 +16,7 @@ use pin_project::pin_project;
 
 use crate::{shadow_clone, traits::Guard};
 
-use super::{Source, SourceCell, Subscribable};
+use super::{Subscribable, UnmanagedSignal, UnmanagedSignalCell};
 
 #[pin_project]
 pub(crate) struct InertCell<T: ?Sized + Send, SR: SignalsRuntimeRef> {
@@ -130,7 +130,7 @@ impl<T: ?Sized + Send, SR: SignalsRuntimeRef> InertCell<T, SR> {
 	}
 }
 
-impl<T: Send + ?Sized, SR: SignalsRuntimeRef> Source<T, SR> for InertCell<T, SR> {
+impl<T: Send + ?Sized, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for InertCell<T, SR> {
 	fn touch(self: Pin<&Self>) {
 		self.touch();
 	}
@@ -213,7 +213,9 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for I
 	}
 }
 
-impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for InertCell<T, SR> {
+impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR>
+	for InertCell<T, SR>
+{
 	fn change(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized + PartialEq,

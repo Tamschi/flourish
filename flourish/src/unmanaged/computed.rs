@@ -14,7 +14,7 @@ use pin_project::pin_project;
 
 use crate::traits::{Guard, Subscribable};
 
-use super::Source;
+use super::UnmanagedSignal;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -134,7 +134,9 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Computed<T, F, SR> 
 	}
 }
 
-impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> Source<T, SR> for Computed<T, F, SR> {
+impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
+	for Computed<T, F, SR>
+{
 	fn touch(self: Pin<&Self>) {
 		self.touch();
 	}

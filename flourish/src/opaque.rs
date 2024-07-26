@@ -9,27 +9,27 @@ use std::{
 
 use isoprenoid::runtime::SignalsRuntimeRef;
 
-use crate::traits::{Guard, Source, SourceCell, Subscribable};
+use crate::traits::{Guard, Subscribable, UnmanagedSignal, UnmanagedSignalCell};
 
 pub enum Opaque {}
 
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque {
+impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> for Opaque {
 	fn touch(self: Pin<&Self>) {
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn get_clone(self: Pin<&Self>) -> T
 	where
 		T: Sync + Clone,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Clone,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn read<'r>(self: Pin<&'r Self>) -> OpaqueGuard<T>
@@ -37,7 +37,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque 
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	type Read<'r> = OpaqueGuard<T>
@@ -50,7 +50,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque 
 		Self: Sized,
 		T: 'r,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	type ReadExclusive<'r> = OpaqueGuard<T>
@@ -61,47 +61,47 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Source<T, SR> for Opaque 
 	where
 		T: 'r + Sync,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn clone_runtime_ref(&self) -> SR
 	where
 		SR: Sized,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 }
 
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for Opaque {
 	fn subscribe(self: Pin<&Self>) {
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		const { unreachable!() }
+		match *self {}
 	}
 }
 
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opaque {
+impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for Opaque {
 	fn change(self: Pin<&Self>, _: T)
 	where
 		T: 'static + Sized + PartialEq,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn replace(self: Pin<&Self>, _: T)
 	where
 		T: 'static + Sized,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn update(
@@ -111,7 +111,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 		Self: Sized,
 		T: 'static,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn update_dyn(
@@ -120,7 +120,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	) where
 		T: 'static,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn change_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueFuture<Result<Result<T, T>, T>>
@@ -128,7 +128,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	type ChangeEager<'f> = OpaqueFuture<Result<Result<T, T>, T>>
@@ -141,7 +141,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	type ReplaceEager<'f> = OpaqueFuture<Result<T, T>>
@@ -160,7 +160,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		Self: 'f + Sized,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	type UpdateEager<'f, U: 'f, F: 'f> = OpaqueFuture<Result<U, F>>
@@ -174,7 +174,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn replace_eager_dyn<'f>(
@@ -184,7 +184,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		T: 'f + Sized,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn update_eager_dyn<'f>(
@@ -203,21 +203,21 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		T: 'f,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn change_blocking(&self, _: T) -> Result<T, T>
 	where
 		T: Sized + PartialEq,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn replace_blocking(&self, _: T) -> T
 	where
 		T: Sized,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn update_blocking<U>(
@@ -227,14 +227,14 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourceCell<T, SR> for Opa
 	where
 		Self: Sized,
 	{
-		const { unreachable!() }
+		match *self {}
 	}
 
 	fn update_blocking_dyn(
 		&self,
 		_: Box<dyn '_ + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
 	) {
-		const { unreachable!() }
+		match *self {}
 	}
 }
 
@@ -252,7 +252,7 @@ impl<T> Future for OpaqueFuture<T> {
 	type Output = T;
 
 	fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-		const { unreachable!() }
+		match self._vacant {}
 	}
 }
 
@@ -267,12 +267,12 @@ impl<T: ?Sized> Deref for OpaqueGuard<T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		const { unreachable!() }
+		match self._vacant {}
 	}
 }
 
 impl<T: ?Sized> Borrow<T> for OpaqueGuard<T> {
 	fn borrow(&self) -> &T {
-		const { unreachable!() }
+		match self._vacant {}
 	}
 }

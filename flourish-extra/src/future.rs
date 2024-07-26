@@ -12,8 +12,9 @@ use std::{
 use async_lock::OnceCell;
 use flourish::{
 	prelude::*,
-	unmanaged::{Source, Subscribable},
-	shadow_clone, signals_helper, Guard, Propagation, SignalsRuntimeRef, SubscriptionSR,
+	shadow_clone, signals_helper,
+	unmanaged::{Subscribable, UnmanagedSignal},
+	Guard, Propagation, SignalsRuntimeRef, SubscriptionSR,
 };
 use pin_project::pin_project;
 
@@ -129,8 +130,8 @@ unsafe fn assume_init_subscription<
 	#[repr(transparent)]
 	struct AbiShim<T: ?Sized>(#[pin] T);
 
-	impl<T: Send + Copy, S: Source<MaybeUninit<T>, SR>, SR: SignalsRuntimeRef> Source<T, SR>
-		for AbiShim<S>
+	impl<T: Send + Copy, S: UnmanagedSignal<MaybeUninit<T>, SR>, SR: SignalsRuntimeRef>
+		UnmanagedSignal<T, SR> for AbiShim<S>
 	{
 		fn touch(self: Pin<&Self>) {
 			self.project_ref().0.touch()

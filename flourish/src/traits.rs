@@ -9,7 +9,7 @@ use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 /// It's sound to transmute [`dyn Source<_>`](`Source`) between different associated `Value`s as long as that's sound and they're ABI-compatible.
 ///
 /// Note that dropping the [`dyn Source<_>`](`Source`) dynamically **transmutes back**.
-pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
+pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency without accessing the value.
 	fn touch(self: Pin<&Self>);
 
@@ -89,6 +89,7 @@ pub trait Source<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync 
 		SR: Sized;
 }
 
+//TODO: Fold into `Signal` once that's ref-only.
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
 pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency without accessing the value.
@@ -172,7 +173,7 @@ pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sy
 
 /// **Combinators should implement this.** Allows [`SignalSR`](`crate::SignalSR`) and [`SubscriptionSR`](`crate::SubscriptionSR`) to manage subscriptions through conversions between each other.
 pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
-	Send + Sync + Source<T, SR>
+	Send + Sync + UnmanagedSignal<T, SR>
 {
 	//TODO: Update docs here!
 
@@ -200,7 +201,7 @@ pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
+pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + Subscribable<T, SR>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -238,7 +239,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		Self: Sized,
 		T: 'static;
 
-	/// The same as [`update`](`SourceCell::update`), but object-safe.
+	/// The same as [`update`](`UnmanagedSignalCell::update`), but object-safe.
 	fn update_dyn(
 		self: Pin<&Self>,
 		update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>,
@@ -331,7 +332,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		Self: 'f + Sized;
 
-	/// The same as [`change_eager`](`SourceCell::change_eager`), but object-safe.
+	/// The same as [`change_eager`](`UnmanagedSignalCell::change_eager`), but object-safe.
 	fn change_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
@@ -339,7 +340,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		T: 'f + Sized + PartialEq;
 
-	/// The same as [`replace_eager`](`SourceCell::replace_eager`), but object-safe.
+	/// The same as [`replace_eager`](`UnmanagedSignalCell::replace_eager`), but object-safe.
 	fn replace_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
@@ -347,7 +348,7 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		T: 'f + Sized;
 
-	/// The same as [`update_eager`](`SourceCell::update_eager`), but object-safe.
+	/// The same as [`update_eager`](`UnmanagedSignalCell::update_eager`), but object-safe.
 	fn update_eager_dyn<'f>(
 		self: Pin<&Self>,
 		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
@@ -412,12 +413,15 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		Self: Sized;
 
-	/// The same as [`update_blocking`](`SourceCell::update_blocking`), but object-safe.
+	/// The same as [`update_blocking`](`UnmanagedSignalCell::update_blocking`), but object-safe.
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>);
 
 	fn as_source_and_cell(
 		self: Pin<&Self>,
-	) -> (Pin<&impl Source<T, SR>>, Pin<&impl SourceCell<T, SR>>)
+	) -> (
+		Pin<&impl UnmanagedSignal<T, SR>>,
+		Pin<&impl UnmanagedSignalCell<T, SR>>,
+	)
 	where
 		Self: Sized,
 	{
@@ -425,10 +429,11 @@ pub trait SourceCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	}
 }
 
+//TODO: Fold into `SignalCell` once that's ref-only.
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
+pub trait UnmanagedSignalCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + SourcePin<T, SR>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -466,12 +471,12 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		Self: Sized,
 		T: 'static;
 
-	/// The same as [`update`](`SourceCellPin::update`), but object-safe.
+	/// The same as [`update`](`UnmanagedSignalCellPin::update`), but object-safe.
 	fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
 		T: 'static;
 
-	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`SourceCellPin::change_eager`) when polled.
+	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`UnmanagedSignalCellPin::change_eager`) when polled.
 	///
 	/// # Logic
 	///
@@ -486,7 +491,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		Self: 'f + Sized,
 		T: 'f + Sized;
 
-	/// Cheaply creates a [`Future`] that has the effect of [`replace_eager`](`SourceCellPin::replace_eager`) when polled.
+	/// Cheaply creates a [`Future`] that has the effect of [`replace_eager`](`UnmanagedSignalCellPin::replace_eager`) when polled.
 	///
 	/// # Logic
 	///
@@ -501,7 +506,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		Self: 'f + Sized,
 		T: 'f + Sized;
 
-	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`SourceCellPin::update_eager`) when polled.
+	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`UnmanagedSignalCellPin::update_eager`) when polled.
 	///
 	/// # Logic
 	///
@@ -517,7 +522,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		Self: 'f + Sized;
 
-	/// The same as [`change_async`](`SourceCellPin::change_async`), but object-safe.
+	/// The same as [`change_async`](`UnmanagedSignalCellPin::change_async`), but object-safe.
 	fn change_async_dyn<'f>(
 		&self,
 		new_value: T,
@@ -525,7 +530,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		T: 'f + Sized + PartialEq;
 
-	/// The same as [`replace_async`](`SourceCellPin::replace_async`), but object-safe.
+	/// The same as [`replace_async`](`UnmanagedSignalCellPin::replace_async`), but object-safe.
 	fn replace_async_dyn<'f>(
 		&self,
 		new_value: T,
@@ -533,7 +538,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		T: 'f + Sized;
 
-	/// The same as [`update_async`](`SourceCellPin::update_async`), but object-safe.
+	/// The same as [`update_async`](`UnmanagedSignalCellPin::update_async`), but object-safe.
 	fn update_async_dyn<'f>(
 		&self,
 		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
@@ -632,7 +637,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		Self: 'f + Sized;
 
-	/// The same as [`change_eager`](`SourceCellPin::change_eager`), but object-safe.
+	/// The same as [`change_eager`](`UnmanagedSignalCellPin::change_eager`), but object-safe.
 	fn change_eager_dyn<'f>(
 		&self,
 		new_value: T,
@@ -640,7 +645,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		T: 'f + Sized + PartialEq;
 
-	/// The same as [`replace_eager`](`SourceCellPin::replace_eager`), but object-safe.
+	/// The same as [`replace_eager`](`UnmanagedSignalCellPin::replace_eager`), but object-safe.
 	fn replace_eager_dyn<'f>(
 		&self,
 		new_value: T,
@@ -648,7 +653,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		T: 'f + Sized;
 
-	/// The same as [`update_eager`](`SourceCellPin::update_eager`), but object-safe.
+	/// The same as [`update_eager`](`UnmanagedSignalCellPin::update_eager`), but object-safe.
 	fn update_eager_dyn<'f>(
 		&self,
 		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
@@ -713,7 +718,7 @@ pub trait SourceCellPin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		Self: Sized;
 
-	/// The same as [`update_blocking`](`SourceCellPin::update_blocking`), but object-safe.
+	/// The same as [`update_blocking`](`UnmanagedSignalCellPin::update_blocking`), but object-safe.
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>);
 }
 

@@ -37,16 +37,18 @@ mod effect;
 pub use effect::{Effect, EffectSR};
 
 mod traits;
-pub use traits::{Guard, SourceCellPin, SourcePin};
+pub use traits::{Guard, SourcePin, UnmanagedSignalCellPin};
 
 pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 pub mod prelude {
 	//! Flourish's value accessor traits ([`SourcePin`](`crate::traits::SourcePin`),
-	//! [`SourceCellPin`](`crate::traits::SourceCellPin`), [`Source`](`crate::traits::Source`)
-	//! and [`SourceCell`](`crate::traits::SourceCell`)), anonymously.
+	//! [`UnmanagedSignalCellPin`](`crate::traits::UnmanagedSignalCellPin`), [`Source`](`crate::traits::Source`)
+	//! and [`UnmanagedSignalCell`](`crate::traits::UnmanagedSignalCell`)), anonymously.
 
-	pub use crate::traits::{Source as _, SourceCell as _, SourceCellPin as _, SourcePin as _};
+	pub use crate::traits::{
+		SourcePin as _, UnmanagedSignal as _, UnmanagedSignalCell as _, UnmanagedSignalCellPin as _,
+	};
 }
 
 #[doc(hidden = "macro-only")]

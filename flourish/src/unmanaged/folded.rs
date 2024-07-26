@@ -15,7 +15,7 @@ use pin_project::pin_project;
 
 use crate::traits::{Guard, Subscribable};
 
-use super::Source;
+use super::UnmanagedSignal;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -139,7 +139,7 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Fol
 	}
 }
 
-impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Source<T, SR>
+impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
 	for Folded<T, F, SR>
 {
 	fn touch(self: Pin<&Self>) {

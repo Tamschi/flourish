@@ -2,7 +2,7 @@
 
 use ::core::pin::{pin, Pin};
 use flourish::{
-	unmanaged::{inert_cell, Source, SourceCell},
+	unmanaged::{inert_cell, UnmanagedSignal, UnmanagedSignalCell},
 	GlobalSignalsRuntime,
 };
 mod _validator;
@@ -25,7 +25,7 @@ fn use_macros() {
 		},
 		GlobalSignalsRuntime
 	));
-	let c = Pin::into_ref(c) as Pin<&dyn Source<_, _>>;
+	let c = Pin::into_ref(c) as Pin<&dyn UnmanagedSignal<_, _>>;
 	let d = pin!(flourish::unmanaged::computed(
 		|| {
 			x.push("d");
@@ -33,7 +33,7 @@ fn use_macros() {
 		},
 		GlobalSignalsRuntime
 	));
-	let d = Pin::into_ref(d) as Pin<&dyn Source<_, _>>;
+	let d = Pin::into_ref(d) as Pin<&dyn UnmanagedSignal<_, _>>;
 	let aa = pin!(flourish::unmanaged::computed_uncached(
 		|| {
 			x.push("aa");
@@ -41,7 +41,7 @@ fn use_macros() {
 		},
 		GlobalSignalsRuntime
 	));
-	let aa = Pin::into_ref(aa) as Pin<&dyn Source<_, _>>;
+	let aa = Pin::into_ref(aa) as Pin<&dyn UnmanagedSignal<_, _>>;
 	v.expect([]);
 	x.expect([]);
 

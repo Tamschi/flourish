@@ -9,7 +9,7 @@ use pin_project::pin_project;
 
 use crate::traits::{Guard, Subscribable};
 
-use super::Source;
+use super::UnmanagedSignal;
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -90,7 +90,7 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> ComputedUncache
 	}
 }
 
-impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> Source<T, SR>
+impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
 	for ComputedUncached<T, F, SR>
 {
 	fn touch(self: Pin<&Self>) {

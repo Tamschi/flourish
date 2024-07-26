@@ -79,14 +79,14 @@ use std::{marker::PhantomData, mem, pin::Pin, sync::Arc};
 use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::{
-	unmanaged::{SourceCell, Subscribable},
 	signal_cell::SignalCellRef,
+	unmanaged::{Subscribable, UnmanagedSignalCell},
 	SignalCellDyn, SignalCellRefDyn, SignalCellSR, SignalDyn, SignalSR,
 };
 
 // into `SignalCellSR` / into `SignalCellDyn`
 
-impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	From<SignalCellRef<'_, T, S, SR>> for SignalCellSR<T, S, SR>
 {
 	fn from(value: SignalCellRef<T, S, SR>) -> Self {
@@ -105,7 +105,7 @@ impl<T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntim
 impl<
 		'a,
 		T: 'a + ?Sized + Send,
-		S: 'a + Sized + SourceCell<T, SR>,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
 	> From<SignalCellSR<T, S, SR>> for SignalCellDyn<'a, T, SR>
 {
@@ -117,7 +117,7 @@ impl<
 impl<
 		'a,
 		T: 'a + ?Sized + Send,
-		S: 'a + Sized + SourceCell<T, SR>,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
 	> From<SignalCellRef<'_, T, S, SR>> for SignalCellDyn<'a, T, SR>
 {
@@ -129,8 +129,12 @@ impl<
 
 // into `SignalCellRef` / into `SignalCellRefDyn`
 
-impl<'r, T: ?Sized + Send, S: ?Sized + SourceCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	From<&'r SignalCellSR<T, S, SR>> for SignalCellRef<'r, T, S, SR>
+impl<
+		'r,
+		T: ?Sized + Send,
+		S: ?Sized + UnmanagedSignalCell<T, SR>,
+		SR: ?Sized + SignalsRuntimeRef,
+	> From<&'r SignalCellSR<T, S, SR>> for SignalCellRef<'r, T, S, SR>
 {
 	fn from(value: &'r SignalCellSR<T, S, SR>) -> Self {
 		Self {
@@ -151,7 +155,7 @@ impl<
 		'r,
 		'a,
 		T: 'a + ?Sized + Send,
-		S: 'a + Sized + SourceCell<T, SR>,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
 	> From<&'r SignalCellSR<T, S, SR>> for SignalCellRefDyn<'r, 'a, T, SR>
 {
@@ -172,7 +176,7 @@ impl<
 		'r,
 		'a,
 		T: 'a + ?Sized + Send,
-		S: 'a + Sized + SourceCell<T, SR>,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
 	> From<&'r SignalCellRef<'r, T, S, SR>> for SignalCellRefDyn<'r, 'a, T, SR>
 {
@@ -203,7 +207,7 @@ impl<
 impl<
 		'a,
 		T: 'a + ?Sized + Send,
-		S: 'a + Sized + SourceCell<T, SR>,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
 	> From<SignalCellSR<T, S, SR>> for SignalDyn<'a, T, SR>
 {
@@ -230,4 +234,4 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> From<Signal
 	}
 }
 
-//TODO: Conversion from raw SourceCell.
+//TODO: Conversion from raw UnmanagedSignalCell.

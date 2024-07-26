@@ -10,8 +10,8 @@ use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 use crate::{
 	opaque::Opaque,
-	unmanaged::{computed, folded, reduced},
 	traits::{Guard, Subscribable},
+	unmanaged::{computed, folded, reduced},
 	SignalRef, SignalSR, SourcePin,
 };
 

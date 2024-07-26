@@ -1,8 +1,8 @@
 #![cfg(feature = "global_signals_runtime")]
 
 use flourish::{
-	unmanaged::{Source, SourceCell},
 	signals_helper,
+	unmanaged::{UnmanagedSignal, UnmanagedSignalCell},
 };
 mod _validator;
 use _validator::Validator;
