@@ -5,7 +5,7 @@ mod _validator;
 use _validator::Validator;
 
 #[test]
-fn inherent() {
+fn intrinsic() {
 	let v = &Validator::new();
 
 	let a = SignalCell::new_reactive((), |_value, status| {

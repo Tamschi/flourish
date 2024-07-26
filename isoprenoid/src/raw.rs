@@ -498,7 +498,7 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
 	/// # Logic
 	///
 	/// The runtime **must** consider transitive subscriptions.  
-	/// The runtime **must** consider a signal's own inherent subscription.  
+	/// The runtime **must** consider a signal's own intrinsic subscriptions.  
 	/// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
 	///
 	/// # Safety

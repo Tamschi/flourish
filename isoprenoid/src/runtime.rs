@@ -111,9 +111,9 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// [`SignalsRuntimeRef::purge`]
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T;
 
-	/// Increases the inherent subscription count of `id`.
+	/// Increases the intrinsic subscription count of `id`.
 	///
-	/// An inherent subscription is one that is active regardless of dependents.
+	/// An intrinsic subscription is one that is active regardless of dependents.
 	///
 	/// # Logic
 	///
@@ -124,9 +124,9 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// [`SignalsRuntimeRef::purge`]
 	fn subscribe(&self, id: Self::Symbol);
 
-	/// Decreases the inherent subscription count of `id`.
+	/// Decreases the intrinsic subscription count of `id`.
 	///
-	/// An inherent subscription is one that is active regardless of dependents.
+	/// An intrinsic subscription is one that is active regardless of dependents.
 	///
 	/// # Logic
 	///
@@ -232,8 +232,8 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// method isn't called.
 	///
 	/// The runtime **must** process resulting subscription changes appropriately. This
-	/// includes notifying `id` of the subscription change from its inherent subscription
-	/// being removed, where applicable.  
+	/// includes notifying `id` of the subscription change from its intrinsic
+	/// subscriptions being removed, where applicable.  
 	/// The runtime **must not** indefinitely hold onto resources associated with `id`
 	/// after this method returns.
 	///
@@ -433,7 +433,7 @@ pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
 	/// # Logic
 	///
 	/// The runtime **must** consider transitive subscriptions.  
-	/// The runtime **must** consider a signal's own inherent subscription.  
+	/// The runtime **must** consider a signal's own intrinsic subscriptions.  
 	/// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
 	pub on_subscribed_change:
 		Option<unsafe fn(*const T, status: CTT::SubscribedStatus) -> Propagation>,

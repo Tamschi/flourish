@@ -44,7 +44,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-/// Inherently-subscribed version of [`SignalSR`].  
+/// Intrinsically-subscribed version of [`SignalSR`].  
 /// Can be directly constructed but also converted to and from that type.
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct SubscriptionSR<
@@ -104,12 +104,13 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 {
 	/// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
 	///
-	/// The subscribable is subscribed-to inherently.
+	/// The subscribable is subscribed-to intrinsically.
 	///
 	/// # Panics
 	///
-	/// Iff the call to [`Subscribable::subscribe_inherently`] fails. This should never happen,
-	/// as the subscribable shouldn't have been in a state where it could be subscribed to before pinning.
+	/// Iff the call to [`Subscribable::subscribe`] fails. This should never happen, as
+	/// the subscribable shouldn't have been in a state where it could be subscribed to
+	/// before pinning.
 	pub fn new(source: S) -> Self
 	where
 		S: Sized,
@@ -150,9 +151,6 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	} // Implicit drop(self) unsubscribes.
 
 	/// Cheaply clones this handle into a [`SignalSR`].
-	///
-	/// Only one handle can own the inherent subscription of the managed [`Subscribable`].
-	#[must_use = "Pure function."]
 	pub fn to_signal(self) -> SignalSR<T, S, SR> {
 		SignalSR {
 			source: Pin::clone(&self.source),

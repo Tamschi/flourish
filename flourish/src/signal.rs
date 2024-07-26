@@ -50,6 +50,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 ///
 /// Signals are not evaluated unless they are subscribed-to (or on demand if if not current).  
 /// Uncached signals are instead evaluated on direct demand **only** (but still communicate subscriptions and invalidation).
+#[must_use = "Signals are generally inert unless subscribed to."]
 pub struct SignalSR<
 	T: ?Sized + Send,
 	S: ?Sized + Subscribable<T, SR>,

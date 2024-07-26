@@ -176,7 +176,7 @@ pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 {
 	//TODO: Update docs here!
 
-	/// Subscribes this [`Subscribable`] (only regarding innate subscription)!
+	/// Subscribes this [`Subscribable`] intrinsically.
 	///
 	/// If necessary, this instance is initialised first, so that callbacks are active for it.
 	///
@@ -185,20 +185,15 @@ pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// The implementor **must** ensure dependencies are evaluated and current iff [`Some`] is returned.
 	///
 	/// Iff this method is called in parallel, initialising and subscribing calls **may** differ!
-	///
-	/// # Returns
-	///
-	/// `true` iff the inherent subscription is new, otherwise `false`.
-	#[must_use = "Only one inherent subscription can exist at a time for each signal."]
 	fn subscribe(self: Pin<&Self>);
 
-	/// Unsubscribes this [`Subscribable`] (only regarding innate subscription!).
+	/// Unsubscribes this [`Subscribable`] intrinsically.
 	///
-	/// # Returns
+	/// # Logic
 	///
-	/// Whether this instance was previously innately subscribed.
-	///
-	/// An innate subscription is a subscription not caused by a dependent subscriber.
+	/// Iff this isn't balanced with previous [`.subscribe()`](`Subscribable::subscribe`)
+	/// calls on this instance, the runtime **should** panic and **may** exhibit
+	/// unexpected behaviour (but not undefined behaviour).
 	fn unsubscribe(self: Pin<&Self>);
 }
 

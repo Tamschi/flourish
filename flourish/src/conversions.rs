@@ -74,8 +74,6 @@
 //!
 //! ## Side-effect conversions
 
-//TODO: Make inherent subscriptions non-unique in oder to have a nicer API for e.g. resource caches!
-
 use std::{marker::PhantomData, mem, pin::Pin, sync::Arc};
 
 use isoprenoid::runtime::SignalsRuntimeRef;

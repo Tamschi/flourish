@@ -868,7 +868,8 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			.subscribers_by_dependency
 			.entry(id)
 			.or_default()
-			.intrinsic > 0
+			.intrinsic
+			> 0
 		{
 			borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
 		}
