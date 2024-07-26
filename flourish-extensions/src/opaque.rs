@@ -8,7 +8,7 @@ use std::{
 };
 
 use flourish::{
-	raw::{Source, SourceCell, Subscribable},
+	unmanaged::{Source, SourceCell, Subscribable},
 	Guard, Propagation, SignalsRuntimeRef,
 };
 

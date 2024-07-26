@@ -8,7 +8,7 @@ pub mod prelude {
 	use std::ops::{AddAssign, Sub};
 
 	use ext_trait::extension;
-	use flourish::{raw::Subscribable, SignalSR, SignalsRuntimeRef, SubscriptionSR};
+	use flourish::{unmanaged::Subscribable, SignalSR, SignalsRuntimeRef, SubscriptionSR};
 	use flourish_extra::{
 		delta,
 		future::{filter_mapped, filtered, skipped_while},

@@ -15,7 +15,7 @@
 pub mod conversions;
 mod opaque;
 
-pub mod raw;
+pub mod unmanaged;
 
 //TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
@@ -51,7 +51,7 @@ pub mod prelude {
 
 #[doc(hidden = "macro-only")]
 pub mod __ {
-	pub use super::raw::{
+	pub use super::unmanaged::{
 		raw_effect::new_raw_unsubscribed_effect,
 		raw_subscription::{
 			new_raw_unsubscribed_subscription, pin_into_pin_impl_source, pull_new_subscription,

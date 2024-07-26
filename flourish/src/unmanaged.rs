@@ -369,89 +369,89 @@ pub use crate::effect_with_runtime;
 #[macro_export]
 macro_rules! signals_helper {
 	{let $name:ident = inert_cell!($initial_value:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::inert_cell($initial_value, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::pin!($crate::unmanaged::inert_cell($initial_value, $crate::GlobalSignalsRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = inert_cell_with_runtime!($initial_value:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::inert_cell($initial_value, $runtime));
+		let $name = ::core::pin::pin!($crate::unmanaged::inert_cell($initial_value, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = reactive_cell!($initial_value:expr, $on_subscribed_change_fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::reactive_cell($initial_value, $on_subscribed_change_fn_pin, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::pin!($crate::unmanaged::reactive_cell($initial_value, $on_subscribed_change_fn_pin, $crate::GlobalSignalsRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = reactive_cell_with_runtime!($initial_value:expr, $on_subscribed_change_fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::reactive_cell($initial_value, $on_subscribed_change_fn_pin, $runtime));
+		let $name = ::core::pin::pin!($crate::unmanaged::reactive_cell($initial_value, $on_subscribed_change_fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = reactive_cell_mut!($initial_value:expr, $on_subscribed_change_fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::reactive_cell_mut($initial_value, $on_subscribed_change_fn_pin, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::pin!($crate::unmanaged::reactive_cell_mut($initial_value, $on_subscribed_change_fn_pin, $crate::GlobalSignalsRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = reactive_cell_mut_with_runtime!($initial_value:expr, $on_subscribed_change_fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::reactive_cell_mut($initial_value, $on_subscribed_change_fn_pin, $runtime));
+		let $name = ::core::pin::pin!($crate::unmanaged::reactive_cell_mut($initial_value, $on_subscribed_change_fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name);
 	};
 	{let $name:ident = cached!($source:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::cached($source));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::cached($source));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = computed!($fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed($fn_pin, $crate::GlobalSignalsRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::computed($fn_pin, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = computed_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed($fn_pin, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::computed($fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = debounced!($fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::debounced($fn_pin, $crate::GlobalSignalsRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::debounced($fn_pin, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = debounced_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::debounced($fn_pin, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::debounced($fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = computed_uncached!($fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed_uncached($fn_pin, $crate::GlobalSignalsRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::computed_uncached($fn_pin, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = computed_uncached_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed_uncached($fn_pin, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::computed_uncached($fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = computed_uncached_mut!($fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($fn_pin, $crate::GlobalSignalsRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::computed_uncached_mut($fn_pin, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = computed_uncached_mut_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::computed_uncached_mut($fn_pin, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::computed_uncached_mut($fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = folded!($init:expr, $fold_fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::folded($init, $fold_fn_pin, $crate::GlobalSignalsRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::folded($init, $fold_fn_pin, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = folded_with_runtime!($init:expr, $fold_fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::folded($init, $fold_fn_pin, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::folded($init, $fold_fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = reduced!($select_fn_pin:expr, $reduce_fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::reduced($select_fn_pin, $reduce_fn_pin, $crate::GlobalSignalsRuntime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::reduced($select_fn_pin, $reduce_fn_pin, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = reduced_with_runtime!($select_fn_pin:expr, $reduce_fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::raw::reduced($select_fn_pin, $reduce_fn_pin, $runtime));
-		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::raw::Source<_, _>>;
+		let $name = ::core::pin::pin!($crate::unmanaged::reduced($select_fn_pin, $reduce_fn_pin, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::Source<_, _>>;
 	};
 	{let $name:ident = subscription!($fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::raw::computed($fn_pin, $crate::GlobalSignalsRuntime)));
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::unmanaged::computed($fn_pin, $crate::GlobalSignalsRuntime)));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$crate::__::pull_new_subscription($name);
 		let $name = $crate::__::pin_into_pin_impl_source($name);
 	};
 	{let $name:ident = subscription_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::raw::computed($fn_pin, $runtime)));
+		let $name = ::core::pin::pin!($crate::__::new_raw_unsubscribed_subscription($crate::unmanaged::computed($fn_pin, $runtime)));
 		let $name = ::core::pin::Pin::into_ref($name);
 		$crate::__::pull_new_subscription($name);
 		let $name = $crate::__::pin_into_pin_impl_source($name);
@@ -485,7 +485,7 @@ macro_rules! signals_helper {
 	};
 	// Repeat.
 	{$(let $name:ident = $macro:ident!($($arg:expr),*$(,)?);)*} => {$(
-		$crate::raw::signals_helper! {
+		$crate::unmanaged::signals_helper! {
 			let $name = $macro!($($arg),*);
 		}
 	)*};

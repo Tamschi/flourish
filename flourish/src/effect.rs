@@ -2,7 +2,7 @@ use std::{marker::PhantomData, pin::Pin};
 
 use isoprenoid::runtime::{GlobalSignalsRuntime, SignalsRuntimeRef};
 
-use crate::raw::new_raw_unsubscribed_effect;
+use crate::unmanaged::new_raw_unsubscribed_effect;
 
 /// Type inference helper alias for [`EffectSR`] (using [`GlobalSignalsRuntime`]).
 pub type Effect<'a> = EffectSR<'a, GlobalSignalsRuntime>;

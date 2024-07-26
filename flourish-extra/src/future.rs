@@ -12,7 +12,7 @@ use std::{
 use async_lock::OnceCell;
 use flourish::{
 	prelude::*,
-	raw::{Source, Subscribable},
+	unmanaged::{Source, Subscribable},
 	shadow_clone, signals_helper, Guard, Propagation, SignalsRuntimeRef, SubscriptionSR,
 };
 use pin_project::pin_project;

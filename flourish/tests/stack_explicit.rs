@@ -2,7 +2,7 @@
 
 use ::core::pin::{pin, Pin};
 use flourish::{
-	raw::{inert_cell, Source, SourceCell},
+	unmanaged::{inert_cell, Source, SourceCell},
 	GlobalSignalsRuntime,
 };
 mod _validator;
@@ -18,7 +18,7 @@ fn use_macros() {
 	let b = pin!(inert_cell(2, GlobalSignalsRuntime));
 	let b = Pin::into_ref(b);
 	let (b, b_cell) = b.as_source_and_cell();
-	let c = pin!(flourish::raw::computed(
+	let c = pin!(flourish::unmanaged::computed(
 		|| {
 			x.push("c");
 			a.get() + b.get()
@@ -26,7 +26,7 @@ fn use_macros() {
 		GlobalSignalsRuntime
 	));
 	let c = Pin::into_ref(c) as Pin<&dyn Source<_, _>>;
-	let d = pin!(flourish::raw::computed(
+	let d = pin!(flourish::unmanaged::computed(
 		|| {
 			x.push("d");
 			a.get() - b.get()
@@ -34,7 +34,7 @@ fn use_macros() {
 		GlobalSignalsRuntime
 	));
 	let d = Pin::into_ref(d) as Pin<&dyn Source<_, _>>;
-	let aa = pin!(flourish::raw::computed_uncached(
+	let aa = pin!(flourish::unmanaged::computed_uncached(
 		|| {
 			x.push("aa");
 			c.get() + d.get()
@@ -47,7 +47,7 @@ fn use_macros() {
 
 	{
 		let _sub_aa = pin!(flourish::__::new_raw_unsubscribed_subscription(
-			flourish::raw::computed(
+			flourish::unmanaged::computed(
 				|| {
 					x.push("sub_aa");
 					v.push(aa.get())
@@ -78,7 +78,7 @@ fn use_macros() {
 	x.expect([]);
 
 	let _sub_c = pin!(flourish::__::new_raw_unsubscribed_subscription(
-		flourish::raw::computed(
+		flourish::unmanaged::computed(
 			|| {
 				x.push("sub_c");
 				v.push(c.get())
@@ -90,7 +90,7 @@ fn use_macros() {
 	flourish::__::pull_new_subscription(_sub_c);
 	let _sub_c = flourish::__::pin_into_pin_impl_source(_sub_c);
 	let _sub_d = pin!(flourish::__::new_raw_unsubscribed_subscription(
-		flourish::raw::computed(
+		flourish::unmanaged::computed(
 			|| {
 				x.push("sub_d");
 				v.push(d.get())

@@ -1,7 +1,7 @@
 #![cfg(feature = "global_signals_runtime")]
 
 use flourish::{
-	raw::{Source, SourceCell},
+	unmanaged::{Source, SourceCell},
 	signals_helper,
 };
 mod _validator;

@@ -79,7 +79,7 @@ use std::{marker::PhantomData, mem, pin::Pin, sync::Arc};
 use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::{
-	raw::{SourceCell, Subscribable},
+	unmanaged::{SourceCell, Subscribable},
 	signal_cell::SignalCellRef,
 	SignalCellDyn, SignalCellRefDyn, SignalCellSR, SignalDyn, SignalSR,
 };

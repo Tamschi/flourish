@@ -14,7 +14,7 @@ use isoprenoid::runtime::{
 
 use crate::{
 	opaque::Opaque,
-	raw::{InertCell, ReactiveCell, ReactiveCellMut},
+	unmanaged::{InertCell, ReactiveCell, ReactiveCellMut},
 	shadow_clone,
 	traits::{Guard, Source, SourceCell, Subscribable},
 	SignalDyn, SignalRef, SignalRefDyn, SignalSR, SourceCellPin, SourcePin,
