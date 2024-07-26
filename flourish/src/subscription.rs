@@ -203,9 +203,7 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 ///
 /// // The closure runs once on subscription, but not to refresh `sub`!
 /// // It re-runs with each access of its value through `SourcePin`, instead.
-/// let sub = Signal::computed_uncached(|| ())
-///     .try_subscribe()
-///     .expect("contextually infallible");
+/// let sub = Signal::computed_uncached(|| ()).subscribe();
 /// # }
 /// ```
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SubscriptionSR<T, Opaque, SR> {

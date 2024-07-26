@@ -17,21 +17,19 @@ use super::{private, ACallbackTableTypes, ASymbol, CallbackTable, Propagation, S
 
 #[derive(Debug)]
 pub(crate) struct ASignalsRuntime {
-	pub(crate) source_counter: AtomicU64,
-	pub(crate) critical_mutex: ReentrantMutex<RefCell<ASignalsRuntime_>>,
+	source_counter: AtomicU64,
+	critical_mutex: ReentrantMutex<RefCell<ASignalsRuntime_>>,
 }
 
 unsafe impl Sync for ASignalsRuntime {}
 
-pub(crate) struct ASignalsRuntime_ {
-	pub(crate) context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
-	pub(crate) callbacks:
-		BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
+struct ASignalsRuntime_ {
+	context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
+	callbacks: BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
 	///FIXME: This is not-at-all a fair queue.
-	pub(crate) update_queue:
-		BTreeMap<ASymbol, VecDeque<Box<dyn 'static + Send + FnOnce() -> Propagation>>>,
-	pub(crate) stale_queue: BTreeSet<ASymbol>,
-	pub(crate) interdependencies: Interdependencies,
+	update_queue: BTreeMap<ASymbol, VecDeque<Box<dyn 'static + Send + FnOnce() -> Propagation>>>,
+	stale_queue: BTreeSet<ASymbol>,
+	interdependencies: Interdependencies,
 }
 
 impl Debug for ASignalsRuntime_ {
@@ -48,13 +46,13 @@ impl Debug for ASignalsRuntime_ {
 }
 
 #[derive(Debug)]
-pub(crate) struct Interdependencies {
+struct Interdependencies {
 	/// Note: While a symbol is flagged as subscribed explicitly,
 	///       it is present as its own subscriber here (by not in `all_by_dependency`!).
 	/// FIXME: This could store subscriber counts instead.
-	pub(crate) subscribers_by_dependency: BTreeMap<ASymbol, Subscribers>,
-	pub(crate) all_by_dependent: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
-	pub(crate) all_by_dependency: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
+	subscribers_by_dependency: BTreeMap<ASymbol, Subscribers>,
+	all_by_dependent: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
+	all_by_dependency: BTreeMap<ASymbol, BTreeSet<ASymbol>>,
 }
 
 #[derive(Debug, Default)]
@@ -81,7 +79,7 @@ impl Subscribers {
 }
 
 impl Interdependencies {
-	pub(crate) const fn new() -> Self {
+	const fn new() -> Self {
 		Self {
 			subscribers_by_dependency: BTreeMap::new(),
 			all_by_dependent: BTreeMap::new(),
@@ -104,7 +102,7 @@ impl ASignalsRuntime {
 		}
 	}
 
-	pub(crate) fn peek_stale<'a>(
+	fn peek_stale<'a>(
 		&self,
 		borrow: RefMut<'a, ASignalsRuntime_>,
 	) -> (Option<ASymbol>, RefMut<'a, ASignalsRuntime_>) {
@@ -123,7 +121,7 @@ impl ASignalsRuntime {
 		)
 	}
 
-	pub(crate) fn subscribe_to_with<'a>(
+	fn subscribe_to_with<'a>(
 		&self,
 		dependency: ASymbol,
 		dependent: ASymbol,
@@ -136,15 +134,16 @@ impl ASignalsRuntime {
 			.entry(dependency)
 			.or_default();
 
-		if dependency == dependent {
+		if if dependency == dependent {
 			subscribers.intrinsic = subscribers
 				.intrinsic
 				.checked_add(1)
 				.expect("The intrinsic subscription count became too high.");
+			true
 		} else {
-			assert!(subscribers.extrinsic.insert(dependent));
-		}
-		if subscribers.total() == 1 {
+			subscribers.extrinsic.insert(dependent)
+		} && subscribers.total() == 1
+		{
 			// First subscriber, so propagate upwards and then call the handler!
 
 			for transitive_dependency in borrow
@@ -199,7 +198,7 @@ impl ASignalsRuntime {
 		borrow
 	}
 
-	pub(crate) fn unsubscribe_from_with<'a>(
+	fn unsubscribe_from_with<'a>(
 		&self,
 		dependency: ASymbol,
 		dependent: ASymbol,
@@ -240,15 +239,16 @@ impl ASignalsRuntime {
 			.entry(dependency)
 			.or_default();
 
-		if dependency == dependent {
+		if if dependency == dependent {
 			subscribers.intrinsic = subscribers
 				.intrinsic
 				.checked_sub(1)
-				.expect("Tried to lower intrinsic subscription count below zero.")
+				.expect("Tried to lower intrinsic subscription count below zero.");
+			true
 		} else {
-			assert!(subscribers.extrinsic.remove(&dependent))
-		}
-		if subscribers.is_empty() {
+			subscribers.extrinsic.remove(&dependent)
+		} && subscribers.is_empty()
+		{
 			// Just removed last subscriber, so call the change handler (if there is one).
 
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&dependency) {
@@ -305,7 +305,7 @@ impl ASignalsRuntime {
 		borrow
 	}
 
-	pub(crate) fn process_pending<'a>(
+	fn process_pending<'a>(
 		&self,
 		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
@@ -360,7 +360,7 @@ impl ASignalsRuntime {
 		borrow
 	}
 
-	pub(crate) fn next_update<'a>(
+	fn next_update<'a>(
 		&self,
 		_lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
@@ -378,7 +378,7 @@ impl ASignalsRuntime {
 		(None, borrow)
 	}
 
-	pub(crate) fn mark_direct_dependencies_stale<'a>(
+	fn mark_direct_dependencies_stale<'a>(
 		&self,
 		id: ASymbol,
 		_lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
@@ -396,7 +396,7 @@ impl ASignalsRuntime {
 		borrow
 	}
 
-	pub(crate) fn shrink_dependencies<'a>(
+	fn shrink_dependencies<'a>(
 		&self,
 		id: ASymbol,
 		recorded_dependencies: BTreeSet<ASymbol>,
@@ -863,8 +863,15 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			);
 		}
 
-		//TODO: Make this conditional, and also unsubscribe all dependencies one by one.
-		borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
+		while borrow
+			.interdependencies
+			.subscribers_by_dependency
+			.entry(id)
+			.or_default()
+			.intrinsic > 0
+		{
+			borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
+		}
 
 		borrow.callbacks.remove(&id);
 
