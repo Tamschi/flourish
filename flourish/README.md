@@ -175,17 +175,17 @@ TODO
 You can use a different [`isoprenoid`] runtime with the included types and macros (but ideally, alias these items for your own use):
 
 ```rust
-use flourish::{signals_helper, GlobalSignalsRuntime, SignalSR, SignalCell, SubscriptionSR, Propagation};
+use flourish::{signals_helper, GlobalSignalsRuntime, ArcSignal, SignalCell, ArcSubscription, Propagation};
 
 let _ = SignalCell::with_runtime((), GlobalSignalsRuntime);
 
-let _ = SignalSR::computed_with_runtime(|| (), GlobalSignalsRuntime);
-let _ = SignalSR::computed_uncached_with_runtime(|| (), GlobalSignalsRuntime);
-let _ = SignalSR::computed_uncached_mut_with_runtime(|| (), GlobalSignalsRuntime);
-let _ = SignalSR::folded_with_runtime((), |_value| Propagation::Propagate, GlobalSignalsRuntime);
-let _ = SignalSR::reduced_with_runtime(|| (), |_value, _next| Propagation::Propagate, GlobalSignalsRuntime);
+let _ = ArcSignal::computed_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = ArcSignal::computed_uncached_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = ArcSignal::computed_uncached_mut_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = ArcSignal::folded_with_runtime((), |_value| Propagation::Propagate, GlobalSignalsRuntime);
+let _ = ArcSignal::reduced_with_runtime(|| (), |_value, _next| Propagation::Propagate, GlobalSignalsRuntime);
 
-let _ = SubscriptionSR::computed_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = ArcSubscription::computed_with_runtime(|| (), GlobalSignalsRuntime);
 
 signals_helper! {
   let _inert_cell = inert_cell_with_runtime!((), GlobalSignalsRuntime);
@@ -213,7 +213,7 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |Feature|What it would enable|
 |-|-|
 |[`coerce_unsized`](https://github.com/rust-lang/rust/issues/18598)|Unsizing coercions for various `SourcePin` (handle) types.<br>For now, please use `.into_dyn()` or the `From`/`Into` conversions instead.|
-|[`trait_upcasting`](https://github.com/rust-lang/rust/issues/65991)|Shrink `SignalCellSR` and `SignalCellRef` by at least half.|
+|[`trait_upcasting`](https://github.com/rust-lang/rust/issues/65991)|Shrink `ArcSignalCell` and `SignalCell` by at least half.|
 |Fix for [Unexpected higher-ranked lifetime error in GAT usage](https://github.com/rust-lang/rust/issues/100013)|(Cleanly) avoid boxing the inner closure in many "`_eager`" methods.|
 |Object-safety for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
 |[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of `SignalCellPin` implementations.|

@@ -17,16 +17,17 @@ use crate::{
 	shadow_clone,
 	traits::{Guard, Subscribable, UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{InertCell, ReactiveCell, ReactiveCellMut},
-	SignalDyn, SignalRef, SignalRefDyn, SignalSR, SourcePin, UnmanagedSignalCellPin,
+	ArcSignal, ArcSignalDyn, Signal, SignalDyn, SourcePin, UnmanagedSignalCellPin,
 };
 
-/// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalsRuntime`]).
-pub type SignalCell<T, S> = SignalCellSR<T, S, GlobalSignalsRuntime>;
+//TODO
+// /// Type inference helper alias for [`ArcSignalCell`] (using [`GlobalSignalsRuntime`]).
+// pub type SignalCell<T, S> = ArcSignalCell<T, S, GlobalSignalsRuntime>;
 
-/// Type of [`SignalCellSR`]s after type-erasure. Dynamic dispatch.
-pub type SignalCellDyn<'a, T, SR> = SignalCellSR<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
+/// Type of [`ArcSignalCell`]s after type-erasure. Dynamic dispatch.
+pub type ArcSignalCellDyn<'a, T, SR> = ArcSignalCell<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-/// Type of [`WeakSignalCell`]s after type-erasure or [`SignalCellDyn`] after downgrade. Dynamic dispatch.
+/// Type of [`WeakSignalCell`]s after type-erasure or [`ArcSignalCellDyn`] after downgrade. Dynamic dispatch.
 pub type WeakSignalCellDyn<'a, T, SR> = WeakSignalCell<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
 pub struct WeakSignalCell<
@@ -34,18 +35,15 @@ pub struct WeakSignalCell<
 	S: ?Sized + UnmanagedSignalCell<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	pub(crate) source_cell: Weak<S>,
-	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
-	/// being unstable. Once that's stabilised, this field can be removed.
-	pub(crate) upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
+	pub(crate) weak: Weak<SignalCell<T, S, SR>>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	WeakSignalCell<T, S, SR>
 {
 	#[must_use]
-	pub fn upgrade(&self) -> Option<SignalCellSR<T, S, SR>> {
-		self.source_cell.upgrade().map(|strong| SignalCellSR {
+	pub fn upgrade(&self) -> Option<ArcSignalCell<T, S, SR>> {
+		self.source_cell.upgrade().map(|strong| ArcSignalCell {
 			source_cell: unsafe { Pin::new_unchecked(strong) },
 			upcast: self.upcast,
 		})
@@ -54,19 +52,16 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 
 //TODO: Unwrapping.
 
-pub struct SignalCellSR<
+pub struct ArcSignalCell<
 	T: ?Sized + Send,
 	S: ?Sized + UnmanagedSignalCell<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	pub(crate) source_cell: Pin<Arc<S>>,
-	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
-	/// being unstable. Once that's stabilised, this field can be removed.
-	pub(crate) upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
+	pub(crate) arc: Arc<SignalCell<T, S, SR>>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
-	for SignalCellSR<T, S, SR>
+	for ArcSignalCell<T, S, SR>
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -80,7 +75,7 @@ impl<
 		T: ?Sized + Debug + Send,
 		S: ?Sized + UnmanagedSignalCell<T, SR>,
 		SR: SignalsRuntimeRef + Debug,
-	> Debug for SignalCellSR<T, S, SR>
+	> Debug for ArcSignalCell<T, S, SR>
 where
 	S: Debug,
 {
@@ -102,10 +97,10 @@ impl<T> From<T> for AssertSendSync<T> {
 	}
 }
 
-impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
+impl<T: Send, SR: SignalsRuntimeRef> ArcSignalCell<T, Opaque, SR> {
 	pub fn new<'a>(
 		initial_value: T,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -116,13 +111,13 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 	pub fn with_runtime<'a>(
 		initial_value: T,
 		runtime: SR,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
 	{
 		let arc = Arc::pin(InertCell::with_runtime(initial_value, runtime));
-		SignalCellSR {
+		ArcSignalCell {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<T, SR>);
@@ -136,7 +131,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 
 	pub fn new_cyclic<'a>(
 		make_initial_value: impl 'a + FnOnce(WeakSignalCellDyn<'a, T, SR>) -> T,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -147,7 +142,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 	pub fn new_cyclic_with_runtime<'a>(
 		make_initial_value: impl 'a + FnOnce(WeakSignalCellDyn<'a, T, SR>) -> T,
 		runtime: SR,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -163,7 +158,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 				)
 			}))
 		};
-		SignalCellSR {
+		ArcSignalCell {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<T, SR>);
@@ -186,7 +181,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 	>(
 		initial_value: T,
 		on_subscribed_change_fn_pin: HandlerFnPin,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -206,7 +201,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 		initial_value: T,
 		on_subscribed_change_fn_pin: HandlerFnPin,
 		runtime: SR,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -216,7 +211,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 			on_subscribed_change_fn_pin,
 			runtime,
 		));
-		SignalCellSR {
+		ArcSignalCell {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<T, SR>);
@@ -240,7 +235,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
 			WeakSignalCellDyn<'a, T, SR>,
 		) -> (T, HandlerFnPin),
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -264,7 +259,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 			WeakSignalCellDyn<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 		runtime: SR,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -279,7 +274,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 				ReactiveCell::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 			}))
 		};
-		SignalCellSR {
+		ArcSignalCell {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<T, SR>);
@@ -299,7 +294,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -320,7 +315,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		runtime: SR,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -330,7 +325,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 			on_subscribed_change_fn_pin,
 			runtime,
 		));
-		SignalCellSR {
+		ArcSignalCell {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<T, SR>);
@@ -354,7 +349,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
 			WeakSignalCellDyn<'a, T, SR>,
 		) -> (T, HandlerFnPin),
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -379,7 +374,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 			WeakSignalCellDyn<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 		runtime: SR,
-	) -> SignalCellSR<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> ArcSignalCell<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		HandlerFnPin: 'a,
@@ -395,7 +390,7 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 				ReactiveCellMut::with_runtime(initial_value, on_subscribed_change_fn_pin, runtime)
 			}))
 		};
-		SignalCellSR {
+		ArcSignalCell {
 			upcast: unsafe {
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&arc)))
 					as *const (dyn '_ + Subscribable<T, SR>);
@@ -409,19 +404,19 @@ impl<T: Send, SR: SignalsRuntimeRef> SignalCellSR<T, Opaque, SR> {
 }
 
 impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntimeRef>
-	SignalCellSR<T, S, SR>
+	ArcSignalCell<T, S, SR>
 {
-	/// Cheaply creates a [`SignalSR`] handle to the managed [`UnmanagedSignalCell`].
-	pub fn to_signal(&self) -> SignalSR<T, S, SR> {
-		SignalSR {
+	/// Cheaply creates a [`ArcSignal`] handle to the managed [`UnmanagedSignalCell`].
+	pub fn to_signal(&self) -> ArcSignal<T, S, SR> {
+		ArcSignal {
 			source: Pin::clone(&self.source_cell),
 			_phantom: PhantomData,
 		}
 	}
 
-	/// Cheaply borrows this [`SignalCellSR`] as [`SignalRef`], which is [`Copy`].
-	pub fn as_signal_ref(&self) -> SignalRef<'_, T, S, SR> {
-		SignalRef {
+	/// Cheaply borrows this [`ArcSignalCell`] as [`Signal`], which is [`Copy`].
+	pub fn as_signal_ref(&self) -> Signal<'_, T, S, SR> {
+		Signal {
 			source: unsafe {
 				let ptr = Pin::clone(&self.source_cell);
 				let ptr = Arc::into_raw(Pin::into_inner_unchecked(ptr));
@@ -433,10 +428,10 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntime
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalCellDyn<'a, T, SR> {
-	/// Cheaply creates a [`SignalDyn`] handle to the managed [`UnmanagedSignalCell`].
-	pub fn to_signal(&self) -> SignalDyn<'a, T, SR> {
-		SignalSR {
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> ArcSignalCellDyn<'a, T, SR> {
+	/// Cheaply creates a [`ArcSignalDyn`] handle to the managed [`UnmanagedSignalCell`].
+	pub fn to_signal(&self) -> ArcSignalDyn<'a, T, SR> {
+		ArcSignal {
 			source: unsafe {
 				Arc::increment_strong_count(self.upcast.0);
 				Pin::new_unchecked(Arc::from_raw(self.upcast.0))
@@ -445,9 +440,9 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalCellDyn<'a, T,
 		}
 	}
 
-	/// Cheaply borrows this [`SignalCellDyn`] as [`SignalRefDyn`], which is [`Copy`].
-	pub fn as_signal_ref(&self) -> SignalRefDyn<'_, 'a, T, SR> {
-		SignalRef {
+	/// Cheaply borrows this [`ArcSignalCellDyn`] as [`SignalDyn`], which is [`Copy`].
+	pub fn as_signal_ref(&self) -> SignalDyn<'_, 'a, T, SR> {
+		Signal {
 			source: self.upcast.0,
 			_phantom: PhantomData,
 		}
@@ -455,18 +450,8 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalCellDyn<'a, T,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntimeRef>
-	SignalCellSR<T, S, SR>
+	ArcSignalCell<T, S, SR>
 {
-	pub fn into_dyn<'a>(self) -> SignalCellDyn<'a, T, SR>
-	where
-		S: 'a + Sized,
-	{
-		SignalCellSR {
-			source_cell: self.source_cell,
-			upcast: self.upcast,
-		}
-	}
-
 	pub fn downgrade(&self) -> WeakSignalCell<T, S, SR> {
 		WeakSignalCell {
 			source_cell: Arc::downgrade(unsafe {
@@ -477,7 +462,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntim
 	}
 
 	//TODO: Make this available for "`Dyn`"!
-	pub fn into_signal_and_self(self) -> (SignalSR<T, S, SR>, Self)
+	pub fn into_signal_and_self(self) -> (ArcSignal<T, S, SR>, Self)
 	where
 		S: Sized,
 	{
@@ -485,7 +470,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntim
 	}
 
 	//TODO: Make this available for "`Dyn`"!
-	pub fn into_signal_and_self_dyn<'a>(self) -> (SignalDyn<'a, T, SR>, SignalCellDyn<'a, T, SR>)
+	pub fn into_signal_and_self_dyn<'a>(
+		self,
+	) -> (ArcSignalDyn<'a, T, SR>, ArcSignalCellDyn<'a, T, SR>)
 	where
 		T: 'a,
 		S: 'a + Sized,
@@ -496,7 +483,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntim
 }
 
 impl<T: Send + ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	SourcePin<T, SR> for SignalCellSR<T, S, SR>
+	SourcePin<T, SR> for ArcSignalCell<T, S, SR>
 {
 	fn touch(&self) {
 		self.source_cell.as_ref().touch()
@@ -567,7 +554,7 @@ impl<T: Send + ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 /// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
 /// bound, which is a bit less performant than using those accessors without type erasure.
 impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
-	for SignalCellDyn<'a, T, SR>
+	for ArcSignalCellDyn<'a, T, SR>
 {
 	fn touch(&self) {
 		self.source_cell.as_ref().touch()
@@ -636,7 +623,7 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
 }
 
 impl<T: Send + ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	UnmanagedSignalCellPin<T, SR> for SignalCellSR<T, S, SR>
+	UnmanagedSignalCellPin<T, SR> for ArcSignalCell<T, S, SR>
 {
 	fn change(&self, new_value: T)
 	where
@@ -943,7 +930,7 @@ impl<T: Send + ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 /// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
 /// bound, which is a bit less performant than using those accessors without type erasure.
 impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCellPin<T, SR>
-	for SignalCellDyn<'a, T, SR>
+	for ArcSignalCellDyn<'a, T, SR>
 {
 	fn change(&self, new_value: T)
 	where
@@ -1318,24 +1305,31 @@ impl<'a, T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCellPi
 	}
 }
 
-/// Type of [`SignalCellRef`]s after type-erasure. Dynamic dispatch.
-pub type SignalCellRefDyn<'r, 'a, T, SR> = SignalCellRef<'r, T, dyn 'a + Subscribable<T, SR>, SR>;
+/// Type of [`SignalCell`]s after type-erasure. Dynamic dispatch.
+pub type SignalCellDyn<'a, T, SR> = SignalCell<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-/// A very cheap [`SignalCellSR`]-like borrow that's [`Copy`].
+/// A very cheap [`ArcSignalCell`]-like borrow that's [`Copy`].
 ///
-/// Can be cloned into an additional [`SignalCellSR`] and indirectly subscribed to.
+/// Can be cloned into an additional [`ArcSignalCell`] and indirectly subscribed to.
 #[derive(Debug)]
-pub struct SignalCellRef<
-	'r,
+pub struct SignalCell<
 	T: ?Sized + Send,
 	S: ?Sized + Subscribable<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	pub(crate) source_cell: *const S,
 	/// FIXME: This is a workaround for [`trait_upcasting`](https://doc.rust-lang.org/beta/unstable-book/language-features/trait-upcasting.html)
 	/// being unstable. Once that's stabilised, this field can be removed.
-	pub(crate) upcast: AssertSendSync<*const dyn Subscribable<T, SR>>,
-	pub(crate) _phantom: PhantomData<&'r ()>,
+	pub(crate) upcast: *const dyn Subscribable<T, SR>,
+	pub(crate) source_cell: S,
+}
+
+unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
+	for SignalCell<T, S, SR>
+{
+}
+unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
+	for SignalCell<T, S, SR>
+{
 }
 
 /// Duplicated to avoid identities.

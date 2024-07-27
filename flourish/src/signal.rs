@@ -11,16 +11,17 @@ use crate::{
 	opaque::Opaque,
 	traits::{Guard, Subscribable},
 	unmanaged::{computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced},
-	SourcePin, SubscriptionSR,
+	ArcSubscription, SourcePin,
 };
 
-/// Type inference helper alias for [`SignalSR`] (using [`GlobalSignalsRuntime`]).
-pub type Signal<T, S> = SignalSR<T, S, GlobalSignalsRuntime>;
+//TODO
+// /// Type inference helper alias for [`ArcSignal`] (using [`GlobalSignalsRuntime`]).
+// pub type Signal<T, S> = ArcSignal<T, S, GlobalSignalsRuntime>;
 
-/// Type of [`SignalSR`]s after type-erasure. Dynamic dispatch.
-pub type SignalDyn<'a, T, SR> = SignalSR<T, dyn 'a + Subscribable<T, SR>, SR>;
+/// Type of [`ArcSignal`]s after type-erasure. Dynamic dispatch.
+pub type ArcSignalDyn<'a, T, SR> = ArcSignal<T, dyn 'a + Subscribable<T, SR>, SR>;
 
-/// Type of [`WeakSignal`]s after type-erasure or [`SignalDyn`] after downgrade. Dynamic dispatch.
+/// Type of [`WeakSignal`]s after type-erasure or [`ArcSignalDyn`] after downgrade. Dynamic dispatch.
 pub type WeakSignalDyn<'a, T, SR> = WeakSignal<T, dyn 'a + Subscribable<T, SR>, SR>;
 
 pub struct WeakSignal<
@@ -36,8 +37,8 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	WeakSignal<T, S, SR>
 {
 	#[must_use]
-	pub fn upgrade(&self) -> Option<SignalSR<T, S, SR>> {
-		self.source_cell.upgrade().map(|strong| SignalSR {
+	pub fn upgrade(&self) -> Option<ArcSignal<T, S, SR>> {
+		self.source_cell.upgrade().map(|strong| ArcSignal {
 			source: unsafe { Pin::new_unchecked(strong) },
 			_phantom: PhantomData,
 		})
@@ -51,7 +52,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 /// Signals are not evaluated unless they are subscribed-to (or on demand if if not current).  
 /// Uncached signals are instead evaluated on direct demand **only** (but still communicate subscriptions and invalidation).
 #[must_use = "Signals are generally inert unless subscribed to."]
-pub struct SignalSR<
+pub struct ArcSignal<
 	T: ?Sized + Send,
 	S: ?Sized + Subscribable<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
@@ -61,7 +62,7 @@ pub struct SignalSR<
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
-	for SignalSR<T, S, SR>
+	for ArcSignal<T, S, SR>
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -72,13 +73,13 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
-	for SignalSR<T, S, SR>
+	for ArcSignal<T, S, SR>
 where
 	T: Debug,
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		self.source.clone_runtime_ref().run_detached(|| {
-			f.debug_struct("SignalSR")
+			f.debug_struct("ArcSignal")
 				.field("(value)", &&**self.source.as_ref().read_exclusive_dyn())
 				.finish_non_exhaustive()
 		})
@@ -86,31 +87,31 @@ where
 }
 
 unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
-	for SignalSR<T, S, SR>
+	for ArcSignal<T, S, SR>
 {
 }
 unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
-	for SignalSR<T, S, SR>
+	for ArcSignal<T, S, SR>
 {
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	SignalSR<T, S, SR>
+	ArcSignal<T, S, SR>
 {
-	/// Creates a new [`SignalSR`] from the provided raw [`Subscribable`].
+	/// Creates a new [`ArcSignal`] from the provided raw [`Subscribable`].
 	pub fn new(source: S) -> Self
 	where
 		S: Sized,
 	{
-		SignalSR {
+		ArcSignal {
 			source: Arc::pin(source),
 			_phantom: PhantomData,
 		}
 	}
 
-	/// Cheaply borrows this [`SignalSR`] as [`SignalRef`], which is [`Copy`].
-	pub fn as_ref(&self) -> SignalRef<'_, T, S, SR> {
-		SignalRef {
+	/// Cheaply borrows this [`ArcSignal`] as [`Signal`], which is [`Copy`].
+	pub fn as_ref(&self) -> Signal<'_, T, S, SR> {
+		Signal {
 			source: {
 				let ptr =
 					Arc::into_raw(unsafe { Pin::into_inner_unchecked(Pin::clone(&self.source)) });
@@ -123,31 +124,31 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 
 	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
 
-	pub fn subscribe(self) -> SubscriptionSR<T, S, SR> {
+	pub fn subscribe(self) -> ArcSubscription<T, S, SR> {
 		self.source.as_ref().subscribe();
-		SubscriptionSR {
-			source: self.source,
+		ArcSubscription {
+			arc: self.source,
 			_phantom: PhantomData,
 		}
 	}
 
-	pub fn into_dyn<'a>(self) -> SignalDyn<'a, T, SR>
+	pub fn into_dyn<'a>(self) -> ArcSignalDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
 	{
 		let Self { source, _phantom } = self;
-		SignalDyn { source, _phantom }
+		ArcSignalDyn { source, _phantom }
 	}
 }
 
 /// Secondary constructors.
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
+impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> ArcSignal<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -161,12 +162,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	pub fn computed_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalSR::new(computed(fn_pin, runtime))
+		ArcSignal::new(computed(fn_pin, runtime))
 	}
 
 	/// A simple cached computation.
@@ -176,7 +177,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	/// Wraps [`debounced`](`debounced()`).
 	pub fn debounced<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized + PartialEq,
 		SR: 'a + Default,
@@ -192,12 +193,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	pub fn debounced_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized + PartialEq,
 		SR: 'a,
 	{
-		SignalSR::new(debounced(fn_pin, runtime))
+		ArcSignal::new(debounced(fn_pin, runtime))
 	}
 
 	/// A simple **uncached** computation.
@@ -205,7 +206,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	/// Wraps [`computed_uncached`](`computed_uncached()`).
 	pub fn computed_uncached<'a>(
 		fn_pin: impl 'a + Send + Sync + Fn() -> T,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -219,12 +220,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	pub fn computed_uncached_with_runtime<'a>(
 		fn_pin: impl 'a + Send + Sync + Fn() -> T,
 		runtime: SR,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalSR::new(computed_uncached(fn_pin, runtime))
+		ArcSignal::new(computed_uncached(fn_pin, runtime))
 	}
 
 	/// A simple **stateful uncached** computation.
@@ -234,7 +235,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
 	pub fn computed_uncached_mut<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -250,12 +251,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	pub fn computed_uncached_mut_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalSR::new(computed_uncached_mut(fn_pin, runtime))
+		ArcSignal::new(computed_uncached_mut(fn_pin, runtime))
 	}
 
 	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
@@ -264,7 +265,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	pub fn folded<'a>(
 		init: T,
 		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -279,12 +280,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 		init: T,
 		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
 		runtime: SR,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalSR::new(folded(init, fold_fn_pin, runtime))
+		ArcSignal::new(folded(init, fold_fn_pin, runtime))
 	}
 
 	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
@@ -294,7 +295,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 	pub fn reduced<'a>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -310,17 +311,17 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
 		runtime: SR,
-	) -> SignalSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSignal<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalSR::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
+		ArcSignal::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
 }
 
 impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	SourcePin<T, SR> for SignalSR<T, S, SR>
+	SourcePin<T, SR> for ArcSignal<T, S, SR>
 {
 	fn touch(&self) {
 		self.source.as_ref().touch()
@@ -390,7 +391,7 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 /// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
 /// bound, which is a bit less performant than using those accessors without type erasure.
 impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
-	for SignalDyn<'a, T, SR>
+	for ArcSignalDyn<'a, T, SR>
 {
 	fn touch(&self) {
 		self.source.as_ref().touch()
@@ -458,29 +459,31 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 	}
 }
 
-/// Type of [`SignalRef`]s after type-erasure. Dynamic dispatch.
-pub type SignalRefDyn<'r, 'a, T, SR> = SignalRef<'r, T, dyn 'a + Subscribable<T, SR>, SR>;
+/// Type of [`Signal`]s after type-erasure. Dynamic dispatch.
+pub type SignalDyn<'r, 'a, T, SR> = Signal<'r, T, dyn 'a + Subscribable<T, SR>, SR>;
 
-/// A very cheap [`SignalSR`]-like borrow that's [`Copy`].
+/// A very cheap [`ArcSignal`]-like borrow that's [`Copy`].
 ///
-/// Can be cloned into an additional [`SignalSR`] and indirectly subscribed to.
+/// Can be cloned into an additional [`ArcSignal`] and indirectly subscribed to.
 #[derive(Debug)]
-pub struct SignalRef<
-	'r,
+pub struct Signal<
 	T: ?Sized + Send,
 	S: ?Sized + Subscribable<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	pub(crate) source: *const S,
-	pub(crate) _phantom: PhantomData<&'r (PhantomData<T>, SR)>,
+	///FIXME?: It *is* possible to get rid of this field, by wrapping the entire contents
+	///        of this struct in an `UnsafeCell`
+	pub(crate) weak: Weak<Self>,
+	pub(crate) _phantom: PhantomData<(PhantomData<T>, SR)>,
+	pub(crate) source: S,
 }
 
 impl<'r, T: Send + ?Sized, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	SignalRef<'r, T, S, SR>
+	Signal<'r, T, S, SR>
 {
-	/// Cheaply creates an additional [`SignalSR`] managing the same [`Subscribable`].
-	pub fn to_signal(&self) -> SignalSR<T, S, SR> {
-		SignalSR {
+	/// Cheaply creates an additional [`ArcSignal`] managing the same [`Subscribable`].
+	pub fn to_signal(&self) -> ArcSignal<T, S, SR> {
+		ArcSignal {
 			source: unsafe {
 				Arc::increment_strong_count(self.source);
 				Pin::new_unchecked(Arc::from_raw(self.source))
@@ -489,19 +492,19 @@ impl<'r, T: Send + ?Sized, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + Signals
 		}
 	}
 
-	/// Creates a computed (cached) [`SubscriptionSR`] based on this [`SignalRef`].
+	/// Creates a computed (cached) [`ArcSubscription`] based on this [`Signal`].
 	///
 	/// This is a shortcut past `self.to_signal().subscribe_or_computed(make_fn_pin)`.  
 	/// (This method may be slightly more efficient.)
 	pub fn subscribe_computed<'a, FnPin: 'a + Send + FnMut() -> T>(
 		&self,
-		make_fn_pin: impl FnOnce(SignalSR<T, S, SR>) -> FnPin,
-	) -> SubscriptionSR<T, impl 'a + Subscribable<T, SR>, SR>
+		make_fn_pin: impl FnOnce(ArcSignal<T, S, SR>) -> FnPin,
+	) -> ArcSubscription<T, impl 'a + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SubscriptionSR::computed_with_runtime(
+		ArcSubscription::computed_with_runtime(
 			make_fn_pin(self.to_signal()),
 			unsafe { Pin::new_unchecked(&*self.source) }.clone_runtime_ref(),
 		)
@@ -509,7 +512,7 @@ impl<'r, T: Send + ?Sized, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + Signals
 }
 
 impl<'r, T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
-	for SignalRef<'r, T, S, SR>
+	for Signal<'r, T, S, SR>
 {
 	fn clone(&self) -> Self {
 		*self
@@ -517,24 +520,24 @@ impl<'r, T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + Signals
 }
 
 impl<'r, T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Copy
-	for SignalRef<'r, T, S, SR>
+	for Signal<'r, T, S, SR>
 {
 }
 
 unsafe impl<'r, T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for SignalRef<'r, T, S, SR>
+	Send for Signal<'r, T, S, SR>
 {
 	// SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
 }
 
 unsafe impl<'r, T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for SignalRef<'r, T, S, SR>
+	Sync for Signal<'r, T, S, SR>
 {
 	// SAFETY: The [`Subscribable`] used internally requires both [`Send`] and [`Sync`] of the underlying object.
 }
 
 impl<'r, T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	SourcePin<T, SR> for SignalRef<'r, T, S, SR>
+	SourcePin<T, SR> for Signal<'r, T, S, SR>
 {
 	//SAFETY: `self.source` is a payload pointer that's valid for at least 'r.
 
@@ -621,7 +624,7 @@ impl<'r, T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsR
 /// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
 /// bound, which is a bit less performant than using those accessors without type erasure.
 impl<'r, 'a, T: 'a + ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
-	for SignalRefDyn<'r, 'a, T, SR>
+	for SignalDyn<'r, 'a, T, SR>
 {
 	//SAFETY: `self.source` is a payload pointer that's valid for at least 'r.
 

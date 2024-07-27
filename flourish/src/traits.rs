@@ -171,7 +171,7 @@ pub trait SourcePin<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sy
 		SR: Sized;
 }
 
-/// **Combinators should implement this.** Allows [`SignalSR`](`crate::SignalSR`) and [`SubscriptionSR`](`crate::SubscriptionSR`) to manage subscriptions through conversions between each other.
+/// **Combinators should implement this.** Allows [`ArcSignal`](`crate::ArcSignal`) and [`ArcSubscription`](`crate::ArcSubscription`) to manage subscriptions through conversions between each other.
 pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + UnmanagedSignal<T, SR>
 {

@@ -5,7 +5,7 @@ use std::ops::{AddAssign, Sub};
 
 use flourish::{
 	unmanaged::{folded, Subscribable},
-	Propagation, SignalsRuntimeRef, SubscriptionSR,
+	Propagation, SignalsRuntimeRef, ArcSubscription,
 };
 use num_traits::Zero;
 
@@ -54,6 +54,6 @@ pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + Sign
 pub fn eager_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalsRuntimeRef>(
 	fn_pin: impl 'a + Send + FnMut() -> V,
 	runtime: SR,
-) -> SubscriptionSR<T, impl 'a + Subscribable<T, SR>, SR> {
-	SubscriptionSR::new(sparse_tally(fn_pin, runtime))
+) -> ArcSubscription<T, impl 'a + Subscribable<T, SR>, SR> {
+	ArcSubscription::new(sparse_tally(fn_pin, runtime))
 }

@@ -8,29 +8,30 @@
 //! list the respective type-associated convenience method that can be used instead of [`Into::into`].
 //!
 //! `→` indicates that the conversion is available only to a subset of the target type, one cell to the right.  
+//! `↖` indicates that the conversion is part of a superset conversion, one cell diagonally to the upper left.  
 //! Entries prefixed with '(`&`)' convert from references or borrow instead of consuming the handle.
 //!
 //! **Macro authors should use qualified [`From`] and [`Into`] conversions instead of duck-typing the static-dispatch API.**
 //!
 //! Note that only side-effect-free conversions are supported via [`From`]:
 //!
-//! | from ↓ \ into →      | [`SignalCellSR`]       | [`SignalCellDyn`]           | [`SignalCellRef`]        | [`SignalCellRefDyn`]          |
-//! |----------------------|------------------------|-----------------------------|--------------------------|-------------------------------|
-//! | [`SignalCellSR`]     | [identity]             | [`.into_dyn()`][id1]        | (`&`)&nbsp;[`.as_ref()`][ar1] | (`&`)&nbsp;[`.as_ref_dyn()`][ard1] |
-//! | [`SignalCellDyn`]    | →                      | [identity]                  | →                        | (`&`)&nbsp;[`.as_ref()`][ar1]      |
-//! | [`SignalCellRef`]    | (`&`)&nbsp;[`.clone()`][c1] | (`&`)&nbsp;[`.clone_dyn()`][cd1] | [identity]               | [`.into_dyn()`][id2]          |
-//! | [`SignalCellRefDyn`] | →                      | (`&`)&nbsp;[`.clone()`][c1]      | →                        | [identity]                    |
+//! | from ↓ \ into →         | [`ArcSignalCell`] | [`ArcSignalCellDyn`]   | [`&SignalCell`][SC]              | [`&SignalCellDyn`][SCD] |
+//! |-------------------------|-------------------|------------------------|----------------------------------|-------------------------|
+//! | [`ArcSignalCell`]       | [identity]        | [`.into_dyn()`][ASCid] | [`Deref`], [`Borrow`], [`AsRef`] | [`.as_dyn()`][ASCad]    |
+//! | [`ArcSignalCellDyn`]    | →                 | [identity]             | →                                | ↖                       |
+//! | [`&SignalCell`][SC]     | [`ToOwned`]       | [`.to_dyn()`][SCtd]    | [identity]                       | [`.as_dyn()`][SCad]     |
+//! | [`&SignalCellDyn`][SCD] | →                 | ↖                      | →                                | [identity]              |
 //!
-//! | from ↓ \ into →      | [`SignalSR`]                                           | [`SignalDyn`]                                                    | [`SignalRef`]                      | [`SignalRefDyn`]                      |
-//! |----------------------|--------------------------------------------------------|------------------------------------------------------------------|------------------------------------|---------------------------------------|
-//! | [`SignalCellSR`]     | [`.into_signal()`][is1]<br>(`&`)&nbsp;[`.to_signal()`][ts1] | [`.into_signal_dyn()`][isd1]<br>(`&`)&nbsp;[`.to_signal_dyn()`][tsd1] | (`&`)&nbsp;[`.as_signal_ref()`][asr1]   | (`&`)&nbsp;[`.as_signal_ref_dyn()`][asrd1] |
-//! | [`SignalCellDyn`]    | →                                                      | [`.into_signal()`][is1]<br>(`&`)&nbsp;[`.to_signal()`][ts1]           | →                                  | (`&`)&nbsp;[`.as_signal_ref()`][asr1]      |
-//! | [`SignalCellRef`]    | (`&`)&nbsp;[`.to_signal()`][ts2]                            | (`&`)&nbsp;[`.to_signal_dyn()`][tsd2]                                 | [`.into_signal_ref()`][isr1]       | [`.into_signal_ref()`][isrd1]         |
-//! | [`SignalCellRefDyn`] | →                                                      | (`&`)&nbsp;[`.to_signal()`][ts2]                                      | →                                  | [`.into_signal_ref()`][isr1]          |
-//! | [`SignalSR`]         | [identity]                                             | [`.into_dyn()`][id3]                                             | (`&`)&nbsp;[`.as_ref()`][ar2]           | (`&`)&nbsp;[`.as_ref_dyn()`][ard2]         |
-//! | [`SignalDyn`]        | →                                                      | [identity]                                                       | →                                  | (`&`)&nbsp;[`.as_ref()`][ar2]              |
-//! | [`SignalRef`]        | (`&`)&nbsp;[`.clone()`][c2]                                 | (`&`)&nbsp;[`.clone_dyn()`][cd2]                                      | [identity]                         | [`.into_dyn()`][id4]                  |
-//! | [`SignalRefDyn`]     | →                                                      | (`&`)&nbsp;[`.clone()`][c2]                                           | →                                  | [identity]                            |
+//! | from ↓ \ into →         | [`ArcSignal`]                                           | [`ArcSignalDyn`]                                                    | [`&Signal`][S]                      | [`&SignalDyn`][SD]                      |
+//! |-------------------------|--------------------------------------------------------|------------------------------------------------------------------|------------------------------------|---------------------------------------|
+//! | [`ArcSignalCell`]       | [`.into_signal()`][is1]<br>(`&`)&nbsp;[`.to_signal()`][ts1] | [`.into_signal_dyn()`][isd1]<br>(`&`)&nbsp;[`.to_signal_dyn()`][tsd1] | (`&`)&nbsp;[`.as_signal_ref()`][asr1]   | (`&`)&nbsp;[`.as_signal_ref_dyn()`][asrd1] |
+//! | [`ArcSignalCellDyn`]    | →                                                      | [`.into_signal()`][is1]<br>(`&`)&nbsp;[`.to_signal()`][ts1]           | →                                  | (`&`)&nbsp;[`.as_signal_ref()`][asr1]      |
+//! | [`&SignalCell`][SC]     | (`&`)&nbsp;[`.to_signal()`][ts2]                            | (`&`)&nbsp;[`.to_signal_dyn()`][tsd2]                                 | [`.into_signal_ref()`][isr1]       | [`.into_signal_ref()`][isrd1]         |
+//! | [`&SignalCellDyn`][SCD] | →                                                      | (`&`)&nbsp;[`.to_signal()`][ts2]                                      | →                                  | [`.into_signal_ref()`][isr1]          |
+//! | [`ArcSignal`]           | [identity]                                             | [`.into_dyn()`][ASid]                                             | (`&`)&nbsp;[`.as_ref()`][ar2]           | (`&`)&nbsp;[`.as_ref_dyn()`][ard2]         |
+//! | [`ArcSignalDyn`]        | →                                                      | [identity]                                                       | →                                  | (`&`)&nbsp;[`.as_ref()`][ar2]              |
+//! | [`&Signal`][S]          | (`&`)&nbsp;[`.clone()`][c2]                                 | (`&`)&nbsp;[`.clone_dyn()`][cd2]                                      | [identity]                         | [`.into_dyn()`][Sid]                  |
+//! | [`&SignalDyn`][SD]      | →                                                      | (`&`)&nbsp;[`.clone()`][c2]                                           | →                                  | [identity]                            |
 //!
 //! //TODO: Formatting!
 //! //TODO: Table for subscriptions.
@@ -39,32 +40,20 @@
 //! //TODO: On second thought, remove most of the convenience methods, implement [`Borrow`], [`ToOwned`], [`Deref`] and possibly [`AsRef`] instead.
 //! //      (Refcounting handles can wrap Refs!)
 //!
+//! [SC]: `SignalCell`
+//! [SCD]: `SignalCellDyn`
+//! [S]: `Signal`
+//! [SD]: `SignalDyn`
+//!
 //! [identity]: https://doc.rust-lang.org/stable/std/convert/trait.From.html#impl-From%3CT%3E-for-T
-//! [c1]: `SignalCellRef::clone`
-//! [id1]: `SignalCellSR::into_dyn`
-//! [cd1]: `SignalCellRef::clone_dyn`
-//! [ar1]: `SignalCellSR::as_ref`
-//! [ard1]: `SignalCellSR::as_ref_dyn`
-//! [id2]: `SignalCellRef::into_dyn`
+//! [ASCid]: `ArcSignalCell::into_dyn`
+//! [SCtd]: `SignalCell::to_dyn`
+//! [ASCad]: `ArcSignalCell::as_dyn`
+//! [SCad]: `SignalCell::into_dyn`
+//! [ASid]: `ArcSignal::into_dyn`
+//! [Sid]: `Signal::into_dyn`
 //!
-//! [is1]: `SignalCellSR::into_signal`
-//! [ts1]: `SignalCellSR::to_signal`
-//! [ts2]: `SignalCellRef::to_signal`
-//! [c2]: `SignalRef::clone`
-//! [isd1]: `SignalCellSR::into_signal_dyn`
-//! [tsd1]: `SignalCellSR::to_signal_dyn`
-//! [tsd2]: `SignalCellRef::to_signal_dyn`
-//! [id3]: `SignalSR::into_dyn`
-//! [cd2]: `SignalRef::clone_dyn`
-//! [asr1]: `SignalCellSR::as_signal_ref`
-//! [isr1]: `SignalCellSR::as_signal_ref`
-//! [ar2]: `SignalSR::as_ref`
-//! [asrd1]: `SignalCellSR::as_signal_ref_dyn`
-//! [isrd1]: `SignalCellSR::into_signal_ref_dyn`
-//! [ard2]: `SignalSR::as_ref_dyn`
-//! [id4]: `SignalRef::into_dyn`
-//!
-//! Special cases like [`Signal`](`crate::Signal`) of [`SignalSR`] are omitted for clarity.
+//! Special cases like [`Signal`](`crate::Signal`) of [`ArcSignal`] are omitted for clarity.
 //!
 //! Entries that say '`.into_dyn()`' should be upgradable to unsizing coercions eventually.
 //!
@@ -74,162 +63,92 @@
 //!
 //! ## Side-effect conversions
 
-use std::{marker::PhantomData, mem, pin::Pin, sync::Arc};
+use std::{
+	borrow::Borrow,
+	marker::PhantomData,
+	mem::{self, ManuallyDrop},
+	ops::Deref,
+	pin::Pin,
+	sync::{Arc, Weak},
+};
 
 use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::{
-	signal_cell::SignalCellRef,
+	signal_cell::SignalCell,
 	unmanaged::{Subscribable, UnmanagedSignalCell},
-	SignalCellDyn, SignalCellRefDyn, SignalCellSR, SignalDyn, SignalSR,
+	ArcSignal, ArcSignalCell, ArcSignalCellDyn, ArcSignalDyn, SignalCellDyn,
 };
 
-// into `SignalCellSR` / into `SignalCellDyn`
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntimeRef>
+	ArcSignalCell<T, S, SR>
+{
+	pub fn into_dyn<'a>(self) -> ArcSignalCellDyn<'a, T, SR>
+	where
+		S: 'a + Sized,
+	{
+		ArcSignalCellDyn {
+			arc: self.arc.weak_dyn.upgrade().expect("cyclic"),
+		}
+	}
+}
+
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntimeRef>
+	SignalCell<T, S, SR>
+{
+	pub fn as_dyn<'a>(&self) -> &SignalCellDyn<'a, T, SR>
+	where
+		S: 'a + Sized,
+	{
+		unsafe {
+			let this = Weak::clone(&self.weak_dyn);
+			drop((&this as *const Weak<SignalCellDyn<'static, T, SR>>).read());
+			&*Weak::into_raw(this)
+		}
+	}
+
+	pub fn to_dyn<'a>(&self) -> ArcSignalCellDyn<'a, T, SR>
+	where
+		S: 'a + Sized,
+	{
+		self.to_owned().into_dyn()
+	}
+}
+
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+	for ArcSignalCell<T, S, SR>
+{
+	type Target = SignalCell<T, S, SR>;
+
+	fn deref(&self) -> &Self::Target {
+		self.arc.deref()
+	}
+}
 
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	From<SignalCellRef<'_, T, S, SR>> for SignalCellSR<T, S, SR>
+	Borrow<SignalCell<T, S, SR>> for ArcSignalCell<T, S, SR>
 {
-	fn from(value: SignalCellRef<T, S, SR>) -> Self {
-		Self {
-			source_cell: unsafe {
-				Arc::increment_strong_count(value.source_cell);
-				Pin::new_unchecked(Arc::from_raw(value.source_cell))
-			},
-			upcast: value.upcast,
-		}
+	fn borrow(&self) -> &SignalCell<T, S, SR> {
+		self.arc.borrow()
 	}
 }
 
-// into `SignalCellDyn`
-
-impl<
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalCellSR<T, S, SR>> for SignalCellDyn<'a, T, SR>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	AsRef<SignalCell<T, S, SR>> for ArcSignalCell<T, S, SR>
 {
-	fn from(value: SignalCellSR<T, S, SR>) -> Self {
-		value.into_dyn()
+	fn as_ref(&self) -> &SignalCell<T, S, SR> {
+		self.arc.as_ref()
 	}
 }
 
-impl<
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalCellRef<'_, T, S, SR>> for SignalCellDyn<'a, T, SR>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	ToOwned for SignalCell<T, S, SR>
 {
-	fn from(value: SignalCellRef<'_, T, S, SR>) -> Self {
-		let value: SignalCellSR<T, S, SR> = value.into();
-		value.into()
-	}
-}
+	type Owned = ArcSignalCell<T, S, SR>;
 
-// into `SignalCellRef` / into `SignalCellRefDyn`
-
-impl<
-		'r,
-		T: ?Sized + Send,
-		S: ?Sized + UnmanagedSignalCell<T, SR>,
-		SR: ?Sized + SignalsRuntimeRef,
-	> From<&'r SignalCellSR<T, S, SR>> for SignalCellRef<'r, T, S, SR>
-{
-	fn from(value: &'r SignalCellSR<T, S, SR>) -> Self {
-		Self {
-			source_cell: unsafe {
-				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&value.source_cell)));
-				Arc::decrement_strong_count(ptr);
-				ptr
-			},
-			upcast: value.upcast,
-			_phantom: PhantomData,
-		}
-	}
-}
-
-// into `SignalCellRefDyn`
-
-impl<
-		'r,
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<&'r SignalCellSR<T, S, SR>> for SignalCellRefDyn<'r, 'a, T, SR>
-{
-	fn from(value: &'r SignalCellSR<T, S, SR>) -> Self {
-		Self {
-			source_cell: unsafe {
-				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&value.source_cell)));
-				Arc::decrement_strong_count(ptr);
-				ptr
-			},
-			upcast: value.upcast,
-			_phantom: PhantomData,
-		}
-	}
-}
-
-impl<
-		'r,
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<&'r SignalCellRef<'r, T, S, SR>> for SignalCellRefDyn<'r, 'a, T, SR>
-{
-	fn from(value: &'r SignalCellRef<'r, T, S, SR>) -> Self {
-		Self {
-			source_cell: value.source_cell,
-			upcast: value.upcast,
-			_phantom: PhantomData,
-		}
-	}
-}
-
-// TODO
-
-impl<
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + Subscribable<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalSR<T, S, SR>> for SignalDyn<'a, T, SR>
-{
-	fn from(value: SignalSR<T, S, SR>) -> Self {
-		let SignalSR { source, _phantom } = value;
-		Self { source, _phantom }
-	}
-}
-
-impl<
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalCellSR<T, S, SR>> for SignalDyn<'a, T, SR>
-{
-	fn from(value: SignalCellSR<T, S, SR>) -> Self {
-		value.into_dyn().into()
-	}
-}
-
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> From<SignalCellDyn<'a, T, SR>>
-	for SignalDyn<'a, T, SR>
-{
-	fn from(value: SignalCellDyn<'a, T, SR>) -> Self {
-		let SignalCellDyn {
-			source_cell,
-			upcast,
-		} = value;
-		Self {
-			source: unsafe {
-				mem::forget(source_cell);
-				Pin::new_unchecked(Arc::from_raw(upcast.0))
-			},
-			_phantom: PhantomData,
+	fn to_owned(&self) -> ArcSignalCell<T, S, SR> {
+		ArcSignalCell {
+			arc: self.weak.upgrade().expect("cyclic"),
 		}
 	}
 }

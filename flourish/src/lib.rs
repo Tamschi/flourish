@@ -21,17 +21,15 @@ pub mod unmanaged;
 
 mod signal_cell;
 pub use signal_cell::{
-	SignalCell, SignalCellDyn, SignalCellRef, SignalCellRefDyn, SignalCellSR, WeakSignalCell,
-	WeakSignalCellDyn,
+	ArcSignalCell, ArcSignalCellDyn, SignalCell, SignalCellDyn, WeakSignalCell, WeakSignalCellDyn,
 };
 
 mod signal;
-pub use signal::{Signal, SignalDyn, SignalRef, SignalRefDyn, SignalSR, WeakSignal, WeakSignalDyn};
+pub use signal::{ArcSignal, ArcSignalDyn, Signal, SignalDyn, WeakSignal, WeakSignalDyn};
 
+//TODO: `Subscription` to indicate borrow of something subscribed?
 mod subscription;
-pub use subscription::{
-	Subscription, SubscriptionDyn, SubscriptionSR, WeakSubscription, WeakSubscriptionDyn,
-};
+pub use subscription::{ArcSubscription, SubscriptionDyn, WeakSubscription, WeakSubscriptionDyn};
 
 mod effect;
 pub use effect::{Effect, EffectSR};

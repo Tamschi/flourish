@@ -12,14 +12,15 @@ use crate::{
 	opaque::Opaque,
 	traits::{Guard, Subscribable},
 	unmanaged::{computed, folded, reduced},
-	SignalRef, SignalSR, SourcePin,
+	ArcSignal, Signal, SourcePin,
 };
 
-/// Type inference helper alias for [`SubscriptionSR`] (using [`GlobalSignalsRuntime`]).
-pub type Subscription<T, S> = SubscriptionSR<T, S, GlobalSignalsRuntime>;
+//TODO
+// /// Type inference helper alias for [`ArcSubscription`] (using [`GlobalSignalsRuntime`]).
+// pub type Subscription<T, S> = ArcSubscription<T, S, GlobalSignalsRuntime>;
 
-/// Type of [`SubscriptionSR`]s after type-erasure. Dynamic dispatch.
-pub type SubscriptionDyn<'a, T, SR> = SubscriptionSR<T, dyn 'a + Subscribable<T, SR>, SR>;
+/// Type of [`ArcSubscription`]s after type-erasure. Dynamic dispatch.
+pub type SubscriptionDyn<'a, T, SR> = ArcSubscription<T, dyn 'a + Subscribable<T, SR>, SR>;
 
 pub type WeakSubscriptionDyn<'a, T, SR> = WeakSubscription<T, dyn 'a + Subscribable<T, SR>, SR>;
 
@@ -28,62 +29,60 @@ pub struct WeakSubscription<
 	S: ?Sized + Subscribable<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	source_cell: Weak<S>,
-	_phantom: PhantomData<(PhantomData<T>, SR)>,
+	weak: Weak<Signal<T, S, SR>>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	WeakSubscription<T, S, SR>
 {
 	#[must_use]
-	pub fn upgrade(&self) -> Option<SignalSR<T, S, SR>> {
-		self.source_cell.upgrade().map(|strong| SignalSR {
+	pub fn upgrade(&self) -> Option<ArcSignal<T, S, SR>> {
+		self.signal.upgrade().map(|strong| ArcSignal {
 			source: unsafe { Pin::new_unchecked(strong) },
 			_phantom: PhantomData,
 		})
 	}
 }
 
-/// Intrinsically-subscribed version of [`SignalSR`].  
+/// Intrinsically-subscribed version of [`ArcSignal`].  
 /// Can be directly constructed but also converted to and from that type.
 #[must_use = "Subscriptions are cancelled when dropped."]
-pub struct SubscriptionSR<
+pub struct ArcSubscription<
 	T: ?Sized + Send,
 	S: ?Sized + Subscribable<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	pub(crate) source: Pin<Arc<S>>,
-	pub(crate) _phantom: PhantomData<(PhantomData<T>, SR)>,
+	pub(crate) arc: Arc<Signal<T, S, SR>>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
-	for SubscriptionSR<T, S, SR>
+	for ArcSubscription<T, S, SR>
 where
 	T: Debug,
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		self.source.clone_runtime_ref().run_detached(|| {
-			f.debug_struct("SubscriptionSR")
-				.field("(value)", &&**self.source.as_ref().read_exclusive_dyn())
+		self.arc.clone_runtime_ref().run_detached(|| {
+			f.debug_struct("ArcSubscription")
+				.field("(value)", &&**self.arc.as_ref().read_exclusive_dyn())
 				.finish_non_exhaustive()
 		})
 	}
 }
 
 unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
-	for SubscriptionSR<T, S, SR>
+	for ArcSubscription<T, S, SR>
 {
 }
 unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
-	for SubscriptionSR<T, S, SR>
+	for ArcSubscription<T, S, SR>
 {
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
-	for SubscriptionSR<T, S, SR>
+	for ArcSubscription<T, S, SR>
 {
 	fn drop(&mut self) {
-		self.source.as_ref().unsubscribe();
+		self.arc.as_ref().unsubscribe();
 	}
 }
 
@@ -92,17 +91,17 @@ impl<
 		T: 'a + ?Sized + Send,
 		S: 'a + Sized + Subscribable<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SubscriptionSR<T, S, SR>> for SubscriptionDyn<'a, T, SR>
+	> From<ArcSubscription<T, S, SR>> for SubscriptionDyn<'a, T, SR>
 {
-	fn from(value: SubscriptionSR<T, S, SR>) -> Self {
+	fn from(value: ArcSubscription<T, S, SR>) -> Self {
 		value.into_dyn()
 	}
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
-	SubscriptionSR<T, S, SR>
+	ArcSubscription<T, S, SR>
 {
-	/// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
+	/// Constructs a new [`ArcSubscription`] from the given "raw" [`Subscribable`].
 	///
 	/// The subscribable is subscribed-to intrinsically.
 	///
@@ -119,18 +118,18 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 			let arc = Arc::pin(source);
 			arc.as_ref().subscribe();
 			Self {
-				source: arc,
+				arc,
 				_phantom: PhantomData,
 			}
 		})
 	}
 
-	/// Cheaply borrows this [`SubscriptionSR`] as [`SignalRef`], which is [`Copy`].
-	pub fn as_ref(&self) -> SignalRef<'_, T, S, SR> {
-		SignalRef {
+	/// Cheaply borrows this [`ArcSubscription`] as [`Signal`], which is [`Copy`].
+	pub fn as_ref(&self) -> Signal<'_, T, S, SR> {
+		Signal {
 			source: {
 				let ptr =
-					Arc::into_raw(unsafe { Pin::into_inner_unchecked(Pin::clone(&self.source)) });
+					Arc::into_raw(unsafe { Pin::into_inner_unchecked(Pin::clone(&self.arc)) });
 				unsafe { Arc::decrement_strong_count(ptr) };
 				ptr
 			},
@@ -138,29 +137,29 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 		}
 	}
 
-	/// Unsubscribes the [`SubscriptionSR`], turning it into a [`SignalSR`] in the process.
+	/// Unsubscribes the [`ArcSubscription`], turning it into a [`ArcSignal`] in the process.
 	///
 	/// The underlying [`Source`](`crate::raw::Source`) may remain effectively subscribed due to subscribed dependencies.
 	#[must_use = "Use `drop(self)` instead of converting first. The effect is the same."]
-	pub fn unsubscribe(self) -> SignalSR<T, S, SR> {
+	pub fn unsubscribe(self) -> ArcSignal<T, S, SR> {
 		//FIXME: This could avoid refcounting up and down and the associated memory barriers.
-		SignalSR {
-			source: Pin::clone(&self.source),
+		ArcSignal {
+			source: Pin::clone(&self.arc),
 			_phantom: PhantomData,
 		}
 	} // Implicit drop(self) unsubscribes.
 
-	/// Cheaply clones this handle into a [`SignalSR`].
-	pub fn to_signal(self) -> SignalSR<T, S, SR> {
-		SignalSR {
-			source: Pin::clone(&self.source),
+	/// Cheaply clones this handle into a [`ArcSignal`].
+	pub fn to_signal(self) -> ArcSignal<T, S, SR> {
+		ArcSignal {
+			source: Pin::clone(&self.arc),
 			_phantom: PhantomData,
 		}
 	}
 }
 
 impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
-	SubscriptionSR<T, S, SR>
+	ArcSubscription<T, S, SR>
 {
 	pub fn into_dyn<'a>(self) -> SubscriptionDyn<'a, T, SR>
 	where
@@ -171,12 +170,12 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 		let this = ManuallyDrop::new(self);
 
 		let dyn_ = SubscriptionDyn {
-			source: Pin::clone(&this.source) as Pin<Arc<_>>,
+			arc: Pin::clone(&this.arc) as Pin<Arc<_>>,
 			_phantom: PhantomData,
 		};
 
 		unsafe {
-			let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&this.source)));
+			let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&this.arc)));
 			Arc::decrement_strong_count(ptr);
 			Arc::decrement_strong_count(ptr);
 		}
@@ -192,7 +191,7 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 /// The "uncached" versions of [`computed`](`computed()`) are intentionally not wrapped here,
 /// as their behaviour may be unexpected at first glance.
 ///
-/// You can still easily construct them as [`SignalSR`] and subscribe afterwards:
+/// You can still easily construct them as [`ArcSignal`] and subscribe afterwards:
 ///
 /// ```
 /// # {
@@ -204,18 +203,18 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 /// let sub = Signal::computed_uncached(|| ()).subscribe();
 /// # }
 /// ```
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SubscriptionSR<T, Opaque, SR> {
+impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> ArcSubscription<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
-	) -> SubscriptionSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSubscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
 	{
-		SubscriptionSR::new(computed(fn_pin, SR::default()))
+		ArcSubscription::new(computed(fn_pin, SR::default()))
 	}
 
 	/// A simple cached computation.
@@ -224,12 +223,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SubscriptionSR<T, Opaque,
 	pub fn computed_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
-	) -> SubscriptionSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSubscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SubscriptionSR::new(computed(fn_pin, runtime))
+		ArcSubscription::new(computed(fn_pin, runtime))
 	}
 
 	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
@@ -238,12 +237,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SubscriptionSR<T, Opaque,
 	pub fn folded<'a>(
 		init: T,
 		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
-	) -> SubscriptionSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSubscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
 	{
-		SubscriptionSR::new(folded(init, fold_fn_pin, SR::default()))
+		ArcSubscription::new(folded(init, fold_fn_pin, SR::default()))
 	}
 
 	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
@@ -253,12 +252,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SubscriptionSR<T, Opaque,
 		init: T,
 		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
 		runtime: SR,
-	) -> SubscriptionSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSubscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SubscriptionSR::new(folded(init, fold_fn_pin, runtime))
+		ArcSubscription::new(folded(init, fold_fn_pin, runtime))
 	}
 
 	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
@@ -268,12 +267,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SubscriptionSR<T, Opaque,
 	pub fn reduced<'a>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
-	) -> SubscriptionSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSubscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
 	{
-		SubscriptionSR::new(reduced(select_fn_pin, reduce_fn_pin, SR::default()))
+		ArcSubscription::new(reduced(select_fn_pin, reduce_fn_pin, SR::default()))
 	}
 
 	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
@@ -284,34 +283,34 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SubscriptionSR<T, Opaque,
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
 		runtime: SR,
-	) -> SubscriptionSR<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> ArcSubscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SubscriptionSR::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
+		ArcSubscription::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
 }
 
 impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	SourcePin<T, SR> for SubscriptionSR<T, S, SR>
+	SourcePin<T, SR> for ArcSubscription<T, S, SR>
 {
 	fn touch(&self) {
-		self.source.as_ref().touch()
+		self.arc.as_ref().touch()
 	}
 
 	fn get_clone(&self) -> T
 	where
 		T: Sync + Clone,
 	{
-		self.source.as_ref().get_clone()
+		self.arc.as_ref().get_clone()
 	}
 
 	fn get_clone_exclusive(&self) -> T
 	where
 		T: Clone,
 	{
-		self.source.as_ref().get_clone_exclusive()
+		self.arc.as_ref().get_clone_exclusive()
 	}
 
 	fn read<'r>(&'r self) -> S::Read<'r>
@@ -319,7 +318,7 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		self.source.as_ref().read()
+		self.arc.as_ref().read()
 	}
 
 	type Read<'r> = S::Read<'r>
@@ -332,7 +331,7 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 		Self: Sized,
 		T: 'r,
 	{
-		self.source.as_ref().read_exclusive()
+		self.arc.as_ref().read_exclusive()
 	}
 
 	type ReadExclusive<'r> = S::ReadExclusive<'r>
@@ -344,21 +343,21 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 	where
 		T: 'r + Sync,
 	{
-		self.source.as_ref().read_dyn()
+		self.arc.as_ref().read_dyn()
 	}
 
 	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
-		self.source.as_ref().read_exclusive_dyn()
+		self.arc.as_ref().read_exclusive_dyn()
 	}
 
 	fn clone_runtime_ref(&self) -> SR
 	where
 		SR: Sized,
 	{
-		self.source.as_ref().clone_runtime_ref()
+		self.arc.as_ref().clone_runtime_ref()
 	}
 }
 
@@ -368,21 +367,21 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 	for SubscriptionDyn<'a, T, SR>
 {
 	fn touch(&self) {
-		self.source.as_ref().touch()
+		self.arc.as_ref().touch()
 	}
 
 	fn get_clone(&self) -> T
 	where
 		T: Sync + Clone,
 	{
-		self.source.as_ref().get_clone()
+		self.arc.as_ref().get_clone()
 	}
 
 	fn get_clone_exclusive(&self) -> T
 	where
 		T: Clone,
 	{
-		self.source.as_ref().get_clone_exclusive()
+		self.arc.as_ref().get_clone_exclusive()
 	}
 
 	fn read<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
@@ -390,7 +389,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		private::BoxedGuardDyn(self.source.as_ref().read_dyn())
+		private::BoxedGuardDyn(self.arc.as_ref().read_dyn())
 	}
 
 	type Read<'r> = private::BoxedGuardDyn<'r, T>
@@ -403,7 +402,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 		Self: Sized,
 		T: 'r,
 	{
-		private::BoxedGuardDyn(self.source.as_ref().read_exclusive_dyn())
+		private::BoxedGuardDyn(self.arc.as_ref().read_exclusive_dyn())
 	}
 
 	type ReadExclusive<'r> = private::BoxedGuardDyn<'r, T>
@@ -415,21 +414,21 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T
 	where
 		T: 'r + Sync,
 	{
-		self.source.as_ref().read_dyn()
+		self.arc.as_ref().read_dyn()
 	}
 
 	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
-		self.source.as_ref().read_exclusive_dyn()
+		self.arc.as_ref().read_exclusive_dyn()
 	}
 
 	fn clone_runtime_ref(&self) -> SR
 	where
 		SR: Sized,
 	{
-		self.source.as_ref().clone_runtime_ref()
+		self.arc.as_ref().clone_runtime_ref()
 	}
 }
 
