@@ -14,7 +14,7 @@
 
 pub mod conversions;
 mod opaque;
-
+mod signal;
 pub mod unmanaged;
 
 //TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
@@ -25,12 +25,12 @@ pub use signal_cell::{
 	WeakSignalCellDyn,
 };
 
-mod signal;
-pub use signal::{Signal, SignalDyn, SignalRef, SignalRefDyn, SignalSR, WeakSignal, WeakSignalDyn};
+mod signal_arc;
+pub use signal_arc::{Signal, SignalArc, SignalDyn, SignalWeak, WeakSignalDyn};
 
 mod subscription;
 pub use subscription::{
-	Subscription, SubscriptionDyn, SubscriptionSR, WeakSubscription, WeakSubscriptionDyn,
+	SubscriptionArc, SubscriptionArcDyn, SubscriptionSR, SubscriptionWeak, SubscriptionWeakDyn,
 };
 
 mod effect;

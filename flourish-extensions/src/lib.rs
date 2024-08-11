@@ -8,7 +8,7 @@ pub mod prelude {
 	use std::ops::{AddAssign, Sub};
 
 	use ext_trait::extension;
-	use flourish::{unmanaged::Subscribable, SignalSR, SignalsRuntimeRef, SubscriptionSR};
+	use flourish::{unmanaged::Subscribable, SignalArc, SignalsRuntimeRef, SubscriptionSR};
 	use flourish_extra::{
 		delta,
 		future::{filter_mapped, filtered, skipped_while},
@@ -21,10 +21,10 @@ pub mod prelude {
 	//TODO: These have extraneous bounds that aren't really needed, usually `T: Sync + Copy`.
 
 	#[extension(pub trait SignalExt)]
-	impl<'a, T: 'a + Send + ?Sized, SR: 'a + SignalsRuntimeRef> SignalSR<T, Opaque, SR> {
+	impl<'a, T: 'a + Send + ?Sized, SR: 'a + SignalsRuntimeRef> SignalArc<T, Opaque, SR> {
 		fn delta<V: 'a + Send>(
 			fn_pin: impl 'a + Send + FnMut() -> V,
-		) -> SignalSR<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> SignalArc<T, impl Sized + Subscribable<T, SR>, SR>
 		where
 			T: Zero,
 			for<'b> &'b V: Sub<Output = T>,
@@ -36,17 +36,17 @@ pub mod prelude {
 		fn delta_with_runtime<V: 'a + Send>(
 			fn_pin: impl 'a + Send + FnMut() -> V,
 			runtime: SR,
-		) -> SignalSR<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> SignalArc<T, impl Sized + Subscribable<T, SR>, SR>
 		where
 			T: Zero,
 			for<'b> &'b V: Sub<Output = T>,
 		{
-			SignalSR::new(delta(fn_pin, runtime))
+			SignalArc::new(delta(fn_pin, runtime))
 		}
 
 		fn sparse_tally<V: 'a + Send>(
 			fn_pin: impl 'a + Send + FnMut() -> V,
-		) -> SignalSR<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> SignalArc<T, impl Sized + Subscribable<T, SR>, SR>
 		where
 			T: Zero + Send + AddAssign<V>,
 			SR: Default,
@@ -57,11 +57,11 @@ pub mod prelude {
 		fn sparse_tally_with_runtime<V: 'a + Send>(
 			fn_pin: impl 'a + Send + FnMut() -> V,
 			runtime: SR,
-		) -> SignalSR<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> SignalArc<T, impl Sized + Subscribable<T, SR>, SR>
 		where
 			T: Zero + Send + AddAssign<V>,
 		{
-			SignalSR::new(sparse_tally(fn_pin, runtime))
+			SignalArc::new(sparse_tally(fn_pin, runtime))
 		}
 	}
 

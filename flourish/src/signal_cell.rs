@@ -17,7 +17,7 @@ use crate::{
 	shadow_clone,
 	traits::{Guard, Subscribable, UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{InertCell, ReactiveCell, ReactiveCellMut},
-	SignalDyn, SignalRef, SignalRefDyn, SignalSR, SourcePin, UnmanagedSignalCellPin,
+	SignalArc, SignalDyn, SourcePin, UnmanagedSignalCellPin,
 };
 
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalsRuntime`]).
@@ -412,22 +412,9 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntime
 	SignalCellSR<T, S, SR>
 {
 	/// Cheaply creates a [`SignalSR`] handle to the managed [`UnmanagedSignalCell`].
-	pub fn to_signal(&self) -> SignalSR<T, S, SR> {
-		SignalSR {
+	pub fn to_signal(&self) -> SignalArc<T, S, SR> {
+		SignalArc {
 			source: Pin::clone(&self.source_cell),
-			_phantom: PhantomData,
-		}
-	}
-
-	/// Cheaply borrows this [`SignalCellSR`] as [`SignalRef`], which is [`Copy`].
-	pub fn as_signal_ref(&self) -> SignalRef<'_, T, S, SR> {
-		SignalRef {
-			source: unsafe {
-				let ptr = Pin::clone(&self.source_cell);
-				let ptr = Arc::into_raw(Pin::into_inner_unchecked(ptr));
-				Arc::decrement_strong_count(ptr);
-				ptr
-			},
 			_phantom: PhantomData,
 		}
 	}
@@ -436,19 +423,11 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntime
 impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalCellDyn<'a, T, SR> {
 	/// Cheaply creates a [`SignalDyn`] handle to the managed [`UnmanagedSignalCell`].
 	pub fn to_signal(&self) -> SignalDyn<'a, T, SR> {
-		SignalSR {
+		SignalArc {
 			source: unsafe {
 				Arc::increment_strong_count(self.upcast.0);
 				Pin::new_unchecked(Arc::from_raw(self.upcast.0))
 			},
-			_phantom: PhantomData,
-		}
-	}
-
-	/// Cheaply borrows this [`SignalCellDyn`] as [`SignalRefDyn`], which is [`Copy`].
-	pub fn as_signal_ref(&self) -> SignalRefDyn<'_, 'a, T, SR> {
-		SignalRef {
-			source: self.upcast.0,
 			_phantom: PhantomData,
 		}
 	}
@@ -474,14 +453,6 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntim
 			}),
 			upcast: self.upcast,
 		}
-	}
-
-	//TODO: Make this available for "`Dyn`"!
-	pub fn into_signal_and_self(self) -> (SignalSR<T, S, SR>, Self)
-	where
-		S: Sized,
-	{
-		(self.as_signal_ref().to_signal(), self)
 	}
 
 	//TODO: Make this available for "`Dyn`"!

@@ -1,7 +1,7 @@
 #![cfg(feature = "global_signals_runtime")]
 
 use flourish::{
-	prelude::*, unmanaged::computed, GlobalSignalsRuntime, Signal, SignalCell, Subscription,
+	prelude::*, unmanaged::computed, GlobalSignalsRuntime, Signal, SignalCell, SubscriptionArc,
 };
 
 mod _validator;
@@ -17,7 +17,7 @@ fn debounce_test() {
 		x.push("d");
 		signal.get()
 	});
-	let _sub = Subscription::new(computed(
+	let _sub = SubscriptionArc::new(computed(
 		move || {
 			x.push("s");
 			v.push(debounced.get())

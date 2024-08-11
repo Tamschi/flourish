@@ -1,6 +1,6 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, shadow_clone, Effect, SignalCell, SourcePin, Subscription};
+use flourish::{prelude::*, shadow_clone, Effect, SignalCell, SourcePin, SubscriptionArc};
 mod _validator;
 use _validator::Validator;
 
@@ -10,11 +10,11 @@ fn set() {
 
 	let a = SignalCell::new("a");
 	let b = SignalCell::new("b");
-	let _sub_a = Subscription::computed({
+	let _sub_a = SubscriptionArc::computed({
 		shadow_clone!(a);
 		move || v.push(("_sub_a", a.get()))
 	});
-	let _sub_b = Subscription::computed({
+	let _sub_b = SubscriptionArc::computed({
 		shadow_clone!(b);
 		move || v.push(("_sub_b", b.get()))
 	});

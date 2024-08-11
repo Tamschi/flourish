@@ -1,6 +1,6 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, shadow_clone, Signal, SignalCell, Subscription};
+use flourish::{prelude::*, shadow_clone, Signal, SignalCell, SubscriptionArc};
 
 mod _validator;
 use _validator::Validator;
@@ -35,7 +35,7 @@ fn auto_dependencies() {
 	});
 	v.expect([]);
 
-	let subscription = Subscription::computed(|| signal.touch());
+	let subscription = SubscriptionArc::computed(|| signal.touch());
 	v.expect([""]);
 
 	a.replace_blocking("a");
