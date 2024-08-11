@@ -14,7 +14,7 @@ use flourish::{
 	prelude::*,
 	shadow_clone, signals_helper,
 	unmanaged::{Subscribable, UnmanagedSignal},
-	Guard, Propagation, SignalsRuntimeRef, SubscriptionSR,
+	Guard, Propagation, SignalsRuntimeRef, Subscription,
 };
 use pin_project::pin_project;
 
@@ -22,8 +22,8 @@ pub async fn skipped_while<'a, T: 'a + Send + Sync, SR: 'a + SignalsRuntimeRef>(
 	fn_pin: impl 'a + Send + FnMut() -> T,
 	mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 	runtime: SR,
-) -> SubscriptionSR<T, impl 'a + Subscribable<T, SR>, SR> {
-	let sub = SubscriptionSR::computed_with_runtime(fn_pin, runtime.clone());
+) -> Subscription<T, impl 'a + Subscribable<T, SR>, SR> {
+	let sub = Subscription::computed_with_runtime(fn_pin, runtime.clone());
 	{
 		let once = OnceCell::<()>::new();
 		signals_helper! {
@@ -45,12 +45,12 @@ pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalsRuntimeRef
 	mut fn_pin: impl 'a + Send + FnMut() -> T,
 	mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 	runtime: SR,
-) -> SubscriptionSR<T, impl 'a + Subscribable<T, SR>, SR> {
+) -> Subscription<T, impl 'a + Subscribable<T, SR>, SR> {
 	// It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
 	// since the closure is guaranteed to run when the subscription is created.
 	// However, that would be considerably trickier code.
 	let once = Arc::new(OnceCell::<()>::new());
-	let sub = SubscriptionSR::folded_with_runtime(
+	let sub = Subscription::folded_with_runtime(
 		MaybeUninit::uninit(),
 		{
 			shadow_clone!(once);
@@ -79,12 +79,12 @@ pub async fn filtered<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalsRuntimeRef
 pub async fn filter_mapped<'a, T: 'a + Send + Sync + Copy, SR: 'a + SignalsRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 	runtime: SR,
-) -> SubscriptionSR<T, impl 'a + Subscribable<T, SR>, SR> {
+) -> Subscription<T, impl 'a + Subscribable<T, SR>, SR> {
 	// It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
 	// since the closure is guaranteed to run when the subscription is created.
 	// However, that would be considerably trickier code.
 	let once = Arc::new(OnceCell::<()>::new());
-	let sub = SubscriptionSR::folded_with_runtime(
+	let sub = Subscription::folded_with_runtime(
 		MaybeUninit::uninit(),
 		{
 			shadow_clone!(once);
@@ -124,8 +124,8 @@ unsafe fn assume_init_subscription<
 	S: Subscribable<MaybeUninit<T>, SR>,
 	SR: SignalsRuntimeRef,
 >(
-	sub: SubscriptionSR<MaybeUninit<T>, S, SR>,
-) -> SubscriptionSR<T, impl Subscribable<T, SR>, SR> {
+	sub: Subscription<MaybeUninit<T>, S, SR>,
+) -> Subscription<T, impl Subscribable<T, SR>, SR> {
 	#[pin_project]
 	#[repr(transparent)]
 	struct AbiShim<T: ?Sized>(#[pin] T);
@@ -256,9 +256,9 @@ unsafe fn assume_init_subscription<
 	unsafe {
 		//SAFETY: This may reinterpret a fat pointer, which skips over the `AbiShim` methods
 		//        entirely, but that's fine since everything is fully ABI-compatible.
-		(*(&(&ManuallyDrop::new(sub) as *const ManuallyDrop<SubscriptionSR<MaybeUninit<T>, S, SR>>)
-			as *const *const ManuallyDrop<SubscriptionSR<MaybeUninit<T>, S, SR>>
-			as *const *const SubscriptionSR<T, AbiShim<S>, SR>))
+		(*(&(&ManuallyDrop::new(sub) as *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>)
+			as *const *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>
+			as *const *const Subscription<T, AbiShim<S>, SR>))
 			.read()
 	}
 }

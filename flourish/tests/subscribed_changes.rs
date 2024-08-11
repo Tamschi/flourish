@@ -1,6 +1,6 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, shadow_clone, Propagation, Signal, SignalCell, SubscriptionArc};
+use flourish::{prelude::*, shadow_clone, Propagation, Signal, SignalCell, SubscriptionArc_};
 mod _validator;
 use _validator::Validator;
 
@@ -33,7 +33,7 @@ fn dependent() {
 	});
 	v.expect([]);
 
-	let s = SubscriptionArc::computed({
+	let s = SubscriptionArc_::computed({
 		shadow_clone!(a);
 		move || a.get()
 	});
@@ -56,7 +56,7 @@ fn dependent_reversed() {
 	});
 	v.expect([]);
 
-	let s = SubscriptionArc::computed({
+	let s = SubscriptionArc_::computed({
 		shadow_clone!(a);
 		move || a.get()
 	});

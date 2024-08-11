@@ -8,7 +8,7 @@ pub mod prelude {
 	use std::ops::{AddAssign, Sub};
 
 	use ext_trait::extension;
-	use flourish::{unmanaged::Subscribable, SignalArc, SignalsRuntimeRef, SubscriptionSR};
+	use flourish::{unmanaged::Subscribable, SignalArc, SignalsRuntimeRef, Subscription};
 	use flourish_extra::{
 		delta,
 		future::{filter_mapped, filtered, skipped_while},
@@ -67,12 +67,12 @@ pub mod prelude {
 
 	#[extension(pub trait SubscriptionExt)]
 	impl<'a, T: 'a + Send + Sync + ?Sized + Clone, SR: 'a + SignalsRuntimeRef>
-		SubscriptionSR<T, Opaque, SR>
+		Subscription<T, Opaque, SR>
 	{
 		async fn skipped_while(
 			fn_pin: impl 'a + Send + FnMut() -> T,
 			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-		) -> SubscriptionSR<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
 		where
 			SR: Default,
 		{
@@ -83,14 +83,14 @@ pub mod prelude {
 			fn_pin: impl 'a + Send + FnMut() -> T,
 			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 			runtime: SR,
-		) -> SubscriptionSR<T, impl Sized + Subscribable<T, SR>, SR> {
+		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR> {
 			skipped_while(fn_pin, predicate_fn_pin, runtime).await
 		}
 
 		async fn filtered(
 			fn_pin: impl 'a + Send + FnMut() -> T,
 			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-		) -> SubscriptionSR<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
 		where
 			T: Copy,
 			SR: Default,
@@ -102,7 +102,7 @@ pub mod prelude {
 			fn_pin: impl 'a + Send + FnMut() -> T,
 			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 			runtime: SR,
-		) -> SubscriptionSR<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
 		where
 			T: Copy,
 		{
@@ -111,7 +111,7 @@ pub mod prelude {
 
 		async fn filter_mapped(
 			fn_pin: impl 'a + Send + FnMut() -> Option<T>,
-		) -> SubscriptionSR<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
 		where
 			T: Copy,
 			SR: Default,
@@ -122,7 +122,7 @@ pub mod prelude {
 		async fn filter_mapped_with_runtime(
 			fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 			runtime: SR,
-		) -> SubscriptionSR<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
 		where
 			T: Copy,
 		{

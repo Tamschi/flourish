@@ -1,6 +1,6 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, shadow_clone, Signal, SignalCell, SubscriptionArc};
+use flourish::{prelude::*, shadow_clone, Signal, SignalCell, SubscriptionArc_};
 mod _validator;
 use _validator::Validator;
 
@@ -35,7 +35,7 @@ fn use_constructors() {
 	v.expect([]);
 	x.expect([]);
 
-	let sub_aa = SubscriptionArc::computed(move || {
+	let sub_aa = SubscriptionArc_::computed(move || {
 		x.push("sub_aa");
 		v.push(aa.get())
 	});
@@ -59,14 +59,14 @@ fn use_constructors() {
 	v.expect([]);
 	x.expect([]);
 
-	let _sub_c = SubscriptionArc::computed(move || {
+	let _sub_c = SubscriptionArc_::computed(move || {
 		x.push("_sub_c");
 		v.push(c.get())
 	});
 	v.expect([8]);
 	x.expect(["_sub_c", "c"]);
 
-	let _sub_d = SubscriptionArc::computed(move || {
+	let _sub_d = SubscriptionArc_::computed(move || {
 		x.push("_sub_d");
 		v.push(d.get())
 	});

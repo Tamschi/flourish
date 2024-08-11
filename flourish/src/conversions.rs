@@ -81,7 +81,7 @@ use isoprenoid::runtime::SignalsRuntimeRef;
 use crate::{
 	signal_cell::SignalCellRef,
 	unmanaged::{Subscribable, UnmanagedSignalCell},
-	SignalCellDyn, SignalCellRefDyn, SignalCellSR, SignalDyn, SignalArc,
+	SignalCellDyn, SignalCellRefDyn, SignalCellSR, SignalArcDyn, SignalArc,
 };
 
 // into `SignalCellSR` / into `SignalCellDyn`
@@ -196,7 +196,7 @@ impl<
 		T: 'a + ?Sized + Send,
 		S: 'a + Sized + Subscribable<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalArc<T, S, SR>> for SignalDyn<'a, T, SR>
+	> From<SignalArc<T, S, SR>> for SignalArcDyn<'a, T, SR>
 {
 	fn from(value: SignalArc<T, S, SR>) -> Self {
 		let SignalArc { source, _phantom } = value;
@@ -209,7 +209,7 @@ impl<
 		T: 'a + ?Sized + Send,
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalCellSR<T, S, SR>> for SignalDyn<'a, T, SR>
+	> From<SignalCellSR<T, S, SR>> for SignalArcDyn<'a, T, SR>
 {
 	fn from(value: SignalCellSR<T, S, SR>) -> Self {
 		value.into_dyn().into()
@@ -217,7 +217,7 @@ impl<
 }
 
 impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> From<SignalCellDyn<'a, T, SR>>
-	for SignalDyn<'a, T, SR>
+	for SignalArcDyn<'a, T, SR>
 {
 	fn from(value: SignalCellDyn<'a, T, SR>) -> Self {
 		let SignalCellDyn {

@@ -14,7 +14,10 @@
 
 pub mod conversions;
 mod opaque;
+
 mod signal;
+pub use signal::Signal;
+
 pub mod unmanaged;
 
 //TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
@@ -26,18 +29,16 @@ pub use signal_cell::{
 };
 
 mod signal_arc;
-pub use signal_arc::{Signal, SignalArc, SignalDyn, SignalWeak, WeakSignalDyn};
+pub use signal_arc::{SignalArc, SignalArcDyn, SignalWeak, WeakSignalDyn};
 
 mod subscription;
-pub use subscription::{
-	SubscriptionArc, SubscriptionArcDyn, SubscriptionSR, SubscriptionWeak, SubscriptionWeakDyn,
-};
+pub use subscription::{SubscriptionArc_, SubscriptionArcDyn, Subscription};
 
 mod effect;
 pub use effect::{Effect, EffectSR};
 
 mod traits;
-pub use traits::{Guard, SourcePin, UnmanagedSignalCellPin};
+pub use traits::Guard;
 
 pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
@@ -46,9 +47,7 @@ pub mod prelude {
 	//! [`UnmanagedSignalCellPin`](`crate::traits::UnmanagedSignalCellPin`), [`Source`](`crate::traits::Source`)
 	//! and [`UnmanagedSignalCell`](`crate::traits::UnmanagedSignalCell`)), anonymously.
 
-	pub use crate::traits::{
-		SourcePin as _, UnmanagedSignal as _, UnmanagedSignalCell as _, UnmanagedSignalCellPin as _,
-	};
+	pub use crate::traits::{UnmanagedSignal as _, UnmanagedSignalCell as _};
 }
 
 #[doc(hidden = "macro-only")]

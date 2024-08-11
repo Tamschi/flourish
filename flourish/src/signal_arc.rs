@@ -1,24 +1,22 @@
 use std::{
+	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
 	marker::PhantomData,
-	pin::Pin,
-	sync::{Arc, Weak},
+	ops::Deref,
 };
 
-use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
+use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
 use crate::{
 	opaque::Opaque,
+	signal::{Signal, Strong, Weak},
 	traits::{Guard, Subscribable},
 	unmanaged::{computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced},
-	SourcePin, SubscriptionSR,
+	SourcePin, Subscription,
 };
 
-/// Type inference helper alias for [`SignalSR`] (using [`GlobalSignalsRuntime`]).
-pub type Signal<T, S> = SignalArc<T, S, GlobalSignalsRuntime>;
-
 /// Type of [`SignalSR`]s after type-erasure. Dynamic dispatch.
-pub type SignalDyn<'a, T, SR> = SignalArc<T, dyn 'a + Subscribable<T, SR>, SR>;
+pub type SignalArcDyn<'a, T, SR> = SignalArc<T, dyn 'a + Subscribable<T, SR>, SR>;
 
 /// Type of [`WeakSignal`]s after type-erasure or [`SignalDyn`] after downgrade. Dynamic dispatch.
 pub type WeakSignalDyn<'a, T, SR> = SignalWeak<T, dyn 'a + Subscribable<T, SR>, SR>;
@@ -28,8 +26,7 @@ pub struct SignalWeak<
 	S: ?Sized + Subscribable<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	source_cell: Weak<S>,
-	_phantom: PhantomData<(PhantomData<T>, SR)>,
+	weak: Weak<T, S, SR>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
@@ -37,10 +34,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 {
 	#[must_use]
 	pub fn upgrade(&self) -> Option<SignalArc<T, S, SR>> {
-		self.source_cell.upgrade().map(|strong| SignalArc {
-			source: unsafe { Pin::new_unchecked(strong) },
-			_phantom: PhantomData,
-		})
+		self.weak.upgrade().map(|strong| SignalArc { strong })
 	}
 }
 
@@ -56,8 +50,7 @@ pub struct SignalArc<
 	S: ?Sized + Subscribable<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	pub(super) source: Pin<Arc<S>>,
-	pub(crate) _phantom: PhantomData<(PhantomData<T>, SR)>,
+	pub(super) strong: Strong<T, S, SR>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
@@ -65,8 +58,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 {
 	fn clone(&self) -> Self {
 		Self {
-			source: self.source.clone(),
-			_phantom: PhantomData,
+			strong: self.strong.clone(),
 		}
 	}
 }
@@ -77,11 +69,29 @@ where
 	T: Debug,
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		self.source.clone_runtime_ref().run_detached(|| {
+		self.strong.clone_runtime_ref().run_detached(|| {
 			f.debug_struct("SignalSR")
 				.field("(value)", &&**self.source.as_ref().read_exclusive_dyn())
 				.finish_non_exhaustive()
 		})
+	}
+}
+
+impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+	for SignalArc<T, S, SR>
+{
+	type Target = Signal<T, S, SR>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.strong
+	}
+}
+
+impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Borrow<Signal<T, S, SR>> for SignalArc<T, S, SR>
+{
+	fn borrow(&self) -> &Signal<T, S, SR> {
+		self.strong.borrow()
 	}
 }
 
@@ -103,27 +113,26 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 		S: Sized,
 	{
 		SignalArc {
-			source: Arc::pin(source),
-			_phantom: PhantomData,
+			strong: Strong::pin(source),
 		}
 	}
 
 	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
 
-	pub fn subscribe(self) -> SubscriptionSR<T, S, SR> {
+	pub fn subscribe(self) -> Subscription<T, S, SR> {
 		self.source.as_ref().subscribe();
-		SubscriptionSR {
+		Subscription {
 			source: self.source,
 			_phantom: PhantomData,
 		}
 	}
 
-	pub fn into_dyn<'a>(self) -> SignalDyn<'a, T, SR>
+	pub fn into_dyn<'a>(self) -> SignalArcDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
 	{
 		let Self { source, _phantom } = self;
-		SignalDyn { source, _phantom }
+		SignalArcDyn { source, _phantom }
 	}
 }
 
@@ -377,7 +386,7 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunti
 /// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
 /// bound, which is a bit less performant than using those accessors without type erasure.
 impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
-	for SignalDyn<'a, T, SR>
+	for SignalArcDyn<'a, T, SR>
 {
 	fn touch(&self) {
 		self.source.as_ref().touch()

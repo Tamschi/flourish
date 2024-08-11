@@ -2,7 +2,7 @@
 
 use std::sync::Mutex;
 
-use flourish::{prelude::*, Signal, SignalCell, SubscriptionArc};
+use flourish::{prelude::*, Signal, SignalCell, SubscriptionArc_};
 mod _validator;
 use _validator::Validator;
 
@@ -30,12 +30,12 @@ fn heap() {
 	});
 	v.expect([]);
 
-	let _a = SubscriptionArc::computed(|| {
+	let _a = SubscriptionArc_::computed(|| {
 		v.push('a');
 		roundabout.get()
 	});
 	v.expect(['a']);
-	let _b = SubscriptionArc::computed(|| {
+	let _b = SubscriptionArc_::computed(|| {
 		v.push('b');
 		roundabout.get()
 	});
@@ -77,12 +77,12 @@ fn stack() {
 	});
 	v.expect([]);
 
-	let _a = SubscriptionArc::computed(|| {
+	let _a = SubscriptionArc_::computed(|| {
 		v.push('a');
 		roundabout.get()
 	});
 	v.expect(['a']);
-	let _b = SubscriptionArc::computed(|| {
+	let _b = SubscriptionArc_::computed(|| {
 		v.push('b');
 		roundabout.get()
 	});

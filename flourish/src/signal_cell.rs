@@ -17,7 +17,7 @@ use crate::{
 	shadow_clone,
 	traits::{Guard, Subscribable, UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{InertCell, ReactiveCell, ReactiveCellMut},
-	SignalArc, SignalDyn, SourcePin, UnmanagedSignalCellPin,
+	SignalArc, SignalArcDyn, SourcePin, UnmanagedSignalCellPin,
 };
 
 /// Type inference helper alias for [`SignalCellSR`] (using [`GlobalSignalsRuntime`]).
@@ -422,7 +422,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntime
 
 impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalCellDyn<'a, T, SR> {
 	/// Cheaply creates a [`SignalDyn`] handle to the managed [`UnmanagedSignalCell`].
-	pub fn to_signal(&self) -> SignalDyn<'a, T, SR> {
+	pub fn to_signal(&self) -> SignalArcDyn<'a, T, SR> {
 		SignalArc {
 			source: unsafe {
 				Arc::increment_strong_count(self.upcast.0);
@@ -456,7 +456,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntim
 	}
 
 	//TODO: Make this available for "`Dyn`"!
-	pub fn into_signal_and_self_dyn<'a>(self) -> (SignalDyn<'a, T, SR>, SignalCellDyn<'a, T, SR>)
+	pub fn into_signal_and_self_dyn<'a>(self) -> (SignalArcDyn<'a, T, SR>, SignalCellDyn<'a, T, SR>)
 	where
 		T: 'a,
 		S: 'a + Sized,
