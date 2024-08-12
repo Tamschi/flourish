@@ -12,7 +12,7 @@ use _validator::Validator;
 fn heap() {
 	let v = &Validator::new();
 
-	let (a, a_cell) = Signal::cell(()).into_read_only_and_self_dyn();
+	let (a, a_cell) = Signal::cell(()).into_dyn_and_dyn_cell();
 
 	let e = Effect::new(
 		move || {

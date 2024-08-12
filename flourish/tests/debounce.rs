@@ -13,7 +13,7 @@ fn debounce_test() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
-	let (signal, cell) = Signal::cell(0).into_read_only_and_self_dyn();
+	let (signal, cell) = Signal::cell(0).into_dyn_and_dyn_cell();
 	let debounced = Signal::debounced(move || {
 		x.push("d");
 		signal.get()

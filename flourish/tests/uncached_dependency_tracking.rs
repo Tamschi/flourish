@@ -16,9 +16,9 @@ use _validator::Validator;
 fn heap() {
 	let v = &Validator::new();
 
-	let (a, a_cell) = Signal::cell(()).into_read_only_and_self_dyn();
-	let (b, b_cell) = Signal::cell(()).into_read_only_and_self_dyn();
-	let (c, c_cell) = Signal::cell(()).into_read_only_and_self_dyn();
+	let (a, a_cell) = Signal::cell(()).into_dyn_and_dyn_cell();
+	let (b, b_cell) = Signal::cell(()).into_dyn_and_dyn_cell();
+	let (c, c_cell) = Signal::cell(()).into_dyn_and_dyn_cell();
 
 	let roundabout = Signal::computed_uncached_mut({
 		let mut angle = 0;
@@ -62,9 +62,9 @@ fn heap() {
 fn stack() {
 	let v = &Validator::new();
 
-	let (a, a_cell) = Signal::cell(()).into_read_only_and_self_dyn();
-	let (b, b_cell) = Signal::cell(()).into_read_only_and_self_dyn();
-	let (c, c_cell) = Signal::cell(()).into_read_only_and_self_dyn();
+	let (a, a_cell) = Signal::cell(()).into_dyn_and_dyn_cell();
+	let (b, b_cell) = Signal::cell(()).into_dyn_and_dyn_cell();
+	let (c, c_cell) = Signal::cell(()).into_dyn_and_dyn_cell();
 
 	let roundabout = Signal::computed_uncached({
 		let angle = Mutex::new(0);

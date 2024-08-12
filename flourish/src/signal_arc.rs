@@ -173,7 +173,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 		(self.as_read_only().to_owned(), self)
 	}
 
-	pub fn into_read_only_and_self_dyn<'a>(
+	pub fn into_dyn_and_dyn_cell<'a>(
 		self,
 	) -> (SignalArcDyn<'a, T, SR>, SignalArcDynCell<'a, T, SR>)
 	where

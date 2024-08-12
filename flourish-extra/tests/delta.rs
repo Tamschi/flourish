@@ -13,7 +13,7 @@ use flourish_extra::delta;
 fn delta_test() {
 	let v = &Validator::new();
 
-	let (signal, cell) = Signal::cell(1).into_read_only_and_self_dyn();
+	let (signal, cell) = Signal::cell(1).into_dyn_and_dyn_cell();
 	let delta = Signal::new(delta(move || signal.get(), GlobalSignalsRuntime));
 	let sub = Subscription::computed({
 		shadow_clone!(delta);

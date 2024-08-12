@@ -50,13 +50,14 @@ cargo add flourish --features global_signals_runtime
 You can put signals on the heap:
 
 ```rust
-use flourish::{Propagation, GlobalSignalsRuntime};
+use flourish::{Propagation, GlobalSignalsRuntime, SignalArcDynCell, SignalArcDyn};
 
 // Choose a runtime:
 type Effect<'a> = flourish::Effect<'a, GlobalSignalsRuntime>;
 type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
 type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
+// `Signal` is a ref-only type like `Path`, so its constructors return a `SignalArc`.
 let _ = Signal::cell(());
 let _ = Signal::cell_cyclic(|_weak| ());
 let _ = Signal::cell_reactive((), |_value, _status| Propagation::Halt);
@@ -64,7 +65,6 @@ let _ = Signal::cell_reactive_mut((), |_value, _status| Propagation::Propagate);
 let _ = Signal::cell_cyclic_reactive(|_weak| ((), move |_value, _status| Propagation::Halt));
 let _ = Signal::cell_cyclic_reactive_mut(|_weak| ((), move |_value, _status| Propagation::Propagate));
 
-// The closure type is erased!
 // Not evaluated unless subscribed.
 let _ = Signal::computed(|| ());
 let _ = Signal::debounced(|| ());
@@ -73,18 +73,22 @@ let _ = Signal::computed_uncached_mut(|| ());
 let _ = Signal::folded((), |_value| Propagation::Propagate);
 let _ = Signal::reduced(|| (), |_value, _next| Propagation::Propagate);
 
-// The closure type is erased!
+// `Subscription` is the subscribed form of `SignalArc`.
 let _ = Subscription::computed(|| ());
 let _ = Subscription::folded((), |_value| Propagation::Propagate);
 let _ = Subscription::reduced(|| (), |_value, _next| Propagation::Propagate);
 
-// The closure and value type are erased!
 // Runs `drop` *before* computing the new value.
+// The effect closures' types are always erased.
 let _ = Effect::new(|| (), drop);
 
 // "Splitting":
 let (_signal, _cell) = Signal::cell(()).into_read_only_and_self();
-let (_signal_dyn, _cell_dyn) = Signal::cell(()).into_read_only_and_self_dyn();
+
+// Erase the unmanaged/closure type:
+let _: SignalArcDynCell<(), GlobalSignalsRuntime> = Signal::cell(()).into_dyn_cell();
+let _: SignalArcDyn<(), GlobalSignalsRuntime> = Signal::computed(|| ()).into_dyn();
+let (_signal_dyn, _cell_dyn) = Signal::cell(()).into_dyn_and_dyn_cell();
 ```
 
 You can also put signals on the stack:
