@@ -1,6 +1,6 @@
 #![cfg(feature = "_test")]
 
-use flourish::{prelude::*, shadow_clone, GlobalSignalsRuntime};
+use flourish::{shadow_clone, GlobalSignalsRuntime};
 
 type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
 type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
