@@ -1,6 +1,10 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, Effect, Propagation, Signal, SignalCell};
+use flourish::{GlobalSignalsRuntime, Propagation};
+
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Effect<'a> = flourish::Effect<'a, GlobalSignalsRuntime>;
+
 mod _validator;
 use _validator::Validator;
 
@@ -8,7 +12,7 @@ use _validator::Validator;
 fn flushing() {
 	let seen = &Validator::new();
 
-	let a = SignalCell::new_reactive_mut(false, |value, status| {
+	let a = Signal::cell_reactive_mut(false, |value, status| {
 		*value = status;
 		Propagation::Propagate
 	});

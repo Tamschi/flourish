@@ -153,6 +153,36 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	SignalArc<T, S, SR>
+{
+	pub fn into_read_only<'a>(self) -> SignalArc<T, impl 'a + Subscribable<T, SR>, SR>
+	where
+		S: 'a,
+	{
+		//FIXME: This is *probably* inefficient.
+		self.as_read_only().to_owned()
+	}
+
+	pub fn into_read_only_and_self<'a>(
+		self,
+	) -> (SignalArc<T, impl 'a + Subscribable<T, SR>, SR>, Self)
+	where
+		S: 'a,
+	{
+		(self.as_read_only().to_owned(), self)
+	}
+
+	pub fn into_read_only_and_self_dyn<'a>(
+		self,
+	) -> (SignalArcDyn<'a, T, SR>, SignalArcDynCell<'a, T, SR>)
+	where
+		S: 'a,
+	{
+		(self.as_dyn().to_owned(), self.into_dyn_cell())
+	}
+}
+
 /// Duplicated to avoid identities.
 mod private {
 	use std::{borrow::Borrow, ops::Deref};

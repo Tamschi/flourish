@@ -188,7 +188,9 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 /// ```
 /// # {
 /// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-/// use flourish::Signal;
+/// use flourish::GlobalSignalsRuntime;
+///
+/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
 ///
 /// // The closure runs once on subscription, but not to refresh `sub`!
 /// // It re-runs with each access of its value through `SourcePin`, instead.

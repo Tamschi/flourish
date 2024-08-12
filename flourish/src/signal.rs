@@ -55,6 +55,20 @@ where
 	}
 }
 
+impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Signal<T, S, SR>
+{
+	/// Creates a new [`SignalArc`] from the provided unmanaged [`Subscribable`].
+	pub fn new(unmanaged: S) -> SignalArc<T, S, SR>
+	where
+		S: Sized,
+	{
+		SignalArc {
+			strong: Strong::pin(unmanaged),
+		}
+	}
+}
+
 /// Secondary constructors.
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// A simple cached computation.
@@ -807,6 +821,18 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	pub fn as_dyn_cell<'a>(&self) -> &SignalDynCell<'a, T, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+	{
+		self
+	}
+}
+
+/// Cell management methods.
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Signal<T, S, SR>
+{
+	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + Subscribable<T, SR>, SR>
+	where
+		S: 'a,
 	{
 		self
 	}

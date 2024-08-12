@@ -1,6 +1,10 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, shadow_clone, Propagation, Signal, SignalCell, SubscriptionArc_};
+use flourish::{shadow_clone, GlobalSignalsRuntime, Propagation};
+
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+
 mod _validator;
 use _validator::Validator;
 
@@ -8,11 +12,11 @@ use _validator::Validator;
 fn intrinsic() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |_value, status| {
+	let a = Signal::cell_reactive((), |_value, status| {
 		v.push(status);
 		Propagation::Halt
 	});
-	let s = a.to_signal();
+	let s = a.as_read_only().to_owned();
 	drop(a);
 	v.expect([]);
 
@@ -27,13 +31,13 @@ fn intrinsic() {
 fn dependent() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |_value, status| {
+	let a = Signal::cell_reactive((), |_value, status| {
 		v.push(status);
 		Propagation::Halt
 	});
 	v.expect([]);
 
-	let s = SubscriptionArc_::computed({
+	let s = Subscription::computed({
 		shadow_clone!(a);
 		move || a.get()
 	});
@@ -50,13 +54,13 @@ fn dependent() {
 fn dependent_reversed() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |_value, status| {
+	let a = Signal::cell_reactive((), |_value, status| {
 		v.push(status);
 		Propagation::Halt
 	});
 	v.expect([]);
 
-	let s = SubscriptionArc_::computed({
+	let s = Subscription::computed({
 		shadow_clone!(a);
 		move || a.get()
 	});
@@ -69,26 +73,26 @@ fn dependent_reversed() {
 	v.expect([]);
 }
 
-// #[test]
-// fn lifecycle() {
-// 	let v = &Validator::new();
+#[test]
+fn lifecycle() {
+	let v = &Validator::new();
 
-// 	let (s, _) = SignalCell::new_reactive_mut(false, |value, status| {
-// 		*value = status;
-// 		Propagation::Propagate
-// 	})
-// 	.into_signal_and_self();
-// 	assert!(!s.get());
+	let s = Signal::cell_reactive_mut(false, |value, status| {
+		*value = status;
+		Propagation::Propagate
+	})
+	.into_read_only();
+	assert!(!s.get());
 
-// 	let s = Signal::computed(move || v.push(s.get()));
-// 	v.expect([]);
+	let s = Signal::computed(move || v.push(s.get()));
+	v.expect([]);
 
-// 	let s = s.subscribe();
-// 	v.expect([true]);
+	let s = s.subscribe();
+	v.expect([true]);
 
-// 	let s = s.unsubscribe();
-// 	v.expect([false]);
+	let s = s.unsubscribe();
+	v.expect([false]);
 
-// 	drop(s);
-// 	v.expect([]);
-// }
+	drop(s);
+	v.expect([]);
+}

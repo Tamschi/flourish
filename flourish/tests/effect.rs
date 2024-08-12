@@ -1,6 +1,10 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, Effect, Propagation, SignalCell};
+use flourish::{GlobalSignalsRuntime, Propagation};
+
+type Effect<'a> = flourish::Effect<'a, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+
 mod _validator;
 use _validator::Validator;
 
@@ -8,7 +12,7 @@ use _validator::Validator;
 fn heap() {
 	let v = &Validator::new();
 
-	let (a, a_cell) = Signal::cell(()).into_signal_and_self_dyn();
+	let (a, a_cell) = Signal::cell(()).into_read_only_and_self_dyn();
 
 	let e = Effect::new(
 		move || {
@@ -34,7 +38,7 @@ fn effect_drop_is_debounced() {
 	let constructions = &Validator::new();
 	let destructions = &Validator::new();
 
-	let a = SignalCell::new_reactive((), |_value, _status| Propagation::Propagate);
+	let a = Signal::cell_reactive((), |_value, _status| Propagation::Propagate);
 	let e = Effect::new(
 		|| constructions.push(a.get()),
 		|value| destructions.push(value),

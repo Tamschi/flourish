@@ -1,6 +1,10 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, shadow_clone, Effect, Propagation, SignalCell};
+use flourish::{shadow_clone, shadow_ref_to_owned, GlobalSignalsRuntime, Propagation};
+
+type Effect<'a> = flourish::Effect<'a, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+
 mod _validator;
 use _validator::Validator;
 
@@ -8,7 +12,8 @@ use _validator::Validator;
 fn cyclic() {
 	let v = &Validator::new();
 
-	let p = SignalCell::new_cyclic_reactive(|weak_signal_cell| {
+	let p = Signal::cell_cyclic_reactive(|weak_signal_cell| {
+		shadow_ref_to_owned!(weak_signal_cell);
 		((), move |_value, status| {
 			v.push((weak_signal_cell.upgrade().is_some(), status));
 			Propagation::Halt

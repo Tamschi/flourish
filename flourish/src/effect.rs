@@ -1,11 +1,8 @@
 use std::{marker::PhantomData, pin::Pin};
 
-use isoprenoid::runtime::{GlobalSignalsRuntime, SignalsRuntimeRef};
+use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::unmanaged::new_raw_unsubscribed_effect;
-
-/// Type inference helper alias for [`EffectSR`] (using [`GlobalSignalsRuntime`]).
-pub type Effect<'a> = EffectSR<'a, GlobalSignalsRuntime>;
 
 /// An [`EffectSR`] subscribes to signal sources just like a [`SubscriptionSR`](`crate::SubscriptionSR`) does,
 /// but instead of caching the value and thereby requiring [`Clone`], it executes side-effects.
@@ -15,7 +12,7 @@ pub type Effect<'a> = EffectSR<'a, GlobalSignalsRuntime>;
 ///
 /// The specified `drop` function also runs when the [`EffectSR`] is dropped.
 #[must_use = "Effects are cancelled when dropped."]
-pub struct EffectSR<'a, SR: 'a + ?Sized + SignalsRuntimeRef> {
+pub struct Effect<'a, SR: 'a + ?Sized + SignalsRuntimeRef> {
 	_raw_effect: Pin<Box<dyn 'a + DropHandle>>,
 	_phantom: PhantomData<SR>,
 }
@@ -23,7 +20,7 @@ pub struct EffectSR<'a, SR: 'a + ?Sized + SignalsRuntimeRef> {
 trait DropHandle {}
 impl<T: ?Sized> DropHandle for T {}
 
-impl<'a, SR: SignalsRuntimeRef> EffectSR<'a, SR> {
+impl<'a, SR: SignalsRuntimeRef> Effect<'a, SR> {
 	/// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on notification and drop.
 	///
 	/// *Both* closures are part of the dependency detection scope.

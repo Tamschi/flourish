@@ -1,8 +1,9 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{
-	prelude::*, unmanaged::computed, GlobalSignalsRuntime, Signal, SignalCell, SubscriptionArc_,
-};
+use flourish::GlobalSignalsRuntime;
+
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
 mod _validator;
 use _validator::Validator;
@@ -12,18 +13,15 @@ fn debounce_test() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
-	let (signal, cell) = Signal::cell(0).into_signal_and_self_dyn();
+	let (signal, cell) = Signal::cell(0).into_read_only_and_self_dyn();
 	let debounced = Signal::debounced(move || {
 		x.push("d");
 		signal.get()
 	});
-	let _sub = SubscriptionArc_::new(computed(
-		move || {
-			x.push("s");
-			v.push(debounced.get())
-		},
-		GlobalSignalsRuntime,
-	));
+	let _sub = Subscription::computed(move || {
+		x.push("s");
+		v.push(debounced.get())
+	});
 	v.expect([0]);
 	x.expect(["s", "d"]);
 

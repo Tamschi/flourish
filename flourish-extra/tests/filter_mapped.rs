@@ -1,7 +1,9 @@
 #![cfg(feature = "_test")]
 
-use flourish::{prelude::*, Signal};
+use flourish::GlobalSignalsRuntime;
 use flourish_extra::future::filter_mapped;
+
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
 
 mod _validator;
 use _validator::Validator;

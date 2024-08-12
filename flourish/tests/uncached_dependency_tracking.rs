@@ -2,7 +2,11 @@
 
 use std::sync::Mutex;
 
-use flourish::{prelude::*, Signal, SignalCell, SubscriptionArc_};
+use flourish::GlobalSignalsRuntime;
+
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+
 mod _validator;
 use _validator::Validator;
 
@@ -12,9 +16,9 @@ use _validator::Validator;
 fn heap() {
 	let v = &Validator::new();
 
-	let (a, a_cell) = Signal::cell(()).into_signal_and_self_dyn();
-	let (b, b_cell) = Signal::cell(()).into_signal_and_self_dyn();
-	let (c, c_cell) = Signal::cell(()).into_signal_and_self_dyn();
+	let (a, a_cell) = Signal::cell(()).into_read_only_and_self_dyn();
+	let (b, b_cell) = Signal::cell(()).into_read_only_and_self_dyn();
+	let (c, c_cell) = Signal::cell(()).into_read_only_and_self_dyn();
 
 	let roundabout = Signal::computed_uncached_mut({
 		let mut angle = 0;
@@ -30,12 +34,12 @@ fn heap() {
 	});
 	v.expect([]);
 
-	let _a = SubscriptionArc_::computed(|| {
+	let _a = Subscription::computed(|| {
 		v.push('a');
 		roundabout.get()
 	});
 	v.expect(['a']);
-	let _b = SubscriptionArc_::computed(|| {
+	let _b = Subscription::computed(|| {
 		v.push('b');
 		roundabout.get()
 	});
@@ -58,9 +62,9 @@ fn heap() {
 fn stack() {
 	let v = &Validator::new();
 
-	let (a, a_cell) = Signal::cell(()).into_signal_and_self_dyn();
-	let (b, b_cell) = Signal::cell(()).into_signal_and_self_dyn();
-	let (c, c_cell) = Signal::cell(()).into_signal_and_self_dyn();
+	let (a, a_cell) = Signal::cell(()).into_read_only_and_self_dyn();
+	let (b, b_cell) = Signal::cell(()).into_read_only_and_self_dyn();
+	let (c, c_cell) = Signal::cell(()).into_read_only_and_self_dyn();
 
 	let roundabout = Signal::computed_uncached({
 		let angle = Mutex::new(0);
@@ -77,12 +81,12 @@ fn stack() {
 	});
 	v.expect([]);
 
-	let _a = SubscriptionArc_::computed(|| {
+	let _a = Subscription::computed(|| {
 		v.push('a');
 		roundabout.get()
 	});
 	v.expect(['a']);
-	let _b = SubscriptionArc_::computed(|| {
+	let _b = Subscription::computed(|| {
 		v.push('b');
 		roundabout.get()
 	});

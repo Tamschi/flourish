@@ -50,14 +50,19 @@ cargo add flourish --features global_signals_runtime
 You can put signals on the heap:
 
 ```rust
-use flourish::{SignalCell, Propagation, Signal, Subscription, Effect};
+use flourish::{Propagation, GlobalSignalsRuntime};
+
+// Choose a runtime:
+type Effect<'a> = flourish::Effect<'a, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
 let _ = Signal::cell(());
-let _ = SignalCell::new_cyclic(|_weak| ());
-let _ = SignalCell::new_reactive((), |_value, _status| Propagation::Halt);
-let _ = SignalCell::new_reactive_mut((), |_value, _status| Propagation::Propagate);
-let _ = SignalCell::new_cyclic_reactive(|_weak| ((), move |_value, _status| Propagation::Halt));
-let _ = SignalCell::new_cyclic_reactive_mut(|_weak| ((), move |_value, _status| Propagation::Propagate));
+let _ = Signal::cell_cyclic(|_weak| ());
+let _ = Signal::cell_reactive((), |_value, _status| Propagation::Halt);
+let _ = Signal::cell_reactive_mut((), |_value, _status| Propagation::Propagate);
+let _ = Signal::cell_cyclic_reactive(|_weak| ((), move |_value, _status| Propagation::Halt));
+let _ = Signal::cell_cyclic_reactive_mut(|_weak| ((), move |_value, _status| Propagation::Propagate));
 
 // The closure type is erased!
 // Not evaluated unless subscribed.
@@ -78,8 +83,8 @@ let _ = Subscription::reduced(|| (), |_value, _next| Propagation::Propagate);
 let _ = Effect::new(|| (), drop);
 
 // "Splitting":
-let (_signal, _cell) = Signal::cell(()).into_signal_and_self();
-let (_signal, _type_erased_cell) = Signal::cell(()).into_signal_and_self_dyn();
+let (_signal, _cell) = Signal::cell(()).into_read_only_and_self();
+let (_signal_dyn, _cell_dyn) = Signal::cell(()).into_read_only_and_self_dyn();
 ```
 
 You can also put signals on the stack:
@@ -119,7 +124,11 @@ Additionally, inside `flourish::raw`, you can find constructor functions for unp
 `flourish` detects and updates dependencies automatically:
 
 ```rust
-use flourish::{prelude::*, shadow_clone, SignalCell, Signal, Subscription};
+use flourish::{shadow_clone, GlobalSignalsRuntime};
+
+// Choose a runtime:
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
 let a = Signal::cell("a");
 let b = Signal::cell("b");
@@ -170,22 +179,22 @@ The default `GlobalSignalsRuntime` notifies signals iteratively from earlier to 
 
 TODO
 
-## Using a different runtime
+## Using an instantiated runtime
 
-You can use a different [`isoprenoid`] runtime with the included types and macros (but ideally, alias these items for your own use):
+You can use existing [`isoprenoid`] runtime instances with the included types and macros (but ideally, still alias these items for your own use):
 
 ```rust
-use flourish::{signals_helper, GlobalSignalsRuntime, SignalSR, SignalCell, SubscriptionSR, Propagation};
+use flourish::{signals_helper, GlobalSignalsRuntime, Propagation, Signal, Subscription};
 
-let _ = SignalCell::with_runtime((), GlobalSignalsRuntime);
+let _ = Signal::cell_with_runtime((), GlobalSignalsRuntime);
 
-let _ = SignalSR::computed_with_runtime(|| (), GlobalSignalsRuntime);
-let _ = SignalSR::computed_uncached_with_runtime(|| (), GlobalSignalsRuntime);
-let _ = SignalSR::computed_uncached_mut_with_runtime(|| (), GlobalSignalsRuntime);
-let _ = SignalSR::folded_with_runtime((), |_value| Propagation::Propagate, GlobalSignalsRuntime);
-let _ = SignalSR::reduced_with_runtime(|| (), |_value, _next| Propagation::Propagate, GlobalSignalsRuntime);
+let _ = Signal::computed_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = Signal::computed_uncached_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = Signal::computed_uncached_mut_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = Signal::folded_with_runtime((), |_value| Propagation::Propagate, GlobalSignalsRuntime);
+let _ = Signal::reduced_with_runtime(|| (), |_value, _next| Propagation::Propagate, GlobalSignalsRuntime);
 
-let _ = SubscriptionSR::computed_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = Subscription::computed_with_runtime(|| (), GlobalSignalsRuntime);
 
 signals_helper! {
   let _inert_cell = inert_cell_with_runtime!((), GlobalSignalsRuntime);

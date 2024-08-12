@@ -31,13 +31,14 @@ mod subscription;
 pub use subscription::{Subscription, SubscriptionDyn, SubscriptionDynCell};
 
 mod effect;
-pub use effect::{Effect, EffectSR};
+pub use effect::Effect;
 
 mod traits;
 pub use traits::Guard;
 
 pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
+//TODO: Remove prelude?
 pub mod prelude {
 	//! Flourish's value accessor traits ([`SourcePin`](`crate::traits::SourcePin`),
 	//! [`UnmanagedSignalCellPin`](`crate::traits::UnmanagedSignalCellPin`), [`Source`](`crate::traits::Source`)
@@ -63,7 +64,9 @@ pub mod __ {
 /// ```
 /// # {
 /// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-/// use flourish::{prelude::*, shadow_clone, SignalCell, Signal};
+/// use flourish::{shadow_clone, GlobalSignalsRuntime};
+///
+/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
 ///
 /// let a = Signal::cell(1);
 /// let b = Signal::cell(2);
@@ -83,5 +86,26 @@ macro_rules! shadow_clone {
 	};
     ($($ident:ident),*$(,)?) => {
 		let ($($ident),*) = ($(::std::clone::Clone::clone(&$ident)),*);
+	};
+}
+
+/// Shadows each reference in place with its [`ToOwned::Owned`].
+///
+/// This is useful to create cyclic cells:
+///
+/// ```
+/// # {
+/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+/// //TODO
+/// # }
+/// ```
+#[macro_export]
+macro_rules! shadow_ref_to_owned {
+	($ident:ident$(,)?) => {
+		// This would warn because of extra parentheses… and it's fewer tokens.
+		let $ident = ::std::borrow::ToOwned::to_owned($ident);
+	};
+    ($($ident:ident),*$(,)?) => {
+		let ($($ident),*) = ($(::std::borrow::ToOwned::to_owned($ident)),*);
 	};
 }

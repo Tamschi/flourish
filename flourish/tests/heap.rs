@@ -1,6 +1,10 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, shadow_clone, Signal, SignalCell, SubscriptionArc_};
+use flourish::{shadow_clone, GlobalSignalsRuntime};
+
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+
 mod _validator;
 use _validator::Validator;
 
@@ -10,7 +14,7 @@ fn use_constructors() {
 	let x = &Validator::new();
 
 	let a = Signal::cell(1);
-	let (b, b_cell) = Signal::cell(2).into_signal_and_self_dyn();
+	let (b, b_cell) = Signal::cell(2).into_read_only_and_self_dyn();
 	let c = Signal::computed({
 		shadow_clone!(a, b);
 		move || {
@@ -35,7 +39,7 @@ fn use_constructors() {
 	v.expect([]);
 	x.expect([]);
 
-	let sub_aa = SubscriptionArc_::computed(move || {
+	let sub_aa = Subscription::computed(move || {
 		x.push("sub_aa");
 		v.push(aa.get())
 	});
@@ -59,14 +63,14 @@ fn use_constructors() {
 	v.expect([]);
 	x.expect([]);
 
-	let _sub_c = SubscriptionArc_::computed(move || {
+	let _sub_c = Subscription::computed(move || {
 		x.push("_sub_c");
 		v.push(c.get())
 	});
 	v.expect([8]);
 	x.expect(["_sub_c", "c"]);
 
-	let _sub_d = SubscriptionArc_::computed(move || {
+	let _sub_d = Subscription::computed(move || {
 		x.push("_sub_d");
 		v.push(d.get())
 	});
