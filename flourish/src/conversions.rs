@@ -74,120 +74,14 @@
 //!
 //! ## Side-effect conversions
 
-use std::{marker::PhantomData, pin::Pin, sync::Arc};
-
 use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::{
-	signal_cell::SignalCellRef,
-	unmanaged::{Subscribable, UnmanagedSignalCell},
-	SignalArc, SignalArcDyn, SignalCellDyn, SignalCellRefDyn, SignalCellSR,
+	signal_arc::SignalArcDynCell, traits::UnmanagedSignalCell, unmanaged::Subscribable, SignalArc,
+	SignalArcDyn,
 };
 
-// into `SignalCellSR` / into `SignalCellDyn`
-
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	From<SignalCellRef<'_, T, S, SR>> for SignalCellSR<T, S, SR>
-{
-	fn from(value: SignalCellRef<T, S, SR>) -> Self {
-		Self {
-			source_cell: unsafe {
-				Arc::increment_strong_count(value.source_cell);
-				Pin::new_unchecked(Arc::from_raw(value.source_cell))
-			},
-			upcast: value.upcast,
-		}
-	}
-}
-
-// into `SignalCellDyn`
-
-impl<
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalCellSR<T, S, SR>> for SignalCellDyn<'a, T, SR>
-{
-	fn from(value: SignalCellSR<T, S, SR>) -> Self {
-		value.into_dyn()
-	}
-}
-
-impl<
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalCellRef<'_, T, S, SR>> for SignalCellDyn<'a, T, SR>
-{
-	fn from(value: SignalCellRef<'_, T, S, SR>) -> Self {
-		let value: SignalCellSR<T, S, SR> = value.into();
-		value.into()
-	}
-}
-
-// into `SignalCellRef` / into `SignalCellRefDyn`
-
-impl<
-		'r,
-		T: ?Sized + Send,
-		S: ?Sized + UnmanagedSignalCell<T, SR>,
-		SR: ?Sized + SignalsRuntimeRef,
-	> From<&'r SignalCellSR<T, S, SR>> for SignalCellRef<'r, T, S, SR>
-{
-	fn from(value: &'r SignalCellSR<T, S, SR>) -> Self {
-		Self {
-			source_cell: unsafe {
-				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&value.source_cell)));
-				Arc::decrement_strong_count(ptr);
-				ptr
-			},
-			upcast: value.upcast,
-			_phantom: PhantomData,
-		}
-	}
-}
-
 // into `SignalCellRefDyn`
-
-impl<
-		'r,
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<&'r SignalCellSR<T, S, SR>> for SignalCellRefDyn<'r, 'a, T, SR>
-{
-	fn from(value: &'r SignalCellSR<T, S, SR>) -> Self {
-		Self {
-			source_cell: unsafe {
-				let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&value.source_cell)));
-				Arc::decrement_strong_count(ptr);
-				ptr
-			},
-			upcast: value.upcast,
-			_phantom: PhantomData,
-		}
-	}
-}
-
-impl<
-		'r,
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<&'r SignalCellRef<'r, T, S, SR>> for SignalCellRefDyn<'r, 'a, T, SR>
-{
-	fn from(value: &'r SignalCellRef<'r, T, S, SR>) -> Self {
-		Self {
-			source_cell: value.source_cell,
-			upcast: value.upcast,
-			_phantom: PhantomData,
-		}
-	}
-}
 
 // TODO
 
@@ -199,8 +93,7 @@ impl<
 	> From<SignalArc<T, S, SR>> for SignalArcDyn<'a, T, SR>
 {
 	fn from(value: SignalArc<T, S, SR>) -> Self {
-		let SignalArc { strong } = value;
-		Self { strong }
+		value.into_dyn()
 	}
 }
 
@@ -209,10 +102,10 @@ impl<
 		T: 'a + ?Sized + Send,
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<SignalCellSR<T, S, SR>> for SignalArcDyn<'a, T, SR>
+	> From<SignalArc<T, S, SR>> for SignalArcDynCell<'a, T, SR>
 {
-	fn from(value: SignalCellSR<T, S, SR>) -> Self {
-		value.into_dyn().into()
+	fn from(value: SignalArc<T, S, SR>) -> Self {
+		value.into_dyn_cell()
 	}
 }
 

@@ -2,7 +2,6 @@ use std::{
 	borrow::{Borrow, BorrowMut},
 	fmt::{self, Debug, Formatter},
 	future::Future,
-	marker::PhantomPinned,
 	mem,
 	ops::Deref,
 	pin::Pin,
@@ -139,14 +138,6 @@ impl<
 		SR: SignalsRuntimeRef,
 	> ReactiveCellMut<T, HandlerFnPin, SR>
 {
-	pub(crate) fn new(initial_value: T, on_subscribed_change_fn_pin: HandlerFnPin) -> Self
-	where
-		T: Sized,
-		SR: Default,
-	{
-		Self::with_runtime(initial_value, on_subscribed_change_fn_pin, SR::default())
-	}
-
 	pub(crate) fn with_runtime(
 		initial_value: T,
 		on_subscribed_change_fn_pin: HandlerFnPin,
@@ -387,186 +378,10 @@ impl<
 			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
 	}
 
-	fn change_async<'f>(
-		self: Pin<&Self>,
-		new_value: T,
-	) -> private::DetachedAsyncFuture<'f, Result<Result<T, T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized + PartialEq,
-	{
-		let this = self.downgrade();
-		private::DetachedAsyncFuture(
-			Box::pin(async move {
-				if let Some(this) = this.upgrade() {
-					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.change_eager(new_value).boxed().await
-				} else {
-					Err(new_value)
-				}
-			}),
-			PhantomPinned,
-		)
-	}
-
-	type ChangeAsync<'f> = private::DetachedAsyncFuture<'f, Result<Result<T,T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
-
-	fn replace_async<'f>(
-		self: Pin<&Self>,
-		new_value: T,
-	) -> private::DetachedAsyncFuture<'f, Result<T, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized,
-	{
-		let this = self.downgrade();
-		private::DetachedAsyncFuture(
-			Box::pin(async move {
-				if let Some(this) = this.upgrade() {
-					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.replace_eager(new_value).boxed().await
-				} else {
-					Err(new_value)
-				}
-			}),
-			PhantomPinned,
-		)
-	}
-
-	type ReplaceAsync<'f> = private::DetachedAsyncFuture<'f, Result<T, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
-
-	fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
-		self: Pin<&Self>,
-		update: F,
-	) -> private::DetachedAsyncFuture<'f, Result<U, F>>
-	where
-		Self: 'f + Sized,
-	{
-		let this = self.downgrade();
-		private::DetachedAsyncFuture(
-			Box::pin(async move {
-				if let Some(this) = this.upgrade() {
-					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.update_eager(update).boxed().await
-				} else {
-					Err(update)
-				}
-			}),
-			PhantomPinned,
-		)
-	}
-
-	type UpdateAsync<'f, U: 'f, F: 'f>=private::DetachedAsyncFuture<'f, Result<U, F>>
-	where
-		Self: 'f + Sized;
-
-	fn change_async_dyn<'f>(
-		self: Pin<&Self>,
-		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
-	where
-		T: 'f + Sized + PartialEq,
-	{
-		let this = self.downgrade();
-		let f = Box::new(async move {
-			if let Some(this) = this.upgrade() {
-				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-				this.change_eager(new_value).boxed().await
-			} else {
-				Err(new_value)
-			}
-		});
-
-		unsafe {
-			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
-			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
-			mem::transmute::<
-				Box<dyn '_ + Send + Future<Output = Result<Result<T, T>, T>>>,
-				Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>,
-			>(f)
-		}
-	}
-
-	fn replace_async_dyn<'f>(
-		self: Pin<&Self>,
-		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
-	where
-		T: 'f + Sized,
-	{
-		let this = self.downgrade();
-		let f = Box::new(async move {
-			if let Some(this) = this.upgrade() {
-				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-				this.replace_eager(new_value).boxed().await
-			} else {
-				Err(new_value)
-			}
-		});
-
-		unsafe {
-			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
-			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
-			mem::transmute::<
-				Box<dyn '_ + Send + Future<Output = Result<T, T>>>,
-				Box<dyn 'f + Send + Future<Output = Result<T, T>>>,
-			>(f)
-		}
-	}
-
-	fn update_async_dyn<'f>(
-		self: Pin<&Self>,
-		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
-	) -> Box<
-		dyn 'f
-			+ Send
-			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
-	>
-	where
-		T: 'f,
-	{
-		let this = self.downgrade();
-		let f = Box::new(async move {
-			if let Some(this) = this.upgrade() {
-				let f: Pin<Box<_>> = this.update_eager_dyn(update).into();
-				f.await
-			} else {
-				Err(update)
-			}
-		});
-
-		unsafe {
-			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
-			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
-			mem::transmute::<
-				Box<
-					dyn '_
-						+ Send
-						+ Future<
-							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
-						>,
-				>,
-				Box<
-					dyn 'f
-						+ Send
-						+ Future<
-							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
-						>,
-				>,
-			>(f)
-		}
-	}
-
 	fn change_eager<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> private::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
+	) -> private::DetachedFuture<'f, Result<Result<T, T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
@@ -590,7 +405,7 @@ impl<
 			}
 		});
 
-		private::DetachedEagerFuture(Box::pin(async move {
+		private::DetachedFuture(Box::pin(async move {
 			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
 			use futures_lite::FutureExt;
 			f.boxed().await.ok();
@@ -603,7 +418,7 @@ impl<
 		}))
 	}
 
-	type ChangeEager<'f> = private::DetachedEagerFuture<'f, Result<Result<T, T>, T>>
+	type ChangeEager<'f> = private::DetachedFuture<'f, Result<Result<T, T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -611,7 +426,7 @@ impl<
 	fn replace_eager<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> private::DetachedEagerFuture<'f, Result<T, T>>
+	) -> private::DetachedFuture<'f, Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized,
@@ -630,7 +445,7 @@ impl<
 			}
 		});
 
-		private::DetachedEagerFuture(Box::pin(async move {
+		private::DetachedFuture(Box::pin(async move {
 			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
 			use futures_lite::FutureExt;
 			f.boxed().await.ok();
@@ -643,7 +458,7 @@ impl<
 		}))
 	}
 
-	type ReplaceEager<'f> = private::DetachedEagerFuture<'f, Result<T, T>>
+	type ReplaceEager<'f> = private::DetachedFuture<'f, Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -651,7 +466,7 @@ impl<
 	fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		self: Pin<&Self>,
 		update: F,
-	) -> private::DetachedEagerFuture<'f, Result<U, F>>
+	) -> private::DetachedFuture<'f, Result<U, F>>
 	where
 		Self: 'f + Sized,
 	{
@@ -667,7 +482,7 @@ impl<
 				update(&mut value.0 .1.write().unwrap())
 			}
 		});
-		private::DetachedEagerFuture(Box::pin(async move {
+		private::DetachedFuture(Box::pin(async move {
 			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
 			use futures_lite::FutureExt;
 			f.boxed().await.map_err(|_| {
@@ -681,7 +496,7 @@ impl<
 		}))
 	}
 
-	type UpdateEager<'f, U: 'f, F: 'f> = private::DetachedEagerFuture<'f, Result<U, F>>
+	type UpdateEager<'f, U: 'f, F: 'f> = private::DetachedFuture<'f, Result<U, F>>
 	where
 		Self: 'f + Sized;
 
@@ -857,33 +672,18 @@ impl<
 mod private {
 	use std::{
 		future::Future,
-		marker::PhantomPinned,
 		pin::Pin,
 		task::{Context, Poll},
 	};
 
 	use futures_lite::FutureExt;
 
-	#[must_use = "Async futures have no effect iff dropped before polling (and may cancel their effect iff dropped)."]
-	pub(crate) struct DetachedAsyncFuture<'f, Output: 'f>(
-		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
-		pub(super) PhantomPinned,
-	);
-
-	impl<'f, Output: 'f> Future for DetachedAsyncFuture<'f, Output> {
-		type Output = Output;
-
-		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-			self.0.poll(cx)
-		}
-	}
-
 	#[must_use = "Eager futures may still cancel their effect iff dropped."]
-	pub(crate) struct DetachedEagerFuture<'f, Output: 'f>(
+	pub(crate) struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 	);
 
-	impl<'f, Output: 'f> Future for DetachedEagerFuture<'f, Output> {
+	impl<'f, Output: 'f> Future for DetachedFuture<'f, Output> {
 		type Output = Output;
 
 		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

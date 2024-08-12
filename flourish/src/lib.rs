@@ -22,17 +22,13 @@ pub mod unmanaged;
 
 //TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
-mod signal_cell;
-pub use signal_cell::{
-	SignalCell, SignalCellDyn, SignalCellRef, SignalCellRefDyn, SignalCellSR, WeakSignalCell,
-	WeakSignalCellDyn,
+mod signal_arc;
+pub use signal_arc::{
+	SignalArc, SignalArcDyn, SignalArcDynCell, SignalWeak, SignalWeakDyn, SignalWeakDynCell,
 };
 
-mod signal_arc;
-pub use signal_arc::{SignalArc, SignalArcDyn, SignalWeak, SignalWeakDyn};
-
 mod subscription;
-pub use subscription::{SubscriptionArc_, SubscriptionArcDyn, Subscription};
+pub use subscription::{Subscription, SubscriptionDyn, SubscriptionDynCell};
 
 mod effect;
 pub use effect::{Effect, EffectSR};
@@ -69,8 +65,8 @@ pub mod __ {
 /// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 /// use flourish::{prelude::*, shadow_clone, SignalCell, Signal};
 ///
-/// let a = SignalCell::new(1);
-/// let b = SignalCell::new(2);
+/// let a = Signal::cell(1);
+/// let b = Signal::cell(2);
 /// let c = Signal::computed({
 ///     shadow_clone!(a, b);
 ///     move || a.get() + b.get()

@@ -5,21 +5,21 @@ use std::{
 	ops::Deref,
 };
 
-use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
+use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
 use crate::{
 	opaque::Opaque,
 	signal::Strong,
-	traits::Subscribable,
+	traits::{Subscribable, UnmanagedSignalCell},
 	unmanaged::{computed, folded, reduced},
 	Signal, SignalArc,
 };
 
-/// Type inference helper alias for [`SubscriptionSR`] (using [`GlobalSignalsRuntime`]).
-pub type SubscriptionArc_<T, S> = Subscription<T, S, GlobalSignalsRuntime>;
+/// Type of [`SubscriptionSR`]s after type-erasure. Dynamic dispatch.
+pub type SubscriptionDyn<'a, T, SR> = Subscription<T, dyn 'a + Subscribable<T, SR>, SR>;
 
 /// Type of [`SubscriptionSR`]s after type-erasure. Dynamic dispatch.
-pub type SubscriptionArcDyn<'a, T, SR> = Subscription<T, dyn 'a + Subscribable<T, SR>, SR>;
+pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
 /// Intrinsically-subscribed version of [`SignalSR`].  
 /// Can be directly constructed but also converted to and from that type.
@@ -56,9 +56,9 @@ where
 	T: Debug,
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		self.source.clone_runtime_ref().run_detached(|| {
+		self.subscribed.clone_runtime_ref().run_detached(|| {
 			f.debug_struct("SubscriptionSR")
-				.field("(value)", &&**self.source.as_ref().read_exclusive_dyn())
+				.field("(value)", &&**self.subscribed.read_exclusive_dyn())
 				.finish_non_exhaustive()
 		})
 	}
@@ -77,7 +77,18 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	for Subscription<T, S, SR>
 {
 	fn drop(&mut self) {
-		self.source.as_ref().unsubscribe();
+		self.subscribed._managed().unsubscribe();
+	}
+}
+
+impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+	for Subscription<T, S, SR>
+{
+	fn clone(&self) -> Self {
+		self.subscribed._managed().subscribe();
+		Self {
+			subscribed: self.subscribed.clone(),
+		}
 	}
 }
 
@@ -86,7 +97,7 @@ impl<
 		T: 'a + ?Sized + Send,
 		S: 'a + Sized + Subscribable<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<Subscription<T, S, SR>> for SubscriptionArcDyn<'a, T, SR>
+	> From<Subscription<T, S, SR>> for SubscriptionDyn<'a, T, SR>
 {
 	fn from(value: Subscription<T, S, SR>) -> Self {
 		value.into_dyn()
@@ -136,7 +147,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {
-	pub fn into_dyn<'a>(self) -> SubscriptionArcDyn<'a, T, SR>
+	pub fn into_dyn<'a>(self) -> SubscriptionDyn<'a, T, SR>
 	where
 		T: 'a,
 		S: 'a,
@@ -144,8 +155,22 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	{
 		unsafe {
 			let this = ManuallyDrop::new(self);
-			SubscriptionArcDyn {
-				subscribed: this.subscribed.unsafe_copy(),
+			SubscriptionDyn {
+				subscribed: this.subscribed.unsafe_copy().into_dyn(),
+			}
+		}
+	}
+
+	pub fn into_dyn_cell<'a>(self) -> SubscriptionDynCell<'a, T, SR>
+	where
+		T: 'a,
+		S: 'a + UnmanagedSignalCell<T, SR>,
+		SR: 'a,
+	{
+		unsafe {
+			let this = ManuallyDrop::new(self);
+			SubscriptionDynCell {
+				subscribed: this.subscribed.unsafe_copy().into_dyn_cell(),
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 use std::{
 	borrow::Borrow,
 	future::Future,
-	marker::PhantomData,
+	marker::{PhantomData, PhantomPinned},
 	ops::Deref,
 	pin::Pin,
 	task::{Context, Poll},
@@ -123,7 +123,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	fn change_async<'f>(self: Pin<&Self>, new_value: T) -> Self::ChangeAsync<'f>
+	fn change_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueFuture<Result<Result<T, T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
@@ -131,95 +131,12 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	type ChangeAsync<'f> = OpaqueAsyncFuture<Result<Result<T, T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
-
-	fn replace_async<'f>(self: Pin<&Self>, new_value: T) -> Self::ReplaceAsync<'f>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized,
-	{
-		match *self {}
-	}
-
-	type ReplaceAsync<'f> = OpaqueAsyncFuture<Result<T, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
-
-	fn update_async<
-		'f,
-		U: 'f + Send,
-		F: 'f + Send + FnOnce(&mut T) -> (isoprenoid::runtime::Propagation, U),
-	>(
-		self: Pin<&Self>,
-		update: F,
-	) -> Self::UpdateAsync<'f, U, F>
-	where
-		Self: 'f + Sized,
-	{
-		match *self {}
-	}
-
-	type UpdateAsync<'f, U: 'f, F: 'f> = OpaqueAsyncFuture<Result<U, F>>
-	where
-		Self: 'f + Sized;
-
-	fn change_async_dyn<'f>(
-		self: Pin<&Self>,
-		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
-	where
-		T: 'f + Sized + PartialEq,
-	{
-		match *self {}
-	}
-
-	fn replace_async_dyn<'f>(
-		self: Pin<&Self>,
-		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
-	where
-		T: 'f + Sized,
-	{
-		match *self {}
-	}
-
-	fn update_async_dyn<'f>(
-		self: Pin<&Self>,
-		update: Box<dyn 'f + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
-	) -> Box<
-		dyn 'f
-			+ Send
-			+ Future<
-				Output = Result<
-					(),
-					Box<dyn 'f + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
-				>,
-			>,
-	>
-	where
-		T: 'f,
-	{
-		match *self {}
-	}
-
-	fn change_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueEagerFuture<Result<Result<T, T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized + PartialEq,
-	{
-		match *self {}
-	}
-
-	type ChangeEager<'f> = OpaqueEagerFuture<Result<Result<T, T>, T>>
+	type ChangeEager<'f> = OpaqueFuture<Result<Result<T, T>, T>>
 		    where
 			    Self: 'f + Sized,
 			    T: 'f + Sized;
 
-	fn replace_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueEagerFuture<Result<T, T>>
+	fn replace_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueFuture<Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized,
@@ -227,7 +144,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	type ReplaceEager<'f> = OpaqueEagerFuture<Result<T, T>>
+	type ReplaceEager<'f> = OpaqueFuture<Result<T, T>>
 		    where
 			    Self: 'f + Sized,
 			    T: 'f + Sized;
@@ -239,14 +156,14 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 	>(
 		self: Pin<&Self>,
 		_: F,
-	) -> OpaqueEagerFuture<Result<U, F>>
+	) -> OpaqueFuture<Result<U, F>>
 	where
 		Self: 'f + Sized,
 	{
 		match *self {}
 	}
 
-	type UpdateEager<'f, U: 'f, F: 'f> = OpaqueEagerFuture<Result<U, F>>
+	type UpdateEager<'f, U: 'f, F: 'f> = OpaqueFuture<Result<U, F>>
 		    where
 			    Self: 'f + Sized;
 
@@ -321,35 +238,17 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 	}
 }
 
-pub struct OpaqueAsyncFuture<T> {
-	pub(crate) _phantom: PhantomData<T>,
-	pub(crate) _vacant: Opaque,
+pub struct OpaqueFuture<T> {
+	_phantom: (PhantomData<T>, PhantomPinned),
+	_vacant: Opaque,
 }
 
 /// # Safety
 ///
 /// `OpaqueFuture` is vacant.
-unsafe impl<T> Send for OpaqueAsyncFuture<T> {}
+unsafe impl<T> Send for OpaqueFuture<T> {}
 
-impl<T> Future for OpaqueAsyncFuture<T> {
-	type Output = T;
-
-	fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-		match self._vacant {}
-	}
-}
-
-pub struct OpaqueEagerFuture<T> {
-	pub(crate) _phantom: PhantomData<T>,
-	pub(crate) _vacant: Opaque,
-}
-
-/// # Safety
-///
-/// `OpaqueFuture` is vacant.
-unsafe impl<T> Send for OpaqueEagerFuture<T> {}
-
-impl<T> Future for OpaqueEagerFuture<T> {
+impl<T> Future for OpaqueFuture<T> {
 	type Output = T;
 
 	fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {

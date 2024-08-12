@@ -8,8 +8,8 @@ use _validator::Validator;
 fn set() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new("a");
-	let b = SignalCell::new("b");
+	let a = Signal::cell("a");
+	let b = Signal::cell("b");
 	let _sub_a = SubscriptionArc_::computed({
 		shadow_clone!(a);
 		move || v.push(("_sub_a", a.get()))

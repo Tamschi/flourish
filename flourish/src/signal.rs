@@ -3,31 +3,37 @@ use std::{
 	cell::UnsafeCell,
 	fmt::{self, Debug, Formatter},
 	future::Future,
-	marker::PhantomData,
-	mem::{ManuallyDrop, MaybeUninit},
+	marker::{PhantomData, PhantomPinned},
+	mem::{self, ManuallyDrop, MaybeUninit},
 	ops::Deref,
 	pin::Pin,
 	process::abort,
 	sync::atomic::{AtomicUsize, Ordering},
 };
 
+use futures_lite::FutureExt as _;
 use isoprenoid::runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef};
+use tap::Conv;
 
 use crate::{
 	opaque::Opaque,
 	signal_arc::SignalWeakDynCell,
 	traits::{Subscribable, UnmanagedSignalCell},
-	unmanaged::{InertCell, ReactiveCell, ReactiveCellMut},
-	Guard, SignalArc,
+	unmanaged::{
+		computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced, InertCell,
+		ReactiveCell, ReactiveCellMut,
+	},
+	Guard, SignalArc, SignalWeak, Subscription,
 };
 
 pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> {
 	inner: UnsafeCell<Signal_<T, S, SR>>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Signal<T, S, SR>
-{
+pub type SignalDyn<'a, T, SR> = Signal<T, dyn 'a + Subscribable<T, SR>, SR>;
+pub type SignalDynCell<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
+
+impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
 	fn inner(&self) -> &Signal_<T, S, SR> {
 		unsafe { &*self.inner.get().cast_const() }
 	}
@@ -46,6 +52,185 @@ where
 		f.debug_tuple("Signal")
 			.field(&&*self.inner().managed)
 			.finish()
+	}
+}
+
+/// Secondary constructors.
+impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
+	/// A simple cached computation.
+	///
+	/// Wraps [`computed`](`computed()`).
+	pub fn computed<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a + Default,
+	{
+		Self::computed_with_runtime(fn_pin, SR::default())
+	}
+
+	/// A simple cached computation.
+	///
+	/// Wraps [`computed`](`computed()`).
+	pub fn computed_with_runtime<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+		runtime: SR,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a,
+	{
+		SignalArc::new(computed(fn_pin, runtime))
+	}
+
+	/// A simple cached computation.
+	///
+	/// Doesn't update its cache or propagate iff the new result is equal.
+	///
+	/// Wraps [`debounced`](`debounced()`).
+	pub fn debounced<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized + PartialEq,
+		SR: 'a + Default,
+	{
+		Self::debounced_with_runtime(fn_pin, SR::default())
+	}
+
+	/// A simple cached computation.
+	///
+	/// Doesn't update its cache or propagate iff the new result is equal.
+	///
+	/// Wraps [`debounced`](`debounced()`).
+	pub fn debounced_with_runtime<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+		runtime: SR,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized + PartialEq,
+		SR: 'a,
+	{
+		SignalArc::new(debounced(fn_pin, runtime))
+	}
+
+	/// A simple **uncached** computation.
+	///
+	/// Wraps [`computed_uncached`](`computed_uncached()`).
+	pub fn computed_uncached<'a>(
+		fn_pin: impl 'a + Send + Sync + Fn() -> T,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a + Default,
+	{
+		Self::computed_uncached_with_runtime(fn_pin, SR::default())
+	}
+
+	/// A simple **uncached** computation.
+	///
+	/// Wraps [`computed_uncached`](`computed_uncached()`).
+	pub fn computed_uncached_with_runtime<'a>(
+		fn_pin: impl 'a + Send + Sync + Fn() -> T,
+		runtime: SR,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a,
+	{
+		SignalArc::new(computed_uncached(fn_pin, runtime))
+	}
+
+	/// A simple **stateful uncached** computation.
+	///
+	/// ⚠️ Care must be taken to avoid unexpected behaviour!
+	///
+	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
+	pub fn computed_uncached_mut<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a + Default,
+	{
+		Self::computed_uncached_mut_with_runtime(fn_pin, SR::default())
+	}
+
+	/// A simple **stateful uncached** computation.
+	///
+	/// ⚠️ Care must be taken to avoid unexpected behaviour!
+	///
+	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
+	pub fn computed_uncached_mut_with_runtime<'a>(
+		fn_pin: impl 'a + Send + FnMut() -> T,
+		runtime: SR,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a,
+	{
+		SignalArc::new(computed_uncached_mut(fn_pin, runtime))
+	}
+
+	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+	///
+	/// Wraps [`folded`](`folded()`).
+	pub fn folded<'a>(
+		init: T,
+		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a + Default,
+	{
+		Self::folded_with_runtime(init, fold_fn_pin, SR::default())
+	}
+
+	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+	///
+	/// Wraps [`folded`](`folded()`).
+	pub fn folded_with_runtime<'a>(
+		init: T,
+		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
+		runtime: SR,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a,
+	{
+		SignalArc::new(folded(init, fold_fn_pin, runtime))
+	}
+
+	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// Dependencies are detected across both closures.
+	///
+	/// Wraps [`reduced`](`reduced()`).
+	pub fn reduced<'a>(
+		select_fn_pin: impl 'a + Send + FnMut() -> T,
+		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a + Default,
+	{
+		Self::reduced_with_runtime(select_fn_pin, reduce_fn_pin, SR::default())
+	}
+
+	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// Dependencies are detected across both closures.
+	///
+	/// Wraps [`reduced`](`reduced()`).
+	pub fn reduced_with_runtime<'a>(
+		select_fn_pin: impl 'a + Send + FnMut() -> T,
+		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
+		runtime: SR,
+	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	where
+		T: 'a + Sized,
+		SR: 'a,
+	{
+		SignalArc::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
 }
 
@@ -420,21 +605,20 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	where
 		S: Sized,
 	{
-		let weak: *const Signal<T, MaybeUninit<S>, SR> = Box::into_raw(Box::new(Signal {
+		let weak: *mut Signal<T, MaybeUninit<S>, SR> = Box::into_raw(Box::new(Signal {
 			inner: Signal_ {
 				_phantom: PhantomData,
 				strong: 0.into(),
 				weak: 1.into(),
-				managed: MaybeUninit::<S>::uninit(),
+				managed: ManuallyDrop::new(MaybeUninit::<S>::uninit()),
 			}
 			.into(),
-		}))
-		.cast_const();
+		}));
 
 		let weak = unsafe {
 			(*weak)
-				._managed()
-				.write(constructor(&*ManuallyDrop::new(Weak { weak })));
+				._managed_mut()
+				.write(constructor(&*ManuallyDrop::new(Weak { weak: weak.cast() })));
 			weak.cast::<Signal<T, S, SR>>()
 		};
 
@@ -456,6 +640,26 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	pub(crate) unsafe fn unsafe_copy(&self) -> Self {
 		Self {
 			strong: self.strong,
+		}
+	}
+
+	pub(crate) fn into_dyn<'a>(self) -> Strong<T, dyn 'a + Subscribable<T, SR>, SR>
+	where
+		S: 'a + Sized,
+	{
+		let this = ManuallyDrop::new(self);
+		Strong {
+			strong: this.strong,
+		}
+	}
+
+	pub(crate) fn into_dyn_cell<'a>(self) -> Strong<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>
+	where
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+	{
+		let this = ManuallyDrop::new(self);
+		Strong {
+			strong: this.strong,
 		}
 	}
 }
@@ -569,6 +773,43 @@ impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> 
 	pub(crate) fn _managed(&self) -> Pin<&S> {
 		unsafe { Pin::new_unchecked(&self.inner().managed) }
 	}
+
+	pub(crate) unsafe fn _managed_mut(&mut self) -> &mut S {
+		&mut self.inner_mut().managed
+	}
+}
+
+/// Management methods.
+impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Signal<T, S, SR>
+{
+	pub fn subscribe(&self) -> Subscription<T, S, SR> {
+		(*ManuallyDrop::new(Subscription {
+			subscribed: Strong { strong: self },
+		}))
+		.clone()
+	}
+
+	pub fn downgrade(&self) -> SignalWeak<T, S, SR> {
+		(*ManuallyDrop::new(SignalWeak {
+			weak: Weak { weak: self },
+		}))
+		.clone()
+	}
+
+	pub fn as_dyn<'a>(&self) -> &SignalDyn<'a, T, SR>
+	where
+		S: 'a + Sized,
+	{
+		self
+	}
+
+	pub fn as_dyn_cell<'a>(&self) -> &SignalDynCell<'a, T, SR>
+	where
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+	{
+		self
+	}
 }
 
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
@@ -607,7 +848,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	where
 		T: Copy,
 	{
-		self._managed().get_clone()
+		self._managed().get_clone_exclusive()
 	}
 
 	/// Records `self` as dependency and retrieves a clone of the value.
@@ -711,13 +952,13 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// This method **may** defer its effect.
 	pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
-		Self: Sized,
+		S: Sized,
 		T: 'static,
 	{
 		self._managed().update(update)
 	}
 
-	/// The same as [`update`](`UnmanagedSignalCellPin::update`), but dyn-compatible.
+	/// The same as [`update`](`Signal::update`), but dyn-compatible.
 	pub fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
 	where
 		T: 'static,
@@ -725,71 +966,141 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		self._managed().update_dyn(update)
 	}
 
-	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`UnmanagedSignalCellPin::change_eager`) when polled.
+	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`Signal::change_eager`) when polled.
 	///
 	/// # Logic
 	///
-	/// The [`Future`] **should not** hold a strong reference to `self`.
-	pub fn change_async<'f>(&self, new_value: T) -> S::ChangeAsync<'f>
+	/// The [`Future`] *does not* hold a strong reference to `self`.
+	fn change_async<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<Result<T, T>, T>>
 	where
-		S: 'f + Sized,
 		T: 'f + Sized + PartialEq,
-	{
-		self._managed().change_async(new_value)
-	}
-
-	/// Cheaply creates a [`Future`] that has the effect of [`replace_eager`](`UnmanagedSignalCellPin::replace_eager`) when polled.
-	///
-	/// # Logic
-	///
-	/// The [`Future`] **should not** hold a strong reference to `self`.
-	pub fn replace_async<'f>(&self, new_value: T) -> S::ReplaceAsync<'f>
-	where
 		S: 'f + Sized,
-		T: 'f + Sized,
+		SR: 'f,
 	{
-		self._managed().replace_async(new_value)
+		let this = self.downgrade();
+		private::DetachedFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.change_eager(new_value).boxed().await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
 	}
 
-	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`UnmanagedSignalCellPin::update_eager`) when polled.
+	/// Cheaply creates a [`Future`] that has the effect of [`replace_eager`](`Signal::replace_eager`) when polled.
 	///
 	/// # Logic
 	///
-	/// The [`Future`] **should not** hold a strong reference to `self`.
-	pub fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+	/// The [`Future`] *does not* hold a strong reference to `self`.
+	fn replace_async<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<T, T>>
+	where
+		T: 'f + Sized,
+		S: 'f + Sized,
+		SR: 'f,
+	{
+		let this = self.downgrade();
+		private::DetachedFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.replace_eager(new_value).boxed().await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
+	}
+
+	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`Signal::update_eager`) when polled.
+	///
+	/// # Logic
+	///
+	/// The [`Future`] *does not* hold a strong reference to `self`.
+	fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
-	) -> S::UpdateAsync<'f, U, F>
+	) -> private::DetachedFuture<'f, Result<U, F>>
 	where
+		T: 'f,
 		S: 'f + Sized,
+		SR: 'f,
 	{
-		self._managed().update_async(update)
+		let this = self.downgrade();
+		private::DetachedFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.update_eager(update).boxed().await
+				} else {
+					Err(update)
+				}
+			}),
+			PhantomPinned,
+		)
 	}
 
-	/// The same as [`change_async`](`UnmanagedSignalCellPin::change_async`), but dyn-compatible.
-	pub fn change_async_dyn<'f>(
+	fn change_async_dyn<'f>(
 		&self,
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		self._managed().change_async_dyn(new_value)
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+				this.change_eager_dyn(new_value).conv::<Pin<Box<_>>>().await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<Result<T, T>, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>,
+			>(f)
+		}
 	}
 
-	/// The same as [`replace_async`](`UnmanagedSignalCellPin::replace_async`), but dyn-compatible.
-	pub fn replace_async_dyn<'f>(
+	fn replace_async_dyn<'f>(
 		&self,
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
 		T: 'f + Sized,
 	{
-		self._managed().replace_async_dyn(new_value)
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+				this.replace_eager_dyn(new_value)
+					.conv::<Pin<Box<_>>>()
+					.await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<T, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<T, T>>>,
+			>(f)
+		}
 	}
 
-	/// The same as [`update_async`](`UnmanagedSignalCellPin::update_async`), but dyn-compatible.
-	pub fn update_async_dyn<'f>(
+	fn update_async_dyn<'f>(
 		&self,
 		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
 	) -> Box<
@@ -800,7 +1111,36 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: 'f,
 	{
-		self._managed().update_async_dyn(update)
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				let f: Pin<Box<_>> = this.update_eager_dyn(update).into();
+				f.await
+			} else {
+				Err(update)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<
+					dyn '_
+						+ Send
+						+ Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+				Box<
+					dyn 'f
+						+ Send
+						+ Future<
+							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
+						>,
+				>,
+			>(f)
+		}
 	}
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -885,7 +1225,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		self._managed().update_eager(update)
 	}
 
-	/// The same as [`change_eager`](`UnmanagedSignalCellPin::change_eager`), but dyn-compatible.
+	/// The same as [`change_eager`](`Signal::change_eager`), but dyn-compatible.
 	pub fn change_eager_dyn<'f>(
 		&self,
 		new_value: T,
@@ -896,7 +1236,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		self._managed().change_eager_dyn(new_value)
 	}
 
-	/// The same as [`replace_eager`](`UnmanagedSignalCellPin::replace_eager`), but dyn-compatible.
+	/// The same as [`replace_eager`](`Signal::replace_eager`), but dyn-compatible.
 	pub fn replace_eager_dyn<'f>(
 		&self,
 		new_value: T,
@@ -907,7 +1247,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		self._managed().replace_eager_dyn(new_value)
 	}
 
-	/// The same as [`update_eager`](`UnmanagedSignalCellPin::update_eager`), but dyn-compatible.
+	/// The same as [`update_eager`](`Signal::update_eager`), but dyn-compatible.
 	pub fn update_eager_dyn<'f>(
 		&self,
 		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
@@ -979,13 +1319,41 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
 	pub fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U
 	where
-		Self: Sized,
+		S: Sized,
 	{
 		self._managed().update_blocking(update)
 	}
 
-	/// The same as [`update_blocking`](`UnmanagedSignalCellPin::update_blocking`), but dyn-compatible.
+	/// The same as [`update_blocking`](`Signal::update_blocking`), but dyn-compatible.
 	pub fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		self._managed().update_blocking_dyn(update)
+	}
+}
+
+/// Duplicated to avoid identities.
+mod private {
+	use std::{
+		future::Future,
+		marker::PhantomPinned,
+		pin::Pin,
+		task::{Context, Poll},
+	};
+
+	use futures_lite::FutureExt;
+	use pin_project::pin_project;
+
+	#[must_use = "Async futures have no effect iff dropped before polling (and may cancel their effect iff dropped)."]
+	#[pin_project]
+	pub(crate) struct DetachedFuture<'f, Output: 'f>(
+		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+		#[pin] pub(super) PhantomPinned,
+	);
+
+	impl<'f, Output: 'f> Future for DetachedFuture<'f, Output> {
+		type Output = Output;
+
+		fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+			self.project().0.poll(cx)
+		}
 	}
 }

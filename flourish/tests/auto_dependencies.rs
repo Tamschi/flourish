@@ -1,6 +1,9 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{prelude::*, shadow_clone, Signal, SignalCell, SubscriptionArc_};
+use flourish::{shadow_clone, GlobalSignalsRuntime};
+
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
 mod _validator;
 use _validator::Validator;
@@ -9,14 +12,14 @@ use _validator::Validator;
 fn auto_dependencies() {
 	let v = &Validator::new();
 
-	let a = SignalCell::new("a");
-	let b = SignalCell::new("b");
-	let c = SignalCell::new("c");
-	let d = SignalCell::new("d");
-	let e = SignalCell::new("e");
-	let f = SignalCell::new("f");
-	let g = SignalCell::new("g");
-	let index = SignalCell::new(0);
+	let a = Signal::cell("a");
+	let b = Signal::cell("b");
+	let c = Signal::cell("c");
+	let d = Signal::cell("d");
+	let e = Signal::cell("e");
+	let f = Signal::cell("f");
+	let g = Signal::cell("g");
+	let index = Signal::cell(0);
 
 	let signal = Signal::computed({
 		shadow_clone!(a, b, c, d, e, f, g, index);
@@ -35,7 +38,7 @@ fn auto_dependencies() {
 	});
 	v.expect([]);
 
-	let subscription = SubscriptionArc_::computed(|| signal.touch());
+	let subscription = Subscription::computed(|| signal.touch());
 	v.expect([""]);
 
 	a.replace_blocking("a");

@@ -9,8 +9,8 @@ fn use_constructors() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
-	let a = SignalCell::new(1);
-	let (b, b_cell) = SignalCell::new(2).into_signal_and_self_dyn();
+	let a = Signal::cell(1);
+	let (b, b_cell) = Signal::cell(2).into_signal_and_self_dyn();
 	let c = Signal::computed({
 		shadow_clone!(a, b);
 		move || {

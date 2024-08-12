@@ -52,7 +52,7 @@ You can put signals on the heap:
 ```rust
 use flourish::{SignalCell, Propagation, Signal, Subscription, Effect};
 
-let _ = SignalCell::new(());
+let _ = Signal::cell(());
 let _ = SignalCell::new_cyclic(|_weak| ());
 let _ = SignalCell::new_reactive((), |_value, _status| Propagation::Halt);
 let _ = SignalCell::new_reactive_mut((), |_value, _status| Propagation::Propagate);
@@ -78,8 +78,8 @@ let _ = Subscription::reduced(|| (), |_value, _next| Propagation::Propagate);
 let _ = Effect::new(|| (), drop);
 
 // "Splitting":
-let (_signal, _cell) = SignalCell::new(()).into_signal_and_self();
-let (_signal, _type_erased_cell) = SignalCell::new(()).into_signal_and_self_dyn();
+let (_signal, _cell) = Signal::cell(()).into_signal_and_self();
+let (_signal, _type_erased_cell) = Signal::cell(()).into_signal_and_self_dyn();
 ```
 
 You can also put signals on the stack:
@@ -121,14 +121,14 @@ Additionally, inside `flourish::raw`, you can find constructor functions for unp
 ```rust
 use flourish::{prelude::*, shadow_clone, SignalCell, Signal, Subscription};
 
-let a = SignalCell::new("a");
-let b = SignalCell::new("b");
-let c = SignalCell::new("c");
-let d = SignalCell::new("d");
-let e = SignalCell::new("e");
-let f = SignalCell::new("f");
-let g = SignalCell::new("g");
-let index = SignalCell::new(0);
+let a = Signal::cell("a");
+let b = Signal::cell("b");
+let c = Signal::cell("c");
+let d = Signal::cell("d");
+let e = Signal::cell("e");
+let f = Signal::cell("f");
+let g = Signal::cell("g");
+let index = Signal::cell(0);
 
 let signal = Signal::computed({
   shadow_clone!(a, b, c, d, e, f, g, index);
@@ -218,3 +218,4 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |Object-safety for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
 |[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of `SignalCellPin` implementations.|
 |[`impl_trait_in_assoc_type`](https://github.com/rust-lang/rust/issues/63063)|Eliminate several surfaced internal types, resulting in better docs.|
+|Deref coercions in constant functions.|Make several conversions available as `const` methods.|
