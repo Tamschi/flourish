@@ -37,10 +37,6 @@ impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> 
 	fn inner(&self) -> &Signal_<T, S, SR> {
 		unsafe { &*self.inner.get().cast_const() }
 	}
-
-	unsafe fn inner_mut(&mut self) -> &mut Signal_<T, S, SR> {
-		self.inner.get_mut()
-	}
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
@@ -49,9 +45,7 @@ where
 	S: Debug,
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_tuple("Signal")
-			.field(&&*self.inner().managed)
-			.finish()
+		f.debug_tuple("Signal").field(&&*self._managed()).finish()
 	}
 }
 
@@ -513,7 +507,7 @@ pub(crate) struct Signal_<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized 
 	_phantom: PhantomData<(PhantomData<T>, SR)>,
 	strong: AtomicUsize,
 	weak: AtomicUsize,
-	managed: ManuallyDrop<S>,
+	managed: UnsafeCell<ManuallyDrop<S>>,
 }
 
 pub(crate) struct Strong<
@@ -609,7 +603,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 					_phantom: PhantomData,
 					strong: 1.into(),
 					weak: 1.into(),
-					managed: ManuallyDrop::new(managed),
+					managed: UnsafeCell::new(ManuallyDrop::new(managed)),
 				}
 				.into(),
 			})),
@@ -619,19 +613,19 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	where
 		S: Sized,
 	{
-		let weak: *mut Signal<T, MaybeUninit<S>, SR> = Box::into_raw(Box::new(Signal {
+		let weak: *const Signal<T, MaybeUninit<S>, SR> = Box::into_raw(Box::new(Signal {
 			inner: Signal_ {
 				_phantom: PhantomData,
 				strong: 0.into(),
 				weak: 1.into(),
-				managed: ManuallyDrop::new(MaybeUninit::<S>::uninit()),
+				managed: UnsafeCell::new(ManuallyDrop::new(MaybeUninit::<S>::uninit())),
 			}
 			.into(),
-		}));
+		}))
+		.cast_const();
 
 		let weak = unsafe {
-			(*weak)
-				._managed_mut()
+			(&mut *(*weak).inner().managed.get())
 				.write(constructor(&*ManuallyDrop::new(Weak { weak: weak.cast() })));
 			weak.cast::<Signal<T, S, SR>>()
 		};
@@ -641,14 +635,6 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 
 	pub(crate) fn _get(&self) -> &Signal<T, S, SR> {
 		unsafe { &*self.strong }
-	}
-
-	unsafe fn get_mut(&mut self) -> &mut Signal<T, S, SR> {
-		&mut *self.strong.cast_mut()
-	}
-
-	pub(crate) fn downgrade(&self) -> Weak<T, S, SR> {
-		(*ManuallyDrop::new(Weak { weak: self.strong })).clone()
 	}
 
 	pub(crate) unsafe fn unsafe_copy(&self) -> Self {
@@ -725,7 +711,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 {
 	fn drop(&mut self) {
 		if self._get().inner().strong.fetch_sub(1, Ordering::Release) == 1 {
-			unsafe { ManuallyDrop::drop(&mut self.get_mut().inner_mut().managed) }
+			unsafe { ManuallyDrop::drop(&mut *self._get().inner().managed.get()) }
 			drop(Weak { weak: self.strong })
 		}
 	}
@@ -785,11 +771,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
 impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
 	pub(crate) fn _managed(&self) -> Pin<&S> {
-		unsafe { Pin::new_unchecked(&self.inner().managed) }
-	}
-
-	pub(crate) unsafe fn _managed_mut(&mut self) -> &mut S {
-		&mut self.inner_mut().managed
+		unsafe { Pin::new_unchecked(&*self.inner().managed.get()) }
 	}
 }
 
