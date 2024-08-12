@@ -1,10 +1,8 @@
 use std::{
 	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
-	marker::PhantomData,
 	mem::ManuallyDrop,
 	ops::Deref,
-	pin::Pin,
 };
 
 use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
@@ -12,7 +10,7 @@ use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 use crate::{
 	opaque::Opaque,
 	signal::Strong,
-	traits::{Guard, Subscribable},
+	traits::Subscribable,
 	unmanaged::{computed, folded, reduced},
 	Signal, SignalArc,
 };
@@ -144,20 +142,12 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 		S: 'a,
 		SR: 'a,
 	{
-		let this = ManuallyDrop::new(self);
-
-		let dyn_ = SubscriptionArcDyn {
-			source: Pin::clone(&this.source) as Pin<Arc<_>>,
-			_phantom: PhantomData,
-		};
-
 		unsafe {
-			let ptr = Arc::into_raw(Pin::into_inner_unchecked(Pin::clone(&this.source)));
-			Arc::decrement_strong_count(ptr);
-			Arc::decrement_strong_count(ptr);
+			let this = ManuallyDrop::new(self);
+			SubscriptionArcDyn {
+				subscribed: this.subscribed.unsafe_copy(),
+			}
 		}
-
-		dyn_
 	}
 }
 
@@ -266,77 +256,6 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		SR: 'a,
 	{
 		Subscription::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
-	}
-}
-
-/// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
-/// bound, which is a bit less performant than using those accessors without type erasure.
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
-	for SubscriptionArcDyn<'a, T, SR>
-{
-	fn touch(&self) {
-		self.source.as_ref().touch()
-	}
-
-	fn get_clone(&self) -> T
-	where
-		T: Sync + Clone,
-	{
-		self.source.as_ref().get_clone()
-	}
-
-	fn get_clone_exclusive(&self) -> T
-	where
-		T: Clone,
-	{
-		self.source.as_ref().get_clone_exclusive()
-	}
-
-	fn read<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
-	where
-		Self: Sized,
-		T: 'r + Sync,
-	{
-		private::BoxedGuardDyn(self.source.as_ref().read_dyn())
-	}
-
-	type Read<'r> = private::BoxedGuardDyn<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
-	where
-		Self: Sized,
-		T: 'r,
-	{
-		private::BoxedGuardDyn(self.source.as_ref().read_exclusive_dyn())
-	}
-
-	type ReadExclusive<'r> = private::BoxedGuardDyn<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
-
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
-	where
-		T: 'r + Sync,
-	{
-		self.source.as_ref().read_dyn()
-	}
-
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
-	where
-		T: 'r,
-	{
-		self.source.as_ref().read_exclusive_dyn()
-	}
-
-	fn clone_runtime_ref(&self) -> SR
-	where
-		SR: Sized,
-	{
-		self.source.as_ref().clone_runtime_ref()
 	}
 }
 

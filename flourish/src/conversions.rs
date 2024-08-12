@@ -74,14 +74,14 @@
 //!
 //! ## Side-effect conversions
 
-use std::{marker::PhantomData, mem, pin::Pin, sync::Arc};
+use std::{marker::PhantomData, pin::Pin, sync::Arc};
 
 use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::{
 	signal_cell::SignalCellRef,
 	unmanaged::{Subscribable, UnmanagedSignalCell},
-	SignalCellDyn, SignalCellRefDyn, SignalCellSR, SignalArcDyn, SignalArc,
+	SignalArc, SignalArcDyn, SignalCellDyn, SignalCellRefDyn, SignalCellSR,
 };
 
 // into `SignalCellSR` / into `SignalCellDyn`
@@ -199,8 +199,8 @@ impl<
 	> From<SignalArc<T, S, SR>> for SignalArcDyn<'a, T, SR>
 {
 	fn from(value: SignalArc<T, S, SR>) -> Self {
-		let SignalArc { source, _phantom } = value;
-		Self { source, _phantom }
+		let SignalArc { strong } = value;
+		Self { strong }
 	}
 }
 
@@ -213,24 +213,6 @@ impl<
 {
 	fn from(value: SignalCellSR<T, S, SR>) -> Self {
 		value.into_dyn().into()
-	}
-}
-
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> From<SignalCellDyn<'a, T, SR>>
-	for SignalArcDyn<'a, T, SR>
-{
-	fn from(value: SignalCellDyn<'a, T, SR>) -> Self {
-		let SignalCellDyn {
-			source_cell,
-			upcast,
-		} = value;
-		Self {
-			source: unsafe {
-				mem::forget(source_cell);
-				Pin::new_unchecked(Arc::from_raw(upcast.0))
-			},
-			_phantom: PhantomData,
-		}
 	}
 }
 

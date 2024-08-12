@@ -29,7 +29,7 @@ pub use signal_cell::{
 };
 
 mod signal_arc;
-pub use signal_arc::{SignalArc, SignalArcDyn, SignalWeak, WeakSignalDyn};
+pub use signal_arc::{SignalArc, SignalArcDyn, SignalWeak, SignalWeakDyn};
 
 mod subscription;
 pub use subscription::{SubscriptionArc_, SubscriptionArcDyn, Subscription};

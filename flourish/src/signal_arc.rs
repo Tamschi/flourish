@@ -1,7 +1,6 @@
 use std::{
 	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
-	marker::PhantomData,
 	ops::Deref,
 };
 
@@ -10,23 +9,27 @@ use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 use crate::{
 	opaque::Opaque,
 	signal::{Signal, Strong, Weak},
-	traits::{Guard, Subscribable},
+	traits::{Subscribable, UnmanagedSignalCell},
 	unmanaged::{computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced},
-	SourcePin, Subscription,
+	Subscription,
 };
 
 /// Type of [`SignalSR`]s after type-erasure. Dynamic dispatch.
 pub type SignalArcDyn<'a, T, SR> = SignalArc<T, dyn 'a + Subscribable<T, SR>, SR>;
 
-/// Type of [`WeakSignal`]s after type-erasure or [`SignalDyn`] after downgrade. Dynamic dispatch.
-pub type WeakSignalDyn<'a, T, SR> = SignalWeak<T, dyn 'a + Subscribable<T, SR>, SR>;
+/// Type of [`SignalWeak`]s after type-erasure or [`SignalDyn`] after downgrade. Dynamic dispatch.
+pub type SignalWeakDyn<'a, T, SR> = SignalWeak<T, dyn 'a + Subscribable<T, SR>, SR>;
 
+/// Type of [`SignalWeak`]s after cell-type-erasure or [`SignalDynCell`] after downgrade. Dynamic dispatch.
+pub type SignalWeakDynCell<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
+
+#[repr(transparent)]
 pub struct SignalWeak<
 	T: ?Sized + Send,
 	S: ?Sized + Subscribable<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	weak: Weak<T, S, SR>,
+	pub(crate) weak: Weak<T, S, SR>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
@@ -122,8 +125,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	pub fn subscribe(self) -> Subscription<T, S, SR> {
 		self.source.as_ref().subscribe();
 		Subscription {
-			source: self.source,
-			_phantom: PhantomData,
+			subscribed: self.strong.clone(),
 		}
 	}
 
@@ -131,8 +133,8 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	where
 		S: 'a + Sized,
 	{
-		let Self { source, _phantom } = self;
-		SignalArcDyn { source, _phantom }
+		let Self { strong } = self;
+		SignalArcDyn { strong }
 	}
 }
 
@@ -312,145 +314,6 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> SignalArc<T, Opaque, SR> 
 		SR: 'a,
 	{
 		SignalArc::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
-	}
-}
-
-impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	SourcePin<T, SR> for SignalArc<T, S, SR>
-{
-	fn touch(&self) {
-		self.source.as_ref().touch()
-	}
-
-	fn get_clone(&self) -> T
-	where
-		T: Sync + Clone,
-	{
-		self.source.as_ref().get_clone()
-	}
-
-	fn get_clone_exclusive(&self) -> T
-	where
-		T: Clone,
-	{
-		self.source.as_ref().get_clone_exclusive()
-	}
-
-	fn read<'r>(&'r self) -> S::Read<'r>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync,
-	{
-		self.source.as_ref().read()
-	}
-
-	type Read<'r> = S::Read<'r>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(&'r self) -> S::ReadExclusive<'r>
-	where
-		Self: 'r + Sized,
-		T: 'r,
-	{
-		self.source.as_ref().read_exclusive()
-	}
-
-	type ReadExclusive<'r> = S::ReadExclusive<'r>
-	where
-		Self: 'r + Sized;
-
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
-	where
-		T: 'r + Sync,
-	{
-		self.source.as_ref().read_dyn()
-	}
-
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
-	where
-		T: 'r,
-	{
-		self.source.as_ref().read_exclusive_dyn()
-	}
-
-	fn clone_runtime_ref(&self) -> SR
-	where
-		SR: Sized,
-	{
-		self.source.as_ref().clone_runtime_ref()
-	}
-}
-
-/// ⚠️ This implementation uses dynamic dispatch internally for all methods with `Self: Sized`
-/// bound, which is a bit less performant than using those accessors without type erasure.
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SourcePin<T, SR>
-	for SignalArcDyn<'a, T, SR>
-{
-	fn touch(&self) {
-		self.source.as_ref().touch()
-	}
-
-	fn get_clone(&self) -> T
-	where
-		T: Sync + Clone,
-	{
-		self.source.as_ref().get_clone()
-	}
-
-	fn get_clone_exclusive(&self) -> T
-	where
-		T: Clone,
-	{
-		self.source.as_ref().get_clone_exclusive()
-	}
-
-	fn read<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync,
-	{
-		private::BoxedGuardDyn(self.source.as_ref().read_dyn())
-	}
-
-	type Read<'r> = private::BoxedGuardDyn<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(&'r self) -> private::BoxedGuardDyn<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r,
-	{
-		private::BoxedGuardDyn(self.source.as_ref().read_exclusive_dyn())
-	}
-
-	type ReadExclusive<'r> = private::BoxedGuardDyn<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
-
-	fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
-	where
-		T: 'r + Sync,
-	{
-		self.source.as_ref().read_dyn()
-	}
-
-	fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
-	where
-		T: 'r,
-	{
-		self.source.as_ref().read_exclusive_dyn()
-	}
-
-	fn clone_runtime_ref(&self) -> SR
-	where
-		SR: Sized,
-	{
-		self.source.as_ref().clone_runtime_ref()
 	}
 }
 
