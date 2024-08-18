@@ -2,7 +2,7 @@ use std::{
 	borrow::Borrow,
 	cell::UnsafeCell,
 	fmt::{self, Debug, Formatter},
-	future::Future,
+	future::{Future, IntoFuture},
 	marker::{PhantomData, PhantomPinned},
 	mem::{self, ManuallyDrop, MaybeUninit},
 	ops::Deref,
@@ -23,7 +23,7 @@ use crate::{
 		computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced, InertCell,
 		ReactiveCell, ReactiveCellMut,
 	},
-	Guard, SignalArc, SignalWeak, Subscription,
+	Guard, SignalArc, SignalWeak, Subscription, SubscriptionDyn,
 };
 
 pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> {
@@ -775,7 +775,7 @@ impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> 
 	}
 }
 
-/// Management methods.
+/// Adapters.
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
@@ -806,15 +806,10 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	{
 		self
 	}
-}
 
-/// Cell management methods.
-impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Signal<T, S, SR>
-{
 	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + Subscribable<T, SR>, SR>
 	where
-		S: 'a,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 	{
 		self
 	}
