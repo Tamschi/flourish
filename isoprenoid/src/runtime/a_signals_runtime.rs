@@ -28,8 +28,14 @@ struct ASignalsRuntime_ {
 	callbacks: BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
 	///FIXME: This is not-at-all a fair queue.
 	update_queue: BTreeMap<ASymbol, VecDeque<Box<dyn 'static + Send + FnOnce() -> Propagation>>>,
-	stale_queue: BTreeSet<ASymbol>,
+	stale_queue: BTreeSet<Stale>,
 	interdependencies: Interdependencies,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Stale {
+	symbol: ASymbol,
+	flush: bool,
 }
 
 impl Debug for ASignalsRuntime_ {
@@ -109,14 +115,20 @@ impl ASignalsRuntime {
 		//FIXME: This is very inefficient!
 
 		(
-			borrow.stale_queue.iter().copied().find(|next| {
-				!borrow
-					.interdependencies
-					.subscribers_by_dependency
-					.get(&next)
-					.expect("unreachable")
-					.is_empty()
-			}),
+			borrow
+				.stale_queue
+				.iter()
+				.copied()
+				.find(|&Stale { ref symbol, flush }| {
+					flush
+						|| !borrow
+							.interdependencies
+							.subscribers_by_dependency
+							.get(symbol)
+							.expect("unreachable")
+							.is_empty()
+				})
+				.map(|stale| stale.symbol),
 			borrow,
 		)
 	}
@@ -383,6 +395,7 @@ impl ASignalsRuntime {
 		id: ASymbol,
 		_lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
+		flush: bool,
 	) -> RefMut<'a, ASignalsRuntime_> {
 		let dependents = borrow
 			.interdependencies
@@ -392,7 +405,12 @@ impl ASignalsRuntime {
 			.iter()
 			.copied()
 			.collect::<Vec<_>>();
-		borrow.stale_queue.extend(dependents);
+		borrow.stale_queue.extend(
+			dependents
+				.iter()
+				.copied()
+				.map(|symbol| Stale { symbol, flush }),
+		);
 		borrow
 	}
 
@@ -581,8 +599,11 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 			borrow = (*lock).borrow_mut();
 			borrow = match propagation {
-				Propagation::Propagate => self.mark_direct_dependencies_stale(id, &lock, borrow),
+				Propagation::Propagate => {
+					self.mark_direct_dependencies_stale(id, &lock, borrow, false)
+				}
 				Propagation::Halt => borrow,
+				Propagation::Flush => self.mark_direct_dependencies_stale(id, &lock, borrow, true),
 			};
 		}
 
@@ -762,8 +783,11 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 			let (propagation, t) = f();
 			borrow = match propagation {
-				Propagation::Propagate => this.mark_direct_dependencies_stale(id, &lock, borrow),
+				Propagation::Propagate => {
+					this.mark_direct_dependencies_stale(id, &lock, borrow, false)
+				}
 				Propagation::Halt => borrow,
+				Propagation::Flush => this.mark_direct_dependencies_stale(id, &lock, borrow, true),
 			};
 			this.process_pending(&lock, borrow);
 			t
@@ -868,8 +892,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			.subscribers_by_dependency
 			.entry(id)
 			.or_default()
-			.intrinsic
-			> 0
+			.intrinsic > 0
 		{
 			borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
 		}

@@ -520,6 +520,10 @@ pub enum Propagation {
 	Propagate,
 	/// Do not mark dependent signals as stale, except through other (parallel) dependency relationships.
 	Halt,
+	/// Mark and (possibly later!) refresh dependencies, even if not subscribed.
+	///
+	/// This is transitive through [`Propagate`](`Propagation::Propagate`), but not [`Halt`](`Propagation::Halt`).
+	Flush,
 }
 
 mod private {
