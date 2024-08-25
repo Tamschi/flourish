@@ -9,8 +9,6 @@ use flourish::{
 };
 use num_traits::Zero;
 
-pub mod future;
-
 //BLOCKED: `reduce`, `filter` and `fold` (as curried operators) wait on <https://github.com/rust-lang/rust/issues/99697>.
 
 //TODO: These have extraneous bounds. Change to accept closures to remove some `T: Sync + Copy` bounds.

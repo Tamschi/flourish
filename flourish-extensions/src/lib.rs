@@ -11,7 +11,7 @@ pub mod prelude {
 	use flourish::{unmanaged::Subscribable, SignalArc, SignalsRuntimeRef, Subscription};
 	use flourish_extra::{
 		delta,
-		future::{filter_mapped, filtered, skipped_while},
+		future::{filter_mapped, filtered},
 		sparse_tally,
 	};
 	use num_traits::Zero;
@@ -69,24 +69,6 @@ pub mod prelude {
 	impl<'a, T: 'a + Send + Sync + ?Sized + Clone, SR: 'a + SignalsRuntimeRef>
 		Subscription<T, Opaque, SR>
 	{
-		async fn skipped_while(
-			fn_pin: impl 'a + Send + FnMut() -> T,
-			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
-		where
-			SR: Default,
-		{
-			Self::skipped_while_with_runtime(fn_pin, predicate_fn_pin, SR::default()).await
-		}
-
-		async fn skipped_while_with_runtime(
-			fn_pin: impl 'a + Send + FnMut() -> T,
-			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-			runtime: SR,
-		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR> {
-			skipped_while(fn_pin, predicate_fn_pin, runtime).await
-		}
-
 		async fn filtered(
 			fn_pin: impl 'a + Send + FnMut() -> T,
 			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,

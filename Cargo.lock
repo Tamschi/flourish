@@ -91,6 +91,7 @@ dependencies = [
 name = "flourish"
 version = "0.0.0"
 dependencies = [
+ "async-lock",
  "futures-lite",
  "isoprenoid",
  "pin-project",

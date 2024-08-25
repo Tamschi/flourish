@@ -1,9 +1,9 @@
 #![cfg(feature = "_test")]
 
 use flourish::GlobalSignalsRuntime;
-use flourish_extra::future::skipped_while;
 
 type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
 mod _validator;
 use _validator::Validator;
@@ -18,7 +18,7 @@ fn ready() {
 	let signal = Signal::computed(|| v.push("signal"));
 	v.expect([]);
 
-	let found = skipped_while(
+	let found = Subscription::skipped_while(
 		|| {
 			v.push("source");
 			signal.get()
@@ -27,7 +27,6 @@ fn ready() {
 			v.push("test");
 			false
 		},
-		signal.clone_runtime_ref(),
 	);
 	v.expect([]);
 
@@ -42,7 +41,7 @@ fn pending() {
 	let signal = Signal::computed(|| v.push("signal"));
 	v.expect([]);
 
-	let found = skipped_while(
+	let found = Subscription::skipped_while(
 		|| {
 			v.push("source");
 			signal.get()
@@ -51,7 +50,6 @@ fn pending() {
 			v.push("test");
 			true
 		},
-		signal.clone_runtime_ref(),
 	);
 	v.expect([]);
 

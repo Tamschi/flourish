@@ -1,15 +1,18 @@
 use std::{
 	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
+	future::Future,
 	mem::ManuallyDrop,
 	ops::Deref,
 };
 
+use async_lock::OnceCell;
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
 use crate::{
 	opaque::Opaque,
 	signal::Strong,
+	signals_helper,
 	traits::{Subscribable, UnmanagedSignalCell},
 	unmanaged::{computed, folded, reduced},
 	Signal, SignalArc,
@@ -284,6 +287,159 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	{
 		Subscription::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
+
+	/// When awaited, subscribes to the given expressions but only returns [`Poll::Ready`](`core::task::Poll::Ready`)
+	/// once `predicate_fn_pin` returns `true`.
+	///
+	/// Note that while `predicate_fn_pin` is reactive (and automatically dependent on the
+	/// resulting subscription), its exclusive dependencies do not cause `select_fn_pin`
+	/// to re-run.
+	pub fn skipped_while<'f, 'a: 'f>(
+		select_fn_pin: impl 'a + Send + FnMut() -> T,
+		predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
+	) -> impl 'f + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	where
+		T: 'a + Sized,
+		SR: 'a + Default,
+	{
+		Self::skipped_while_with_runtime(select_fn_pin, predicate_fn_pin, SR::default())
+	}
+
+	/// When awaited, subscribes to the given expressions but only returns [`Poll::Ready`](`core::task::Poll::Ready`)
+	/// once `predicate_fn_pin` returns `true`.
+	///
+	/// Note that while `predicate_fn_pin` is reactive (and automatically dependent on the
+	/// resulting subscription), its exclusive dependencies do not cause `select_fn_pin`
+	/// to re-run.
+	pub fn skipped_while_with_runtime<'f, 'a: 'f>(
+		select_fn_pin: impl 'a + Send + FnMut() -> T,
+		mut predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
+		runtime: SR,
+	) -> impl 'f + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	where
+		T: 'a + Sized,
+		SR: 'a,
+	{
+		async {
+			let sub = Subscription::computed_with_runtime(select_fn_pin, runtime.clone());
+			{
+				let once = OnceCell::<()>::new();
+				signals_helper! {
+						let effect = effect_with_runtime!({
+						let (sub, once) = (&sub, &once);
+						move || {
+							if !predicate_fn_pin(&**sub.read_exclusive_dyn()) {
+								once.set_blocking(()).ok();
+							}
+						}
+					}, drop, runtime);
+				}
+				once.wait().await;
+			}
+			sub
+		}
+	}
+
+	pub fn filtered<'a>(
+		mut fn_pin: impl 'a + Send + FnMut() -> T,
+		mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
+	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	where
+		T: 'a + Copy,
+		SR: 'a + Default,
+	{
+		Self::filtered_with_runtime(fn_pin, predicate_fn_pin, SR::default())
+	}
+
+	pub fn filtered_with_runtime<'a>(
+		mut fn_pin: impl 'a + Send + FnMut() -> T,
+		mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
+		runtime: SR,
+	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	where
+		T: 'a + Copy,
+		SR: 'a,
+	{
+		async {
+			// It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
+			// since the closure is guaranteed to run when the subscription is created.
+			// However, that would be considerably trickier code.
+			let once = Arc::new(OnceCell::<()>::new());
+			let sub = Subscription::folded_with_runtime(
+				MaybeUninit::uninit(),
+				{
+					shadow_clone!(once);
+					move |value| {
+						let next = fn_pin();
+						if predicate_fn_pin(&next) {
+							if once.is_initialized() {
+								*unsafe { value.assume_init_mut() } = next;
+							} else {
+								value.write(next);
+								once.set_blocking(()).expect("unreachable");
+							}
+							Propagation::Propagate
+						} else {
+							Propagation::Halt
+						}
+					}
+				},
+				runtime,
+			);
+			once.wait().await;
+
+			unsafe { assume_init_subscription(sub) }
+		}
+	}
+
+	pub fn filter_mapped<'a>(
+		mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
+	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	where
+		T: 'a + Copy,
+		SR: 'a + Default,
+	{
+		Self::filter_mapped_with_runtime(fn_pin, SR::default())
+	}
+
+	pub fn filter_mapped_with_runtime<'a>(
+		mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
+		runtime: SR,
+	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	where
+		T: 'a + Copy,
+		SR: 'a,
+	{
+		async {
+			// It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
+			// since the closure is guaranteed to run when the subscription is created.
+			// However, that would be considerably trickier code.
+			let once = Arc::new(OnceCell::<()>::new());
+			let sub = Subscription::folded_with_runtime(
+				MaybeUninit::uninit(),
+				{
+					shadow_clone!(once);
+					move |value| {
+						if let Some(next) = fn_pin() {
+							if once.is_initialized() {
+								*unsafe { value.assume_init_mut() } = next;
+							} else {
+								value.write(next);
+								once.set_blocking(()).expect("unreachable");
+							}
+							Propagation::Propagate
+						} else {
+							Propagation::Halt
+						}
+					}
+				},
+				runtime,
+			);
+			once.wait().await;
+
+			unsafe { assume_init_subscription(sub) }
+		}
+	}
 }
 
 /// Duplicated to avoid identities.
@@ -308,5 +464,149 @@ mod private {
 		fn borrow(&self) -> &T {
 			(*self.0).borrow()
 		}
+	}
+}
+
+unsafe fn assume_init_subscription<
+	T: ?Sized + Send + Copy,
+	S: Subscribable<MaybeUninit<T>, SR>,
+	SR: SignalsRuntimeRef,
+>(
+	sub: Subscription<MaybeUninit<T>, S, SR>,
+) -> Subscription<T, impl Subscribable<T, SR>, SR> {
+	#[pin_project]
+	#[repr(transparent)]
+	struct AbiShim<T: ?Sized>(#[pin] T);
+
+	impl<T: Send + Copy, S: UnmanagedSignal<MaybeUninit<T>, SR>, SR: SignalsRuntimeRef>
+		UnmanagedSignal<T, SR> for AbiShim<S>
+	{
+		fn touch(self: Pin<&Self>) {
+			self.project_ref().0.touch()
+		}
+
+		fn get(self: Pin<&Self>) -> T
+		where
+			T: Sync + Copy,
+		{
+			unsafe { self.project_ref().0.get().assume_init() }
+		}
+
+		fn get_clone(self: Pin<&Self>) -> T
+		where
+			T: Sync + Clone,
+		{
+			unsafe { self.project_ref().0.get_clone().assume_init() }
+		}
+
+		fn get_clone_exclusive(self: Pin<&Self>) -> T
+		where
+			T: Clone,
+		{
+			unsafe { self.project_ref().0.get_clone_exclusive().assume_init() }
+		}
+
+		fn get_exclusive(self: Pin<&Self>) -> T
+		where
+			T: Copy,
+		{
+			unsafe { self.project_ref().0.get_exclusive().assume_init() }
+		}
+
+		fn read<'r>(self: Pin<&'r Self>) -> Self::Read<'r>
+		where
+			Self: Sized,
+			T: 'r + Sync,
+		{
+			AbiShim(self.project_ref().0.read())
+		}
+
+		type Read<'r> = AbiShim<S::Read<'r>>
+		where
+			Self: 'r + Sized,
+			T: 'r + Sync;
+
+		fn read_exclusive<'r>(self: Pin<&'r Self>) -> Self::ReadExclusive<'r>
+		where
+			Self: Sized,
+			T: 'r,
+		{
+			AbiShim(self.project_ref().0.read_exclusive())
+		}
+
+		type ReadExclusive<'r> = AbiShim<S::ReadExclusive<'r>>
+		where
+			Self: 'r + Sized,
+			T: 'r;
+
+		fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+		where
+			T: 'r + Sync,
+		{
+			unsafe {
+				//SAFETY: `MaybeUninit` is ABI-compatible with what it wraps.
+				Box::from_raw(
+					*(&Box::into_raw(self.project_ref().0.read_exclusive_dyn())
+						as *const *mut dyn Guard<MaybeUninit<T>> as *const *mut dyn Guard<T>),
+				)
+			}
+		}
+
+		fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
+		where
+			T: 'r,
+		{
+			unsafe {
+				//SAFETY: `MaybeUninit` is ABI-compatible with what it wraps.
+				Box::from_raw(
+					*(&Box::into_raw(self.project_ref().0.read_exclusive_dyn())
+						as *const *mut dyn Guard<MaybeUninit<T>> as *const *mut dyn Guard<T>),
+				)
+			}
+		}
+
+		fn clone_runtime_ref(&self) -> SR
+		where
+			SR: Sized,
+		{
+			self.0.clone_runtime_ref()
+		}
+	}
+
+	impl<T: Send + Copy, S: Subscribable<MaybeUninit<T>, SR>, SR: SignalsRuntimeRef>
+		Subscribable<T, SR> for AbiShim<S>
+	{
+		fn subscribe(self: Pin<&Self>) {
+			self.project_ref().0.subscribe()
+		}
+
+		fn unsubscribe(self: Pin<&Self>) {
+			self.project_ref().0.unsubscribe()
+		}
+	}
+
+	impl<T: ?Sized + Send + Copy, G: ?Sized + Guard<MaybeUninit<T>>> Guard<T> for AbiShim<G> {}
+
+	impl<T: ?Sized + Send + Copy, G: ?Sized + Deref<Target = MaybeUninit<T>>> Deref for AbiShim<G> {
+		type Target = T;
+
+		fn deref(&self) -> &Self::Target {
+			unsafe { self.0.deref().assume_init_ref() }
+		}
+	}
+
+	impl<T: ?Sized + Send + Copy, G: ?Sized + Borrow<MaybeUninit<T>>> Borrow<T> for AbiShim<G> {
+		fn borrow(&self) -> &T {
+			unsafe { self.0.borrow().assume_init_ref() }
+		}
+	}
+
+	unsafe {
+		//SAFETY: This may reinterpret a fat pointer, which skips over the `AbiShim` methods
+		//        entirely, but that's fine since everything is fully ABI-compatible.
+		(*(&(&ManuallyDrop::new(sub) as *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>)
+			as *const *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>
+			as *const *const Subscription<T, AbiShim<S>, SR>))
+			.read()
 	}
 }

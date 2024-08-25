@@ -1,5 +1,5 @@
 use std::{
-	borrow::BorrowMut as _,
+	borrow::{Borrow, BorrowMut as _},
 	cell::{RefCell, RefMut},
 	collections::{BTreeMap, BTreeSet, VecDeque},
 	fmt::Debug,
@@ -32,10 +32,28 @@ struct ASignalsRuntime_ {
 	interdependencies: Interdependencies,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, Ord)]
 struct Stale {
 	symbol: ASymbol,
 	flush: bool,
+}
+
+impl Borrow<ASymbol> for Stale {
+	fn borrow(&self) -> &ASymbol {
+		&self.symbol
+	}
+}
+
+impl PartialOrd for Stale {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		self.symbol.partial_cmp(&other.symbol)
+	}
+}
+
+impl PartialEq for Stale {
+	fn eq(&self, other: &Self) -> bool {
+		self.symbol == other.symbol
+	}
 }
 
 impl Debug for ASignalsRuntime_ {
@@ -111,7 +129,7 @@ impl ASignalsRuntime {
 	fn peek_stale<'a>(
 		&self,
 		borrow: RefMut<'a, ASignalsRuntime_>,
-	) -> (Option<ASymbol>, RefMut<'a, ASignalsRuntime_>) {
+	) -> (Option<Stale>, RefMut<'a, ASignalsRuntime_>) {
 		//FIXME: This is very inefficient!
 
 		(
@@ -127,8 +145,7 @@ impl ASignalsRuntime {
 							.get(symbol)
 							.expect("unreachable")
 							.is_empty()
-				})
-				.map(|stale| stale.symbol),
+				}),
 			borrow,
 		)
 	}
@@ -199,8 +216,13 @@ impl ASignalsRuntime {
 						match propagation {
 							Propagation::Halt => (),
 							Propagation::Propagate => {
-								borrow =
-									self.mark_direct_dependencies_stale(dependency, &lock, borrow);
+								borrow = self.mark_direct_dependencies_stale(
+									dependency, &lock, borrow, false,
+								);
+							}
+							Propagation::Flush => {
+								borrow = self
+									.mark_direct_dependencies_stale(dependency, &lock, borrow, true)
 							}
 						}
 					}
@@ -345,19 +367,22 @@ impl ASignalsRuntime {
 				borrow = (**lock).borrow_mut();
 				match propagation {
 					Propagation::Propagate => {
-						borrow = self.mark_direct_dependencies_stale(symbol, &lock, borrow)
+						borrow = self.mark_direct_dependencies_stale(symbol, &lock, borrow, false)
 					}
 					Propagation::Halt => (),
+					Propagation::Flush => {
+						borrow = self.mark_direct_dependencies_stale(symbol, &lock, borrow, true)
+					}
 				}
 			}
 
 			let stale;
 			(stale, borrow) = self.peek_stale(borrow);
-			if let Some(stale) = stale {
+			if let Some(Stale { symbol, flush: _ }) = stale {
 				try_eval(|| {
 					borrow.context_stack.push(None);
 					drop(borrow);
-					self.refresh(stale)
+					self.refresh(symbol)
 				})
 				.finally(|()| {
 					let mut borrow = (**lock).borrow_mut();
@@ -405,12 +430,16 @@ impl ASignalsRuntime {
 			.iter()
 			.copied()
 			.collect::<Vec<_>>();
-		borrow.stale_queue.extend(
-			dependents
-				.iter()
-				.copied()
-				.map(|symbol| Stale { symbol, flush }),
-		);
+
+		if flush {
+			for symbol in dependents {
+				borrow.stale_queue.replace(Stale { symbol, flush });
+			}
+		} else {
+			for symbol in dependents {
+				borrow.stale_queue.insert(Stale { symbol, flush });
+			}
+		}
 		borrow
 	}
 
@@ -815,7 +844,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 	fn refresh(&self, id: Self::Symbol) {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
-		if borrow.stale_queue.remove(&id) {
+		if let Some(Stale { symbol: _, flush }) = borrow.stale_queue.take(&id) {
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&id) {
 				if let &CallbackTable {
 					update: Some(update),
@@ -834,19 +863,22 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 					borrow = (*lock).borrow_mut();
 					match propagation {
 						Propagation::Propagate => {
-							borrow = self.mark_direct_dependencies_stale(id, &lock, borrow)
+							borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, flush)
 						}
 						Propagation::Halt => (),
+						Propagation::Flush => {
+							borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, true)
+						}
 					}
 				} else {
 					// If there's no callback, then always mark dependencies as stale!
 					// (This happens with uncached signals, for example.)
-					borrow = self.mark_direct_dependencies_stale(id, &lock, borrow);
+					borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, flush);
 				}
 			} else {
 				// If there's no callback, then always mark dependencies as stale!
 				// (This happens with uncached signals, for example.)
-				borrow = self.mark_direct_dependencies_stale(id, &lock, borrow);
+				borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, flush);
 			}
 		}
 		self.process_pending(&lock, borrow);
