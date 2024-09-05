@@ -11,7 +11,7 @@ Flourish is a signals library inspired by [🚦 JavaScript Signals standard prop
 
 When combined with for example [`Option`](https://doc.rust-lang.org/stable/core/option/enum.Option.html) and [`Future`](https://doc.rust-lang.org/stable/core/future/trait.Future.html), `flourish` can model asynchronous-and-cancellable resource loads. See the crate `flourish-extra` for example combinators and `flourish-extensions` to use them conveniently through constructor extensions.
 
-This makes it a suitable replacement for most standard use cases of RxJS-style observables, though with the included runtime it may debounce propagation and as such isn't suited for sequences. (You should probably prefer channels for those. flourish does work well with reference-counted resources, however, and can flush them from stale unsubscribed signals. //TODO)
+This makes it a suitable replacement for most standard use cases of RxJS-style observables, though *with the included runtime* it **may debounce propagation and as such isn't suited for sequences**. (You should probably prefer channels for those. flourish does work well with reference-counted resources, however, and can flush them from stale unsubscribed signals. //TODO)
 
 ## Known Issues
 
@@ -20,8 +20,6 @@ This makes it a suitable replacement for most standard use cases of RxJS-style o
 
 ⚠️ The panic handling in the included runtime really isn't good.  
 Fixing this doesn't incur API changes, and I don't need it right now, so I haven't implemented panic routing that would preserve the runtime when callbacks fail.
-
-❔ There may be some holes in the API where I forgot something that exists on a parallel type. Feel free to [file issues](https://github.com/Tamschi/flourish/issues) for these!
 
 ## Prelude
 
