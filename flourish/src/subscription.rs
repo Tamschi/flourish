@@ -2,20 +2,24 @@ use std::{
 	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
 	future::Future,
-	mem::ManuallyDrop,
+	mem::{ManuallyDrop, MaybeUninit},
 	ops::Deref,
+	pin::Pin,
+	sync::Arc,
 };
 
 use async_lock::OnceCell;
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
+use pin_project::pin_project;
 
 use crate::{
 	opaque::Opaque,
+	shadow_clone,
 	signal::Strong,
 	signals_helper,
-	traits::{Subscribable, UnmanagedSignalCell},
+	traits::{Subscribable, UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{computed, folded, reduced},
-	Signal, SignalArc,
+	Guard, Signal, SignalArc,
 };
 
 /// Type of [`SubscriptionSR`]s after type-erasure. Dynamic dispatch.

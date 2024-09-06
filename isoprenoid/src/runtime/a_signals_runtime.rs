@@ -213,16 +213,12 @@ impl ASignalsRuntime {
 								);
 							});
 						borrow = (**lock).borrow_mut();
-						match propagation {
-							Propagation::Halt => (),
-							Propagation::Propagate => {
-								borrow = self.mark_direct_dependencies_stale(
-									dependency, &lock, borrow, false,
-								);
-							}
+						borrow = match propagation {
+							Propagation::Halt => borrow,
+							Propagation::Propagate => self
+								.mark_direct_dependencies_stale(dependency, &lock, borrow, false),
 							Propagation::Flush => {
-								borrow = self
-									.mark_direct_dependencies_stale(dependency, &lock, borrow, true)
+								self.mark_direct_dependencies_stale(dependency, &lock, borrow, true)
 							}
 						}
 					}
@@ -239,19 +235,22 @@ impl ASignalsRuntime {
 		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
 	) -> RefMut<'a, ASignalsRuntime_> {
-		let subscribers = &borrow
+		let subscribers = borrow
 			.interdependencies
 			.subscribers_by_dependency
 			.entry(dependency)
 			.or_default();
-		if subscribers.total() == 1
-			&& (if dependency == dependent {
-				subscribers.intrinsic == 1
-			} else {
-				subscribers.extrinsic.iter().all(|s| *s == dependent)
-			}) {
-			// Only subscriber, so propagate upwards and then refresh first!
-			// That should still be done even once `Propagation::FlushOut` exists.
+		if if dependency == dependent {
+			subscribers
+				.intrinsic
+				.checked_sub(1)
+				.expect("Tried to decrement intrinic subscriber count below 0.");
+			true
+		} else {
+			subscribers.extrinsic.remove(&dependent)
+		} && subscribers.total() == 0
+		{
+			// Removed last subscriber, so propagate upwards and then call the handler!
 
 			for transitive_dependency in borrow
 				.interdependencies
@@ -265,25 +264,6 @@ impl ASignalsRuntime {
 				borrow =
 					self.unsubscribe_from_with(transitive_dependency, dependency, lock, borrow);
 			}
-		}
-
-		let subscribers = &mut borrow
-			.interdependencies
-			.subscribers_by_dependency
-			.entry(dependency)
-			.or_default();
-
-		if if dependency == dependent {
-			subscribers.intrinsic = subscribers
-				.intrinsic
-				.checked_sub(1)
-				.expect("Tried to lower intrinsic subscription count below zero.");
-			true
-		} else {
-			subscribers.extrinsic.remove(&dependent)
-		} && subscribers.is_empty()
-		{
-			// Just removed last subscriber, so call the change handler (if there is one).
 
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&dependency) {
 				unsafe {
@@ -311,29 +291,17 @@ impl ASignalsRuntime {
 								);
 							});
 						borrow = (**lock).borrow_mut();
-						match propagation {
-							Propagation::Halt => (),
-							Propagation::Propagate => {
-								borrow =
-									self.mark_direct_dependencies_stale(dependency, &lock, borrow);
+						borrow = match propagation {
+							Propagation::Halt => borrow,
+							Propagation::Propagate => self
+								.mark_direct_dependencies_stale(dependency, &lock, borrow, false),
+							Propagation::Flush => {
+								self.mark_direct_dependencies_stale(dependency, &lock, borrow, true)
 							}
 						}
 					}
 				}
 			}
-
-			// `dependency` is now unsubscribed, but should still refresh one final time
-			// to ensure e.g. a reference-counted resource is properly flushed.
-			borrow.context_stack.push(None);
-			drop(borrow);
-			//FIXME: This here is wrapped like this because `self.refresh` would otherwise process pending changes
-			// (which shouldn't happen here because the dependent may just so still be subscribed). It's possible
-			// to (overall) organise this better and avoid a bunch of extra work here.
-			try_eval(|| self.refresh(dependency)).finally(|()| {
-				let mut borrow = (**lock).borrow_mut();
-				assert_eq!(borrow.context_stack.pop(), Some(None));
-			});
-			borrow = (**lock).borrow_mut();
 		}
 
 		borrow
@@ -924,7 +892,8 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			.subscribers_by_dependency
 			.entry(id)
 			.or_default()
-			.intrinsic > 0
+			.intrinsic
+			> 0
 		{
 			borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
 		}
