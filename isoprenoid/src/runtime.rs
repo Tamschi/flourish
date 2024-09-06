@@ -523,7 +523,7 @@ pub enum Propagation {
 	/// Mark and (possibly later!) refresh dependencies, even if not subscribed.
 	///
 	/// This is transitive through [`Propagate`](`Propagation::Propagate`), but not [`Halt`](`Propagation::Halt`).
-	Flush,
+	FlushOut,
 }
 
 mod private {

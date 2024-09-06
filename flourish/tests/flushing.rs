@@ -36,7 +36,7 @@ fn flushed() {
 
 	let a = Signal::cell_reactive_mut(false, |value, status| {
 		*value = status;
-		Propagation::Flush
+		Propagation::FlushOut
 	});
 	let s = Signal::computed(|| seen.push(a.get()));
 	seen.expect([]);
@@ -51,6 +51,3 @@ fn flushed() {
 	drop(a);
 	seen.expect([]);
 }
-
-//TODO: Make flushing affect unsubscribed dependents too!
-//      (Maybe with a Propagation::FlushOut variant that transitively affects unsubscribed dependencies unless stopped by Propagation::Halt?)

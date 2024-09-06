@@ -81,7 +81,7 @@ fn lifecycle() {
 		*value = status;
 		match status {
 			true => Propagation::Propagate,
-			false => Propagation::Flush,
+			false => Propagation::FlushOut,
 		}
 	})
 	.into_read_only();

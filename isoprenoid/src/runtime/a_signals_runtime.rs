@@ -217,7 +217,7 @@ impl ASignalsRuntime {
 							Propagation::Halt => borrow,
 							Propagation::Propagate => self
 								.mark_direct_dependencies_stale(dependency, &lock, borrow, false),
-							Propagation::Flush => {
+							Propagation::FlushOut => {
 								self.mark_direct_dependencies_stale(dependency, &lock, borrow, true)
 							}
 						}
@@ -295,7 +295,7 @@ impl ASignalsRuntime {
 							Propagation::Halt => borrow,
 							Propagation::Propagate => self
 								.mark_direct_dependencies_stale(dependency, &lock, borrow, false),
-							Propagation::Flush => {
+							Propagation::FlushOut => {
 								self.mark_direct_dependencies_stale(dependency, &lock, borrow, true)
 							}
 						}
@@ -338,7 +338,7 @@ impl ASignalsRuntime {
 						borrow = self.mark_direct_dependencies_stale(symbol, &lock, borrow, false)
 					}
 					Propagation::Halt => (),
-					Propagation::Flush => {
+					Propagation::FlushOut => {
 						borrow = self.mark_direct_dependencies_stale(symbol, &lock, borrow, true)
 					}
 				}
@@ -600,7 +600,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 					self.mark_direct_dependencies_stale(id, &lock, borrow, false)
 				}
 				Propagation::Halt => borrow,
-				Propagation::Flush => self.mark_direct_dependencies_stale(id, &lock, borrow, true),
+				Propagation::FlushOut => self.mark_direct_dependencies_stale(id, &lock, borrow, true),
 			};
 		}
 
@@ -784,7 +784,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 					this.mark_direct_dependencies_stale(id, &lock, borrow, false)
 				}
 				Propagation::Halt => borrow,
-				Propagation::Flush => this.mark_direct_dependencies_stale(id, &lock, borrow, true),
+				Propagation::FlushOut => this.mark_direct_dependencies_stale(id, &lock, borrow, true),
 			};
 			this.process_pending(&lock, borrow);
 			t
@@ -834,7 +834,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 							borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, flush)
 						}
 						Propagation::Halt => (),
-						Propagation::Flush => {
+						Propagation::FlushOut => {
 							borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, true)
 						}
 					}
