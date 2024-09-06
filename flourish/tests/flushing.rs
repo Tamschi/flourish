@@ -9,12 +9,34 @@ mod _validator;
 use _validator::Validator;
 
 #[test]
-fn flushing() {
+fn not_flushed() {
 	let seen = &Validator::new();
 
 	let a = Signal::cell_reactive_mut(false, |value, status| {
 		*value = status;
 		Propagation::Propagate
+	});
+	let s = Signal::computed(|| seen.push(a.get()));
+	seen.expect([]);
+
+	let e = Effect::new(|| s.get(), drop);
+	seen.expect([true]);
+
+	drop(e);
+	seen.expect([]);
+
+	drop(s);
+	drop(a);
+	seen.expect([]);
+}
+
+#[test]
+fn flushed() {
+	let seen = &Validator::new();
+
+	let a = Signal::cell_reactive_mut(false, |value, status| {
+		*value = status;
+		Propagation::Flush
 	});
 	let s = Signal::computed(|| seen.push(a.get()));
 	seen.expect([]);

@@ -241,7 +241,7 @@ impl ASignalsRuntime {
 			.entry(dependency)
 			.or_default();
 		if if dependency == dependent {
-			subscribers
+			subscribers.intrinsic = subscribers
 				.intrinsic
 				.checked_sub(1)
 				.expect("Tried to decrement intrinic subscriber count below 0.");

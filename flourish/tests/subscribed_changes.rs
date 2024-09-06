@@ -79,7 +79,10 @@ fn lifecycle() {
 
 	let s = Signal::cell_reactive_mut(false, |value, status| {
 		*value = status;
-		Propagation::Propagate
+		match status {
+			true => Propagation::Propagate,
+			false => Propagation::Flush,
+		}
 	})
 	.into_read_only();
 	assert!(!s.get());
