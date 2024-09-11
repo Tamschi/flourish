@@ -96,6 +96,9 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Doesn't update its cache or propagate iff the new result is equal.
 	///
+	/// Note that iff there is no subscriber,
+	/// this signal and its dependents will still become stale unconditionally.
+	///
 	/// Wraps [`debounced`](`debounced()`).
 	pub fn debounced<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
@@ -110,6 +113,9 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// Doesn't update its cache or propagate iff the new result is equal.
+	///
+	/// Note that iff there is no subscriber,
+	/// this signal and its dependents will still become stale unconditionally.
 	///
 	/// Wraps [`debounced`](`debounced()`).
 	pub fn debounced_with_runtime<'a>(

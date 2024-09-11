@@ -216,9 +216,9 @@ impl ASignalsRuntime {
 						borrow = match propagation {
 							Propagation::Halt => borrow,
 							Propagation::Propagate => self
-								.mark_direct_dependencies_stale(dependency, &lock, borrow, false),
+								.mark_dependencies_stale(dependency, &lock, borrow, false),
 							Propagation::FlushOut => {
-								self.mark_direct_dependencies_stale(dependency, &lock, borrow, true)
+								self.mark_dependencies_stale(dependency, &lock, borrow, true)
 							}
 						}
 					}
@@ -294,9 +294,9 @@ impl ASignalsRuntime {
 						borrow = match propagation {
 							Propagation::Halt => borrow,
 							Propagation::Propagate => self
-								.mark_direct_dependencies_stale(dependency, &lock, borrow, false),
+								.mark_dependencies_stale(dependency, &lock, borrow, false),
 							Propagation::FlushOut => {
-								self.mark_direct_dependencies_stale(dependency, &lock, borrow, true)
+								self.mark_dependencies_stale(dependency, &lock, borrow, true)
 							}
 						}
 					}
@@ -335,11 +335,11 @@ impl ASignalsRuntime {
 				borrow = (**lock).borrow_mut();
 				match propagation {
 					Propagation::Propagate => {
-						borrow = self.mark_direct_dependencies_stale(symbol, &lock, borrow, false)
+						borrow = self.mark_dependencies_stale(symbol, &lock, borrow, false)
 					}
 					Propagation::Halt => (),
 					Propagation::FlushOut => {
-						borrow = self.mark_direct_dependencies_stale(symbol, &lock, borrow, true)
+						borrow = self.mark_dependencies_stale(symbol, &lock, borrow, true)
 					}
 				}
 			}
@@ -383,10 +383,10 @@ impl ASignalsRuntime {
 		(None, borrow)
 	}
 
-	fn mark_direct_dependencies_stale<'a>(
+	fn mark_dependencies_stale<'a>(
 		&self,
 		id: ASymbol,
-		_lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
 		flush: bool,
 	) -> RefMut<'a, ASignalsRuntime_> {
@@ -401,11 +401,18 @@ impl ASignalsRuntime {
 
 		if flush {
 			for symbol in dependents {
-				borrow.stale_queue.replace(Stale { symbol, flush });
+				if borrow.stale_queue.replace(Stale { symbol, flush }).is_none() && borrow.interdependencies.subscribers_by_dependency.entry(symbol).or_default().is_empty() {
+					// The dependency wasn't marked stale yet and also won't update, so recurse.
+					// Note that flushing is propagated during the refresh instead!
+					borrow = self.mark_dependencies_stale(symbol, lock, borrow, false);
+				}
 			}
 		} else {
 			for symbol in dependents {
-				borrow.stale_queue.insert(Stale { symbol, flush });
+				if borrow.stale_queue.insert(Stale { symbol, flush }) && borrow.interdependencies.subscribers_by_dependency.entry(symbol).or_default().is_empty() {
+					// The dependency wasn't marked stale yet and also won't update, so recurse.
+					borrow = self.mark_dependencies_stale(symbol, lock, borrow, false);
+				}
 			}
 		}
 		borrow
@@ -597,10 +604,10 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			borrow = (*lock).borrow_mut();
 			borrow = match propagation {
 				Propagation::Propagate => {
-					self.mark_direct_dependencies_stale(id, &lock, borrow, false)
+					self.mark_dependencies_stale(id, &lock, borrow, false)
 				}
 				Propagation::Halt => borrow,
-				Propagation::FlushOut => self.mark_direct_dependencies_stale(id, &lock, borrow, true),
+				Propagation::FlushOut => self.mark_dependencies_stale(id, &lock, borrow, true),
 			};
 		}
 
@@ -781,10 +788,10 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			let (propagation, t) = f();
 			borrow = match propagation {
 				Propagation::Propagate => {
-					this.mark_direct_dependencies_stale(id, &lock, borrow, false)
+					this.mark_dependencies_stale(id, &lock, borrow, false)
 				}
 				Propagation::Halt => borrow,
-				Propagation::FlushOut => this.mark_direct_dependencies_stale(id, &lock, borrow, true),
+				Propagation::FlushOut => this.mark_dependencies_stale(id, &lock, borrow, true),
 			};
 			this.process_pending(&lock, borrow);
 			t
@@ -831,22 +838,22 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 					borrow = (*lock).borrow_mut();
 					match propagation {
 						Propagation::Propagate => {
-							borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, flush)
+							borrow = self.mark_dependencies_stale(id, &lock, borrow, flush)
 						}
 						Propagation::Halt => (),
 						Propagation::FlushOut => {
-							borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, true)
+							borrow = self.mark_dependencies_stale(id, &lock, borrow, true)
 						}
 					}
 				} else {
 					// If there's no callback, then always mark dependencies as stale!
 					// (This happens with uncached signals, for example.)
-					borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, flush);
+					borrow = self.mark_dependencies_stale(id, &lock, borrow, flush);
 				}
 			} else {
 				// If there's no callback, then always mark dependencies as stale!
 				// (This happens with uncached signals, for example.)
-				borrow = self.mark_direct_dependencies_stale(id, &lock, borrow, flush);
+				borrow = self.mark_dependencies_stale(id, &lock, borrow, flush);
 			}
 		}
 		self.process_pending(&lock, borrow);
