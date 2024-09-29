@@ -468,7 +468,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		)
 	}
 
-	//TODO: Pinning versions of these constructors.
 	pub fn cell_cyclic_reactive_mut_with_runtime<
 		'a,
 		HandlerFnPin: 'a

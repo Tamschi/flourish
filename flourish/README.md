@@ -215,7 +215,7 @@ signals_helper! {
 
 Runtimes have some leeway regarding in which order they invoke the callbacks. A different runtime may also choose to combine propagation from distinct updates, reducing the amount of callback runs.
 
-## Compiler Wishlist
+## Compiler (and Standard Library) Wishlist
 
 Several improvements to this library are postponed pending certain compiler features (getting stabilised).
 
@@ -229,4 +229,7 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |Object-safety for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
 |[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of `SignalCellPin` implementations.|
 |[`impl_trait_in_assoc_type`](https://github.com/rust-lang/rust/issues/63063)|Eliminate several surfaced internal types, resulting in better docs.|
+|[Precise capturing in RPITIT.](https://github.com/rust-lang/rust/pull/126746)|This would clean up the API quite a lot, by removing some GATs.|
 |Deref coercions in constant functions.|Make several conversions available as `const` methods.|
+|[`arbitrary_self_types`](https://github.com/rust-lang/rust/issues/44874)|Inline-pinning of values (with a clean API).|
+|`Pin<Ptr: ?Sized>`|Type-erasure for the aforementioned clean inline-pinning signals.|

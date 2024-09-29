@@ -8,12 +8,8 @@ pub mod prelude {
 	use std::ops::{AddAssign, Sub};
 
 	use ext_trait::extension;
-	use flourish::{unmanaged::Subscribable, SignalArc, SignalsRuntimeRef, Subscription};
-	use flourish_extra::{
-		delta,
-		future::{filter_mapped, filtered},
-		sparse_tally,
-	};
+	use flourish::{unmanaged::Subscribable, SignalArc, SignalsRuntimeRef};
+	use flourish_extra::{delta, sparse_tally};
 	use num_traits::Zero;
 
 	use crate::opaque::Opaque;
@@ -62,53 +58,6 @@ pub mod prelude {
 			T: Zero + Send + AddAssign<V>,
 		{
 			SignalArc::new(sparse_tally(fn_pin, runtime))
-		}
-	}
-
-	#[extension(pub trait SubscriptionExt)]
-	impl<'a, T: 'a + Send + Sync + ?Sized + Clone, SR: 'a + SignalsRuntimeRef>
-		Subscription<T, Opaque, SR>
-	{
-		async fn filtered(
-			fn_pin: impl 'a + Send + FnMut() -> T,
-			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
-		where
-			T: Copy,
-			SR: Default,
-		{
-			Self::filtered_with_runtime(fn_pin, predicate_fn_pin, SR::default()).await
-		}
-
-		async fn filtered_with_runtime(
-			fn_pin: impl 'a + Send + FnMut() -> T,
-			predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-			runtime: SR,
-		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
-		where
-			T: Copy,
-		{
-			filtered(fn_pin, predicate_fn_pin, runtime).await
-		}
-
-		async fn filter_mapped(
-			fn_pin: impl 'a + Send + FnMut() -> Option<T>,
-		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
-		where
-			T: Copy,
-			SR: Default,
-		{
-			Self::filter_mapped_with_runtime(fn_pin, SR::default()).await
-		}
-
-		async fn filter_mapped_with_runtime(
-			fn_pin: impl 'a + Send + FnMut() -> Option<T>,
-			runtime: SR,
-		) -> Subscription<T, impl Sized + Subscribable<T, SR>, SR>
-		where
-			T: Copy,
-		{
-			filter_mapped(fn_pin, runtime).await
 		}
 	}
 }
