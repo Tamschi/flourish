@@ -229,4 +229,5 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |Object-safety for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
 |[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of `SignalCellPin` implementations.|
 |[`impl_trait_in_assoc_type`](https://github.com/rust-lang/rust/issues/63063)|Eliminate several surfaced internal types, resulting in better docs.|
-|Deref coercions in constant functions.|Make several conversions available as `const` methods.|
+|Deref coercions in constant functions|Make several conversions available as `const` methods.|
+|[`arbitrary_self_types`](https://github.com/rust-lang/rust/issues/44874) and relaxing `Pin<Ptr>` with a `Ptr: ?Sized` bound|A nice pin-projecting API for `Signal<_, Pin<dyn …>, _>` and unmanaged signals, like the one on `Signal<_, Pin<S: Sized>, _>`.|

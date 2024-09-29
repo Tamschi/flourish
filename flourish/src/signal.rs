@@ -17,13 +17,14 @@ use tap::Conv;
 
 use crate::{
 	opaque::Opaque,
+	pin::CanPinValueInline,
 	signal_arc::SignalWeakDynCell,
 	traits::{Subscribable, UnmanagedSignalCell},
 	unmanaged::{
 		computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced, InertCell,
 		ReactiveCell, ReactiveCellMut,
 	},
-	Guard, SignalArc, SignalWeak, Subscription, SubscriptionDyn,
+	Guard, Pin_, SignalArc, SignalWeak, Subscription, SubscriptionDyn,
 };
 
 pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> {
@@ -768,10 +769,17 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-/// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
 impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
 	pub(crate) fn _managed(&self) -> Pin<&S> {
 		unsafe { Pin::new_unchecked(&*self.inner().managed.get()) }
+	}
+}
+
+impl<T: ?Sized + Send, S: Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef>
+	Signal<T, Pin<S>, SR>
+{
+	pub(crate) fn _managed_pin(&self) -> Pin<&S> {
+		unsafe { Pin::new_unchecked(&*self.inner().managed.get().cast::<S>().cast_const()) }
 	}
 }
 
@@ -815,7 +823,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-/// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
+/// **Most application code should consume this.** Interface for managed signals that have an accessible value.
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
@@ -908,6 +916,115 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 		SR: Sized,
 	{
 		self._managed().clone_runtime_ref()
+	}
+}
+
+/// Interface for **pinning** managed signals that have a accessible value.
+impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Signal<T, Pin<S>, SR>
+{
+	/// Records `self` as dependency without accessing the value.
+	pub fn touch_pin(&self) {
+		self._managed_pin().touch()
+	}
+
+	/// Records `self` as dependency and retrieves a copy of the value.
+	///
+	/// Prefer [`SourcePin::touch`] where possible.
+	pub fn copy_pinned(&self) -> T
+	where
+		T: Sync + Copy,
+	{
+		self._managed_pin().get()
+	}
+
+	/// Records `self` as dependency and retrieves a clone of the value.
+	///
+	/// Prefer [`SourcePin::get`] where available.
+	pub fn clone_pinned(&self) -> T
+	where
+		T: Sync + Clone,
+	{
+		self._managed_pin().get_clone()
+	}
+
+	/// Records `self` as dependency and retrieves a copy of the value.
+	///
+	/// Prefer [`SourcePin::get`] where available.
+	pub fn copy_pinned_exclusive(&self) -> T
+	where
+		T: Copy,
+	{
+		self._managed_pin().get_clone_exclusive()
+	}
+
+	/// Records `self` as dependency and retrieves a clone of the value.
+	///
+	/// Prefer [`SourcePin::get_clone`] where available.
+	pub fn clone_pinned_exclusive(&self) -> T
+	where
+		T: Clone,
+	{
+		self._managed_pin().get_clone_exclusive()
+	}
+
+	/// Records `self` as dependency and allows borrowing the value.
+	pub fn read_pinned<'r>(&'r self) -> Pin<S::Read<'r>>
+	where
+		S: Sized,
+		S::Read<'r>: Unpin,
+		T: 'r + Sync,
+	{
+		unsafe {
+			(&*ManuallyDrop::new(self._managed_pin().read()) as *const S::Read<'r>)
+				.cast::<Pin<S::Read<'r>>>()
+				.read()
+		}
+	}
+
+	/// Records `self` as dependency and allows borrowing the value.
+	///
+	/// Prefer [`SourcePin::read`] where available.
+	pub fn read_pinned_exclusive<'r>(&'r self) -> Pin<S::ReadExclusive<'r>>
+	where
+		S: Sized,
+		S::ReadExclusive<'r>: Unpin,
+		T: 'r,
+	{
+		unsafe {
+			(&*ManuallyDrop::new(self._managed_pin().read_exclusive())
+				as *const S::ReadExclusive<'r>)
+				.cast::<Pin<S::ReadExclusive<'r>>>()
+				.read()
+		}
+	}
+
+	// Blocked by `Ptr: Sized` bound on `Pin<Ptr>`.
+	//
+	// /// The same as [`SourcePin::read`], but dyn-compatible.
+	// pub fn read_dyn<'r>(&'r self) -> Box<Pin<dyn 'r + Guard<T>>>
+	// where
+	// 	T: 'r + Sync,
+	// {
+	// 	todo!()
+	// }
+
+	// /// The same as [`SourcePin::read_exclusive`], but dyn-compatible.
+	// ///
+	// /// Prefer [`SourcePin::read_dyn`] where available.
+	// pub fn read_exclusive_dyn<'r>(&'r self) -> Box<Pin<dyn 'r + Guard<T>>>
+	// where
+	// 	T: 'r,
+	// {
+	// 	todo!()
+	// }
+
+	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
+	pub fn clone_runtime_ref_of_pin(&self) -> SR
+	where
+		SR: Sized,
+	{
+		self._managed_pin().clone_runtime_ref()
 	}
 }
 
@@ -1329,6 +1446,454 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 
 	/// The same as [`update_blocking`](`Signal::update_blocking`), but dyn-compatible.
 	pub fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
+		self._managed().update_blocking_dyn(update)
+	}
+}
+
+/// Pinning [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
+///
+/// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Signal<T, S, SR>
+{
+	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **may** defer its effect.
+	pub fn change_pinned(&self, new_value: T)
+	where
+		T: 'static + Sized + PartialEq,
+	{
+		todo!()
+	}
+
+	/// Unconditionally replaces the current value with `new_value` and signals dependents.
+	///
+	/// Prefer [`.change(new_value)`] if debouncing is acceptable.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **may** defer its effect.
+	pub fn replace_pinned(&self, new_value: T)
+	where
+		T: 'static + Sized,
+	{
+		todo!()
+	}
+
+	/// Modifies the current value using the given closure.
+	///
+	/// The closure decides whether to signal dependents.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **may** defer its effect.
+	pub fn update_pinned(&self, update: impl 'static + Send + FnOnce(Pin<&mut T>) -> Propagation)
+	where
+		S: Sized,
+		T: 'static,
+	{
+		self._managed().update(update)
+	}
+
+	/// The same as [`update`](`Signal::update`), but dyn-compatible.
+	pub fn update_pinned_dyn(
+		&self,
+		update: Box<dyn 'static + Send + FnOnce(Pin<&mut T>) -> Propagation>,
+	) where
+		T: 'static,
+	{
+		self._managed().update_dyn(update)
+	}
+
+	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`Signal::change_eager`) when polled.
+	///
+	/// # Logic
+	///
+	/// The [`Future`] *does not* hold a strong reference to `self`.
+	fn change_pinned_async<'f>(
+		&self,
+		new_value: T,
+	) -> private::DetachedFuture<'f, Result<Result<(), T>, T>>
+	where
+		T: 'f + Sized + PartialEq,
+		S: 'f + Sized,
+		SR: 'f,
+	{
+		let this = self.downgrade();
+		private::DetachedFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.change_pinned_eager(new_value).boxed().await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
+	}
+
+	/// Cheaply creates a [`Future`] that has the effect of [`replace_eager`](`Signal::replace_eager`) when polled.
+	///
+	/// # Logic
+	///
+	/// The [`Future`] *does not* hold a strong reference to `self`.
+	fn replace_pinned_async<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<(), T>>
+	where
+		T: 'f + Sized,
+		S: 'f + Sized,
+		SR: 'f,
+	{
+		let this = self.downgrade();
+		private::DetachedFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.replace_pinned_eager(new_value).boxed().await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
+	}
+
+	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`Signal::update_eager`) when polled.
+	///
+	/// # Logic
+	///
+	/// The [`Future`] *does not* hold a strong reference to `self`.
+	fn update_pinned_async<
+		'f,
+		U: 'f + Send,
+		F: 'f + Send + FnOnce(Pin<&mut T>) -> (Propagation, U),
+	>(
+		&self,
+		update: F,
+	) -> private::DetachedFuture<'f, Result<U, F>>
+	where
+		T: 'f,
+		S: 'f + Sized,
+		SR: 'f,
+	{
+		let this = self.downgrade();
+		private::DetachedFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.update_pinned_eager(update).boxed().await
+				} else {
+					Err(update)
+				}
+			}),
+			PhantomPinned,
+		)
+	}
+
+	fn change_pinned_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<(), T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+				this.change_pinned_eager_dyn(new_value)
+					.conv::<Pin<Box<_>>>()
+					.await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<Result<(), T>, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<Result<(), T>, T>>>,
+			>(f)
+		}
+	}
+
+	fn replace_pinned_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<(), T>>>
+	where
+		T: 'f + Sized,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+				this.replace_eager_dyn(new_value)
+					.conv::<Pin<Box<_>>>()
+					.await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<(), T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<(), T>>>,
+			>(f)
+		}
+	}
+
+	fn update_pinned_async_dyn<'f>(
+		&self,
+		update: Box<dyn 'f + Send + FnOnce(Pin<&mut T>) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(Pin<&mut T>) -> Propagation>>>,
+	>
+	where
+		T: 'f,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				let f: Pin<Box<_>> = this.update_pinned_eager_dyn(update).into();
+				f.await
+			} else {
+				Err(update)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<
+					dyn '_
+						+ Send
+						+ Future<
+							Output = Result<
+								(),
+								Box<dyn 'f + Send + FnOnce(Pin<&mut T>) -> Propagation>,
+							>,
+						>,
+				>,
+				Box<
+					dyn 'f
+						+ Send
+						+ Future<
+							Output = Result<
+								(),
+								Box<dyn 'f + Send + FnOnce(Pin<&mut T>) -> Propagation>,
+							>,
+						>,
+				>,
+			>(f)
+		}
+	}
+
+	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// [`Ok`] with the previous value, or [`Err(new_value)`](`Err`) iff not replaced.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	pub fn change_pinned_eager<'f>(&self, new_value: T) -> S::ChangeEager<'f>
+	//TODO: Return type!
+	where
+		S: 'f + Sized,
+		T: 'f + Sized + PartialEq,
+	{
+		todo!()
+	}
+
+	/// Unconditionally replaces the current value with `new_value` and signals dependents.
+	///
+	/// # Returns
+	///
+	/// The previous value.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	pub fn replace_pinned_eager<'f>(&self, new_value: T) -> S::ReplaceEager<'f>
+	//TODO: Return type!
+	where
+		S: 'f + Sized,
+		T: 'f + Sized,
+	{
+		todo!()
+	}
+
+	/// Modifies the current value using the given closure.
+	///
+	/// The closure decides whether to signal dependents.
+	///
+	/// # Returns
+	///
+	/// The `U` returned by `update`.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	pub fn update_pinned_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+		&self,
+		update: F,
+	) -> S::UpdateEager<'f, U, F>
+	//TODO: Return type!
+	where
+		S: 'f + Sized,
+	{
+		todo!()
+	}
+
+	/// The same as [`change_eager`](`Signal::change_eager`), but dyn-compatible.
+	pub fn change_pinned_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<(), T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		todo!()
+	}
+
+	/// The same as [`replace_eager`](`Signal::replace_eager`), but dyn-compatible.
+	pub fn replace_pinned_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<(), T>>>
+	where
+		T: 'f + Sized,
+	{
+		todo!()
+	}
+
+	/// The same as [`update_eager`](`Signal::update_eager`), but dyn-compatible.
+	pub fn update_pinned_eager_dyn<'f>(
+		&self,
+		update: Box<dyn 'f + Send + FnOnce(Pin<&mut T>) -> Propagation>,
+	) -> Box<
+		dyn 'f
+			+ Send
+			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(Pin<&mut T>) -> Propagation>>>,
+	>
+	where
+		T: 'f,
+	{
+		self._managed().update_eager_dyn(update)
+	}
+
+	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// [`Ok`] with the previous value, or [`Err(new_value)`](`Err`) iff not replaced.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	pub fn change_pinned_blocking(&self, new_value: T) -> Result<(), T>
+	where
+		T: Sized + PartialEq,
+	{
+		self._managed().change_blocking(new_value)
+	}
+
+	/// Unconditionally replaces the current value with `new_value` and signals dependents.
+	///
+	/// # Returns
+	///
+	/// The previous value.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	pub fn replace_pinned_blocking(&self, new_value: T) -> ()
+	where
+		T: Sized,
+	{
+		self._managed().replace_blocking(new_value)
+	}
+
+	/// Modifies the current value using the given closure.
+	///
+	/// The closure decides whether to signal dependents.
+	///
+	/// # Returns
+	///
+	/// The `U` returned by `update`.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	pub fn update_pinned_blocking<U>(
+		&self,
+		update: impl FnOnce(Pin<&mut T>) -> (Propagation, U),
+	) -> U
+	where
+		S: Sized,
+	{
+		self._managed().update_blocking(update)
+	}
+
+	/// The same as [`update_blocking`](`Signal::update_blocking`), but dyn-compatible.
+	pub fn update_pinned_blocking_dyn(
+		&self,
+		update: Box<dyn '_ + FnOnce(Pin<&mut T>) -> Propagation>,
+	) {
 		self._managed().update_blocking_dyn(update)
 	}
 }
