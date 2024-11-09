@@ -191,7 +191,10 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// and instead exhibit unexpected behaviour iff there wasn't an at-least-equal number
 	/// of [`subscribe`](`SignalsRuntimeRef::subscribe`) calls with the same `id`.
 	///
-	/// Note that [`purge`](`SignalsRuntimeRef::subscribe`) is expected to reset the net subscription count to zero.
+	/// Attempting to decrease the net number of intrinsic subscriptions below zero
+	/// **may** cause unexpected behaviour (but not undefined behaviour).
+	///
+	/// Note that [`purge`](`SignalsRuntimeRef::purge`) is expected to reset the net subscription count to zero.
 	///
 	/// # See also
 	///

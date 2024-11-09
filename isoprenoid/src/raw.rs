@@ -180,12 +180,12 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		&mut self.eager
 	}
 
-	/// TODO: Everything below!
-	/// This [`RawSignal`]'s lazy state is initialised if necessary, recording dependencies in the process.
+	/// This method borrows the pin-projected `Eager` and `Lazy` values,
+	/// marking this [`RawSignal`] as dependency of the surrounding context.
 	///
-	/// This may cause [`C::ON_SUBSCRIBED_CHANGE`](`Callbacks::ON_SUBSCRIBED_CHANGE`) to be called after `init` if a subscription to this instance already exists.
+	/// If necessary, the `Lazy` state is first initialised by calling `init`, recording dependencies and setting up callbacks in the process.
 	///
-	/// This [`RawSignal`] is marked as dependency of the surrounding context, iff any, which may also cause callbacks to be called.
+	/// This may cause the specified [`C::ON_SUBSCRIBED_CHANGE`](`Callbacks::ON_SUBSCRIBED_CHANGE`) to be called after `init`, if a subscription to this instance already exists.
 	///
 	/// # Safety Notes
 	///
@@ -194,7 +194,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 	/// After `init` returns, [`E::UPDATE`](`Callbacks::UPDATE`) and [`E::ON_SUBSCRIBED_CHANGE`](`Callbacks::ON_SUBSCRIBED_CHANGE`)
 	/// may be called any number of times with the state initialised by `init`, but at most once at a time.
 	///
-	/// [`RawSignal`]'s [`Drop`] implementation first prevents further `eval` calls and waits for running ones to finish (not necessarily in this order), then drops the `T` in place.
+	/// [`RawSignal`]'s [`Drop`] implementation first prevents further callback calls and waits for running ones to finish, then drops both values in place (lazy first).
 	pub fn project_or_init<C: Callbacks<Eager, Lazy, SR>>(
 		self: Pin<&Self>,
 		init: impl for<'b> FnOnce(Pin<&'b Eager>, Slot<'b, Lazy>) -> Token<'b>,
@@ -289,12 +289,12 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		}
 	}
 
-	/// Increases this [`RawSignal`]'s (intrinsic) subscription count.
+	/// Increases this [`RawSignal`]'s intrinsic subscription count.
 	pub fn subscribe(&self) {
 		self.handle.subscribe()
 	}
 
-	/// Decreases this [`RawSignal`]'s (intrinsic) subscription count.
+	/// Decreases this [`RawSignal`]'s intrinsic subscription count.
 	///
 	/// # Logic
 	///
@@ -309,13 +309,15 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		self.handle.unsubscribe()
 	}
 
+	/// Schedules an update on the `Eager` and `Lazy` without waiting for completion.
+	///
 	/// # Safety Notes
 	///
-	/// `self.stop(…)` also drops associated enqueued updates.
+	/// [`stop`](`RawSignal::stop`) also drops associated enqueued updates.
 	///
 	/// # Panics
 	///
-	/// **May** panic iff called *not* between `self.start(…)` and `self.stop(…)`.
+	/// **May** panic iff called *not* between [`project_or_init`](`RawSignal::project_or_init`) and [`stop`](`RawSignal::stop`).
 	pub fn update(
 		self: Pin<&Self>,
 		f: impl 'static + Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> Propagation,
@@ -332,6 +334,21 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		self.handle.update_or_enqueue(update);
 	}
 
+	/// Immediately schedules an update on the `Eager` and `Lazy`.
+	///
+	/// # Returns
+	///
+	/// A [`Future`] handle that becomes [`Poll::Ready`](`core::task::Poll::Ready`) when the scheduled update is complete or cancelled.
+	///
+	/// Drop this handle to cancel the update if still possible.
+	///
+	/// # Safety Notes
+	///
+	/// [`stop`](`RawSignal::stop`) also drops associated enqueued updates.
+	///
+	/// # Panics
+	///
+	/// **May** panic iff called *not* between [`project_or_init`](`RawSignal::project_or_init`) and [`stop`](`RawSignal::stop`).
 	pub fn update_eager<
 		'f,
 		T: 'f + Send,
@@ -379,6 +396,22 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		}
 	}
 
+
+	/// Immediately schedules an update on the pinned `Eager` and `Lazy`.
+	///
+	/// # Returns
+	///
+	/// A [`Future`] handle that becomes [`Poll::Ready`](`core::task::Poll::Ready`) when the scheduled update is complete or cancelled.
+	///
+	/// Drop this handle to cancel the update if still possible.
+	///
+	/// # Safety Notes
+	///
+	/// [`stop`](`RawSignal::stop`) also drops associated enqueued updates.
+	///
+	/// # Panics
+	///
+	/// **May** panic iff called *not* between [`project_or_init`](`RawSignal::project_or_init`) and [`stop`](`RawSignal::stop`).
 	pub fn update_eager_pin<
 		'f,
 		T: 'f + Send,
@@ -431,6 +464,22 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		}
 	}
 
+	///TODO
+	/// Immediately schedules an update on the `Eager` and `Lazy`.
+	///
+	/// # Returns
+	///
+	/// A [`Future`] handle that becomes [`Poll::Ready`](`core::task::Poll::Ready`) when the scheduled update is complete or cancelled.
+	///
+	/// Drop this handle to cancel the update if still possible.
+	///
+	/// # Safety Notes
+	///
+	/// [`stop`](`RawSignal::stop`) also drops associated enqueued updates.
+	///
+	/// # Panics
+	///
+	/// **May** panic iff called *not* between [`project_or_init`](`RawSignal::project_or_init`) and [`stop`](`RawSignal::stop`).
 	pub fn update_blocking<T>(
 		&self,
 		f: impl FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
@@ -477,12 +526,12 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		self.handle.stop();
 	}
 
-	pub fn if_started_then_purge_and_deinit<T>(
+	pub fn purge_and_deinit_with<T>(
 		self: Pin<&mut Self>,
 		before_deinit: impl FnOnce(Pin<&Eager>, Pin<&mut Lazy>) -> T,
 	) -> Option<T> {
+		self.handle.purge();
 		if self.lazy.get().is_some() {
-			self.handle.purge();
 			unsafe {
 				//SAFETY: Once `handle` has been purged, `self` isn't aliased anymore,
 				//        so it's now safe to get mutable access.
