@@ -1,4 +1,17 @@
-//! Wrap a [`RawSignal`] to create signal primitives.
+//! A 100% safe-Rust API to create custom signals.
+//!
+//! Wrap a pinned [`RawSignal`] to create signal primitives.
+//!
+//! > **Hint**
+//! >
+//! > With a projection helper like [pin-project] or [pin-project-lite],
+//! > you can inline [`RawSignal`] into your wrapper without using `unsafe`.
+//! >
+//! > I also wrote a blog post about this topic that may be helpful: [Pinning in plain English]
+//!
+//! [pin-project]: https://crates.io/crates/pin-project
+//! [pin-project-lite]: https://crates.io/crates/pin-project-lite
+//! [Pinning in plain English]: https://blog.schichler.dev/posts/Pinning-in-plain-English/
 
 use core::{
 	fmt::{self, Debug, Formatter},
@@ -100,8 +113,16 @@ impl<SR: SignalsRuntimeRef> SignalId<SR> {
 
 mod once_slot;
 
-/// A slightly higher-level signal primitive than using a runtime's [`SignalsRuntimeRef::Symbol`] directly.
-/// This type comes with some lifecycle management to ensure orderly callbacks and safe data access.
+/// A mid-level signal primitive that safely encapsulates a signal lifecycle.
+///
+/// Conceptually, this type resembles a lazy cell but with a persistent `Eager` slot.  
+/// You can borrow the pin-projected `Eager` and `Lazy` values by initialising the
+/// pinned [`RawSignal`] with an `init` function and static [`Callbacks`] through
+/// the [`project_or_init`](`RawSignal::project_or_init`) method, with various
+/// additional low-level methods that are specific to signal use.
+///
+/// A [`RawSignal`] can be reverted into its uninitialised state, but only by
+/// purging its callbacks and subscriptions and severing its dependency relationships.
 pub struct RawSignal<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> {
 	handle: SignalId<SR>,
 	_pinned: PhantomPinned,
@@ -132,6 +153,7 @@ where
 impl<SR: SignalsRuntimeRef + Unpin> Unpin for RawSignal<(), (), SR> {}
 
 impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
+	/// Creates a new instance of [`RawSignal`].
 	pub fn new(eager: Eager) -> Self
 	where
 		Eager: Sized,
@@ -140,6 +162,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		Self::with_runtime(eager, SR::default())
 	}
 
+	/// Creates a new instance of [`RawSignal`] with the given `runtime`.
 	pub fn with_runtime(eager: Eager, runtime: SR) -> Self
 	where
 		Eager: Sized,
@@ -152,12 +175,13 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		}
 	}
 
+	/// Gives plain mutable access to the contained `Eager`.
 	pub fn eager_mut(&mut self) -> &mut Eager {
 		&mut self.eager
 	}
 
-	//TODO: Separate `init` method that doesn't record `self` as dependency and returns unit (for use when subscribing)!
-	/// Records `self` as dependency, initialises this [`RawSignal`]'s lazy state is initialised if necessary, recording dependencies in the process.
+	/// TODO: Everything below!
+	/// This [`RawSignal`]'s lazy state is initialised if necessary, recording dependencies in the process.
 	///
 	/// This may cause [`C::ON_SUBSCRIBED_CHANGE`](`Callbacks::ON_SUBSCRIBED_CHANGE`) to be called after `init` if a subscription to this instance already exists.
 	///
@@ -453,18 +477,24 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		self.handle.stop();
 	}
 
-	pub fn purge_deinit_and<T>(
+	pub fn if_started_then_purge_and_deinit<T>(
 		self: Pin<&mut Self>,
-		f: impl FnOnce(Pin<&Eager>, Pin<&mut Lazy>) -> T,
+		before_deinit: impl FnOnce(Pin<&Eager>, Pin<&mut Lazy>) -> T,
 	) -> Option<T> {
-		let this = unsafe { Pin::into_inner_unchecked(self) };
-		if this.lazy.get().is_some() {
-			this.handle.purge();
-			let t = f(unsafe { Pin::new_unchecked(&this.eager) }, unsafe {
-				Pin::new_unchecked(this.lazy.get_mut().expect("unreachable"))
-			});
-			this.lazy = OnceSlot::new();
-			Some(t)
+		if self.lazy.get().is_some() {
+			self.handle.purge();
+			unsafe {
+				//SAFETY: Once `handle` has been purged, `self` isn't aliased anymore,
+				//        so it's now safe to get mutable access.
+				let this = Pin::into_inner_unchecked(self);
+				let t = before_deinit(
+					Pin::new_unchecked(&this.eager),
+					Pin::new_unchecked(this.lazy.get_mut().expect("unreachable")),
+				);
+				// `lazy` is pinned, so overwrite it in place.
+				this.lazy = OnceSlot::new();
+				Some(t)
+			}
 		} else {
 			None
 		}
