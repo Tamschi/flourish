@@ -1,3 +1,13 @@
+//! This module contains raw unmanaged signals that can be pinned directly on the stack.
+//!
+//! In most application code, it's recommended to use [`Signal`](`crate::Signal`) instead,
+//! which abstracts memory management and keeping track of subscriptions.
+//!
+//! Still, these building blocks are sometimes useful for composition and abstraction.
+//!
+//! To instantiate-and-pin unmanaged signals directly, it's currently most convenient to
+//! use the [`signals_helper`] macro.
+
 use isoprenoid::runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef};
 
 pub use crate::traits::{Subscribable, UnmanagedSignal, UnmanagedSignalCell};

@@ -23,9 +23,17 @@ use crate::{
 		computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced, InertCell,
 		ReactiveCell, ReactiveCellMut,
 	},
-	Guard, SignalArc, SignalWeak, Subscription, SubscriptionDyn,
+	Guard, SignalArc, SignalWeak, Subscription,
 };
 
+/// A reference-counted signal.
+///
+/// Instances of this type can only be accessed by reference in user code.
+///
+/// The matching handles are [`SignalArc`], [`SignalWeak`] and [`Subscription`]:
+///
+/// - [`SignalArc`] and [`Subscription`] each implement both [`Borrow<Signal<…>>`](`Borrow`) and [`Deref`].
+/// - [`Signal`] implements [`ToOwned<Owned = SignalArc<…>>`](`ToOwned`).
 pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> {
 	inner: UnsafeCell<Signal_<T, S, SR>>,
 }
@@ -708,6 +716,22 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 			}
 		}
 		None
+	}
+
+	pub(crate) fn into_dyn<'a>(self) -> Weak<T, dyn 'a + Subscribable<T, SR>, SR>
+	where
+		S: 'a + Sized,
+	{
+		let this = ManuallyDrop::new(self);
+		Weak { weak: this.weak }
+	}
+
+	pub(crate) fn into_dyn_cell<'a>(self) -> Weak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>
+	where
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+	{
+		let this = ManuallyDrop::new(self);
+		Weak { weak: this.weak }
 	}
 }
 

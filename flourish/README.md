@@ -86,7 +86,7 @@ let (_signal, _cell) = Signal::cell(()).into_read_only_and_self();
 // Erase the unmanaged/closure type:
 let _: SignalArcDynCell<(), GlobalSignalsRuntime> = Signal::cell(()).into_dyn_cell();
 let _: SignalArcDyn<(), GlobalSignalsRuntime> = Signal::computed(|| ()).into_dyn();
-let (_signal_dyn, _cell_dyn) = Signal::cell(()).into_dyn_and_dyn_cell();
+let (_signal_dyn, _cell_dyn) = Signal::cell(()).into_dyn_read_only_and_self();
 ```
 
 You can also put signals on the stack:
@@ -233,3 +233,5 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |Deref coercions in constant functions.|Make several conversions available as `const` methods.|
 |[`arbitrary_self_types`](https://github.com/rust-lang/rust/issues/44874)|Inline-pinning of values (with a clean API).|
 |`Pin<Ptr: ?Sized>`|Type-erasure for the aforementioned clean inline-pinning signals.|
+|["`super let`"](https://blog.m-ou.se/super-let/) (or equivalent)|Easier-to-use macros for unmanaged/inline signals.|
+|"`FnPin`[`Mut`]" closures with simple return type, also implemented by current `FnMut` closures and functions | This could nicely potentially allow safe `\|\| { let x = pin!(…); loop { yield …; } }` closures for the "fn_pin" parameters, where currently only `FnMut` is accepted and any inline pinning requires `unsafe`.|

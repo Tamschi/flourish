@@ -23,6 +23,10 @@ pub type SignalWeakDyn<'a, T, SR> = SignalWeak<T, dyn 'a + Subscribable<T, SR>, 
 /// Type of [`SignalWeak`]s after cell-type-erasure or [`SignalDynCell`] after downgrade. Dynamic dispatch.
 pub type SignalWeakDynCell<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
+/// A weak reference to a [`Signal`].
+///
+/// These weak references prevent deallocation, but otherwise do allow a managed [`Signal`]
+/// to be destroyed.
 #[repr(transparent)]
 pub struct SignalWeak<
 	T: ?Sized + Send,
@@ -35,9 +39,36 @@ pub struct SignalWeak<
 impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalWeak<T, S, SR>
 {
+	/// Tries to obtain a [`SignalArc`] from this [`SignalWeak`].
 	#[must_use]
 	pub fn upgrade(&self) -> Option<SignalArc<T, S, SR>> {
 		self.weak.upgrade().map(|strong| SignalArc { strong })
+	}
+
+	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
+
+	/// Erases the (generally opaque) `S` type parameter of the [`Signal`], allowing the
+	/// weak signal handle to be stored easily.
+	pub fn into_dyn<'a>(self) -> SignalWeakDyn<'a, T, SR>
+	where
+		S: 'a + Sized,
+	{
+		let Self { weak } = self;
+		SignalWeakDyn {
+			weak: weak.into_dyn(),
+		}
+	}
+
+	/// Erases the (generally opaque) `S` type parameter of the [`Signal`], allowing the
+	/// weak signal cell handle to be stored easily.
+	pub fn into_dyn_cell<'a>(self) -> SignalWeakDynCell<'a, T, SR>
+	where
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+	{
+		let Self { weak } = self;
+		SignalWeakDynCell {
+			weak: weak.into_dyn_cell(),
+		}
 	}
 }
 
@@ -132,6 +163,8 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 
 	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
 
+	/// Erases the (generally opaque) `S` type parameter of the [`Signal`], allowing the
+	/// signal handle to be stored easily.
 	pub fn into_dyn<'a>(self) -> SignalArcDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
@@ -142,6 +175,8 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 		}
 	}
 
+	/// Erases the (generally opaque) `S` type parameter of the [`Signal`], allowing the
+	/// signal cell handle to be stored easily.
 	pub fn into_dyn_cell<'a>(self) -> SignalArcDynCell<'a, T, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
@@ -156,6 +191,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalArc<T, S, SR>
 {
+	/// Obscures the cell API, allowing only reads and subscriptions.
 	pub fn into_read_only<'a>(self) -> SignalArc<T, impl 'a + Subscribable<T, SR>, SR>
 	where
 		S: 'a,
@@ -164,6 +200,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 		self.as_read_only().to_owned()
 	}
 
+	/// Equivalent to a getter/setter splitter.
 	pub fn into_read_only_and_self<'a>(
 		self,
 	) -> (SignalArc<T, impl 'a + Subscribable<T, SR>, SR>, Self)
@@ -173,37 +210,12 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 		(self.as_read_only().to_owned(), self)
 	}
 
-	pub fn into_dyn_and_dyn_cell<'a>(
-		self,
-	) -> (SignalArcDyn<'a, T, SR>, SignalArcDynCell<'a, T, SR>)
+	/// A getter/setter splitter like [`into_read_only_and_self`](`SignalArc::into_read_only_and_self`),
+	/// but additionally type-erases the `S` type parameter for easy storage.
+	pub fn into_dyn_read_only_and_self<'a>(self) -> (SignalArcDyn<'a, T, SR>, SignalArcDynCell<'a, T, SR>)
 	where
 		S: 'a,
 	{
 		(self.as_dyn().to_owned(), self.into_dyn_cell())
-	}
-}
-
-/// Duplicated to avoid identities.
-mod private {
-	use std::{borrow::Borrow, ops::Deref};
-
-	use crate::traits::Guard;
-
-	pub struct BoxedGuardDyn<'r, T: ?Sized>(pub(super) Box<dyn 'r + Guard<T>>);
-
-	impl<T: ?Sized> Guard<T> for BoxedGuardDyn<'_, T> {}
-
-	impl<T: ?Sized> Deref for BoxedGuardDyn<'_, T> {
-		type Target = T;
-
-		fn deref(&self) -> &Self::Target {
-			self.0.deref()
-		}
-	}
-
-	impl<T: ?Sized> Borrow<T> for BoxedGuardDyn<'_, T> {
-		fn borrow(&self) -> &T {
-			(*self.0).borrow()
-		}
 	}
 }

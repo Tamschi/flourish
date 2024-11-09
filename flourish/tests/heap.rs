@@ -14,7 +14,7 @@ fn use_constructors() {
 	let x = &Validator::new();
 
 	let a = Signal::cell(1);
-	let (b, b_cell) = Signal::cell(2).into_dyn_and_dyn_cell();
+	let (b, b_cell) = Signal::cell(2).into_dyn_read_only_and_self();
 	let c = Signal::computed({
 		shadow_clone!(a, b);
 		move || {

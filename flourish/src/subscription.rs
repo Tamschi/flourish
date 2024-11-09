@@ -154,6 +154,8 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {
+	/// Erases the (generally opaque) `S` type parameter of the underlying [`Signal`],
+	/// allowing the subscription to be stored easily.
 	pub fn into_dyn<'a>(self) -> SubscriptionDyn<'a, T, SR>
 	where
 		T: 'a,
@@ -168,6 +170,8 @@ impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 		}
 	}
 
+	/// Erases the (generally opaque) `S` type parameter of the underlying [`Signal`],
+	/// allowing the cell subscription to be stored easily.
 	pub fn into_dyn_cell<'a>(self) -> SubscriptionDynCell<'a, T, SR>
 	where
 		T: 'a,
@@ -344,9 +348,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		}
 	}
 
+	/// When awaited, subscribes to its inputs (from both closures) and resolves to a
+	/// [`Subscription`] that yields only values for which `predicate_fn_pin` returns `true`.
 	pub fn filtered<'a>(
-		mut fn_pin: impl 'a + Send + FnMut() -> T,
-		mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
+		fn_pin: impl 'a + Send + FnMut() -> T,
+		predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
 	where
 		T: 'a + Copy,
@@ -355,6 +361,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		Self::filtered_with_runtime(fn_pin, predicate_fn_pin, SR::default())
 	}
 
+	/// When awaited, subscribes to its inputs (from both closures) and resolves to a
+	/// [`Subscription`] that yields only values for which `predicate_fn_pin` returns `true`.
 	pub fn filtered_with_runtime<'a>(
 		mut fn_pin: impl 'a + Send + FnMut() -> T,
 		mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
@@ -396,8 +404,10 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		}
 	}
 
+	/// When awaited, subscribes to its inputs and resolves to a [`Subscription`] that
+	/// yields only the payloads of [`Some`] variants returned by `fn_pin`.
 	pub fn filter_mapped<'a>(
-		mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
+		fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
 	where
 		T: 'a + Copy,
@@ -406,6 +416,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		Self::filter_mapped_with_runtime(fn_pin, SR::default())
 	}
 
+	/// When awaited, subscribes to its inputs and resolves to a [`Subscription`] that
+	/// yields only the payloads of [`Some`] variants returned by `fn_pin`.
 	pub fn filter_mapped_with_runtime<'a>(
 		mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 		runtime: SR,
@@ -442,31 +454,6 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 			once.wait().await;
 
 			unsafe { assume_init_subscription(sub) }
-		}
-	}
-}
-
-/// Duplicated to avoid identities.
-mod private {
-	use std::{borrow::Borrow, ops::Deref};
-
-	use crate::traits::Guard;
-
-	pub struct BoxedGuardDyn<'r, T: ?Sized>(pub(super) Box<dyn 'r + Guard<T>>);
-
-	impl<T: ?Sized> Guard<T> for BoxedGuardDyn<'_, T> {}
-
-	impl<T: ?Sized> Deref for BoxedGuardDyn<'_, T> {
-		type Target = T;
-
-		fn deref(&self) -> &Self::Target {
-			self.0.deref()
-		}
-	}
-
-	impl<T: ?Sized> Borrow<T> for BoxedGuardDyn<'_, T> {
-		fn borrow(&self) -> &T {
-			(*self.0).borrow()
 		}
 	}
 }
