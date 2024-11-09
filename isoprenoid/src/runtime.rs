@@ -1,20 +1,42 @@
-//! Low-level types for implementing [`SignalsRuntimeRef`], as well as a functional [`GlobalSignalsRuntime`].
+//! Low-level types for implementing [`SignalsRuntimeRef`], as well as [`GlobalSignalsRuntime`].
+//!
+//! # Features
+//!
+//! Enable the `global_signals_runtime` Cargo feature for [`GlobalSignalsRuntime`] to implement [`SignalsRuntimeRef`].
 
 use core::{self};
 use std::{self, fmt::Debug, future::Future, mem, num::NonZeroU64};
 
-/// Trait for handles that let signals refer to a specific runtime (instance).
+/// Embedded in signals to refer to a specific signals runtime.
+///
+/// The signals runtime determines when its associated signals are refreshed in response to dependency changes.
 ///
 /// [`GlobalSignalsRuntime`] provides a usable default.
 ///
 /// # Logic
-///
-/// Callbacks associated with the same `id` **must not** run in parallel or nested.  
-/// Callback invocations *with the same `id` **must** be totally orderable across all threads.
+/// Callback invocations associated with the same `id` **must** be totally orderable across all threads.
 ///
 /// # Safety
 ///
-/// Please see the 'Safety' sections on individual associated items.
+/// Callbacks associated with the same `id` **must not** run concurrently but **may** be nested in some cases.  
+///
+/// Please see the 'Safety' sections on this trait's associated items for additional rules.
+///
+/// Iff equivalent [`SignalsRuntimeRef`] instances may be accessed concurrently,
+/// the runtime **must** handle concurrent method calls with the same `id` gracefully.
+///
+/// The runtime **must** behave as if method calls associate with the same `id` were totally orderable.  
+/// The runtime **may** decide the effective order of concurrent calls arbitrarily.
+///
+/// ## Definition
+///
+/// An `id` is considered 'started' exactly between the start of each associated call to
+/// [`start`](`SignalsRuntimeRef::start`) and a runtime-specific point during the following
+/// associated [`stop`](`SignalsRuntimeRef::stop`) call after which no associated callbacks
+/// may still be executed by the runtime.
+///
+/// '`id`'s context' is the execution context of any methods on this trait where the same `id`
+/// is used as parameter and additionally that of callbacks associated with `id`.
 pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// The signal instance key used by this [`SignalsRuntimeRef`].
 	///
@@ -31,18 +53,21 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Safety
 	///
-	/// The return value **must** be able to uniquely identify a signal towards this runtime.  
-	/// Symbols **may not** be reused even after calls to [`.stop(id)`](`SignalsRuntimeRef::stop`).
+	/// The return value **must** be able to uniquely identify a signal towards this runtime.
+	///  
+	/// Symbols **may** be reused by signals even after [`stop`](`SignalsRuntimeRef::stop`) and
+	/// as such **must not** be reallocated by a given runtime.
 	fn next_id(&self) -> Self::Symbol;
 
 	/// When run in a context that records dependencies, records `id` as dependency of that context.
 	///
 	/// # Logic
 	///
-	/// If a touch causes a subscription change, the runtime **should** call that [`CallbackTable::on_subscribed_change`]
-	/// callback before returning from this function. (This helps more easily manage on-demand-only resources.)
+	/// If a call to [`recod_dependency`](`SignalsRuntimeRef::record_dependency`) causes a subscription
+	/// change, the runtime **should** call that [`CallbackTable::on_subscribed_change`] callback before
+	/// returning from this function. (This helps to manage on-demand-only resources more efficiently.)
 	///
-	/// This method **must** function even for a unknown `id`.
+	/// This method **must** function even for an otherwise unknown `id` as long as it was allocated by [`next_id`](`SignalsRuntimeRef::next_id`).
 	fn record_dependency(&self, id: Self::Symbol);
 
 	/// Starts managed callback processing for `id`.
@@ -58,11 +83,15 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Safety
 	///
-	/// Before this method returns, `f` **must** be called.
+	/// Before this method returns, `init` **must** have been called synchronously.
 	///
-	/// Only after `f` completes, the runtime **may** run the functions specified in `callback_table` with
-	/// `callback_data`, but only one at a time and only before the next [`.stop(id)`](`SignalsRuntimeRef::stop`)
-	/// call for the same runtime with an identical `id` completes.
+	/// Only after `init` completes, the runtime **may** run the functions specified in `callback_table` with
+	/// `callback_data` any number of times and in any order, but only one at a time and only before the next
+	/// [`.stop(id)`](`SignalsRuntimeRef::stop`) call on `self` with an identical `id` completes.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called when `id` is already started.
 	///
 	/// # See also
 	///
@@ -84,27 +113,42 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// The runtime **should** remove callbacks *before* cancelling pending updates.
 	///
+	/// Calls to [`stop`](`SignalsRuntimeRef::stop`) made while `id` is not started
+	/// **must** return normally and **should not** have observable effects outside diagnostics.
+	///
 	/// # Safety
 	///
-	/// After this method returns, previously-scheduled callbacks for `id` **must not** run.
+	/// After this method returns normally, previously-scheduled callbacks for `id` **must not** run.
+	///
+	/// Iff this method instead panics, then `id` **must** still be considered started
+	/// and `callback_data` **may** still be accessed.
+	///
+	/// # Panics
+	///
+	/// This method **should** panic if called in `id`'s context.  
+	/// (The call **may** instead deadlock.)
 	///
 	/// # See also
 	///
 	/// [`SignalsRuntimeRef::purge`]
 	fn stop(&self, id: Self::Symbol);
 
-	/// Executes `f` while recording dependencies for `id`, updating the recorded dependencies for `id` to the new set.
+	/// Executes `f` while recording dependencies for `id`,
+	/// updating the recorded dependencies for `id` to the new set.
 	///
 	/// This process **may** cause subscription notification callbacks to be called.  
-	/// This **may or may not** happen before this method returns.
+	/// Those callbacks **may or may not** happen before this method returns.
 	///
 	/// # Logic
 	///
-	/// //TODO: Say that unsubscribe notifications from this **should** apply after the unsubscribing dependent has been removed (so that it won't be marked stale).
+	/// Whenever calling this method causes removed dependencies to decome unsubscribed,
+	/// their [`CallbackTable::on_subscribed_change`] callback **should** be invoked semantically
+	/// *after* they have been removed as dependency of the signal identified by `id`.  
+	/// (This avoids unnecessary invalidation of the latter.)
 	///
 	/// # Panics
 	///
-	/// This function **may** panic unless called between the start of [`.start`](`SignalsRuntimeRef::start`) and [`.stop`](`SignalsRuntimeRef::stop`) for `id`.
+	/// This function **may** panic iff `id` is not started.
 	///
 	/// # See also
 	///
@@ -130,7 +174,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Logic
 	///
-	/// If the [`CallbackTable::on_subscribed_change`] returns [`Update::Propagate`],
+	/// If the [`CallbackTable::on_subscribed_change`] returns [`Propagation::FlushOut`],
 	/// that **should** still cause refreshes of the unsubscribing dependencies (except
 	/// for dependencies that have in fact been removed). This ensures that e.g. reference-
 	/// counted resources can be freed appropriately. Such refreshes **may** be deferred.
@@ -145,15 +189,16 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// However, the runtime **may** (but **should not**) avoid tracking this separately
 	/// and instead exhibit unexpected behaviour iff there wasn't an at-least-equal number
-	/// of `.subscribe(id)` calls with the same `id`. Note that `.purge(id)` is expected
-	/// to reset the net subscription count to zero.
+	/// of [`subscribe`](`SignalsRuntimeRef::subscribe`) calls with the same `id`.
+	///
+	/// Note that [`purge`](`SignalsRuntimeRef::subscribe`) is expected to reset the net subscription count to zero.
 	///
 	/// # See also
 	///
 	/// [`SignalsRuntimeRef::purge`]
 	fn unsubscribe(&self, id: Self::Symbol);
 
-	/// Submits `f` to run exclusively for `id` outside of recording dependencies.
+	/// Submits `f` to run exclusively for `id` *without* recording dependencies.
 	///
 	/// The runtime **should** run `f` eventually, but **may** cancel it in response to
 	/// a [`.stop(id)`](`SignalsRuntimeRef::stop`) call with the same `id``.
@@ -164,35 +209,37 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Safety
 	///
-	/// `f` **must** be dropped or consumed before the next matching [`.stop(id)`](`SignalsRuntimeRef::stop`) call returns.
+	/// `f` **must** be dropped or consumed before the next matching [`stop`](`SignalsRuntimeRef::stop`) call returns.
 	fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce() -> Propagation);
 
-	/// **Immediately** submits `f` to run exclusively for `id` outside of recording dependencies.
+	/// **Immediately** submits `f` to run exclusively for `id` *without* recording dependencies.
+	///
+	/// Dropping the resulting [`Future`] cancels the scheduled update iff possible.
 	///
 	/// # Logic
 	///
-	/// The runtime **should** run `f` eventually, but **may** instead cancel and return it in response to
-	/// a [`.stop(id)`](`SignalsRuntimeRef::stop`) or [`.purge(id)`](`SignalsRuntimeRef::purge`) call with the same `id`.  
+	/// The runtime **should** run `f` eventually, but **may** instead cancel and return it inside
+	/// [`Err`] in response to a [`stop`](`SignalsRuntimeRef::stop`) call with the same `id`.
+	///
 	/// This method **must not** block indefinitely *as long as `f` doesn't*, regardless of context.  
-	/// Calling [`.stop(id)`](`SignalsRuntimeRef::stop`) with matching `id` **should** cancel the update and return the [`Err`] variant.
+	/// Calling [`stop`](`SignalsRuntimeRef::stop`) with matching `id` **should** cancel the update and return the [`Err`] variant.
 	///
 	/// # Safety
 	///
-	/// `f` **must not** be dropped or run after the next matching [`.stop(id)`](`SignalsRuntimeRef::stop`) call returns.  
-	/// `f` **must not** be dropped or run after the [`Future`] returned by this function is dropped.
-	///
-	/// The hidden type returned from this method **must not** capture the elided lifetime of `&self`.  
-	/// The overcapturing here appears to be a compiler limitation that can be fixed once
-	/// precise capturing in RPITIT or (not quite as nicely) TAITIT lands.
+	/// `f` **must not** run or be dropped after the next matching [`stop`](`SignalsRuntimeRef::stop`) call returns.  
+	/// `f` **must not** run or be dropped after the [`Future`] returned by this function is dropped.
 	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
 	) -> Self::UpdateEager<'f, T, F>;
 
+	/// The type of the [`Future`] returned by [`update_eager`](`SignalsRuntimeRef::update_eager`).
+	///
+	/// Dropping this [`Future`] **should** cancel the scheduled update if possible.
 	type UpdateEager<'f, T: 'f, F: 'f>: 'f + Send + Future<Output = Result<T, F>>;
 
-	/// Runs `f` exclusively for `id` outside of recording dependencies.
+	/// Runs `f` exclusively for `id` *without* recording dependencies.
 	///
 	/// # Threading
 	///
@@ -210,6 +257,10 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (Propagation, T)) -> T;
 
 	/// Runs `f` exempted from any outer dependency recordings.
+	///
+	/// # Safety
+	///
+	/// `f` **must** be consumed before this method returns.
 	fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T;
 
 	/// # Safety
@@ -241,7 +292,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Safety
 	///
-	/// After this method returns, previously-scheduled callbacks for `id` **must not** run.
+	/// [`purge`](`SignalsRuntimeRef::purge`) implies [`stop`](`SignalsRuntimeRef::stop`).
 	fn purge(&self, id: Self::Symbol);
 }
 
@@ -271,14 +322,19 @@ impl CallbackTableTypes for ACallbackTableTypes {
 ///
 /// # Logic
 ///
-/// This runtime is guaranteed to have settled whenever the last borrow of it ceases, but
-/// only regarding effects originating on the current thread. Effects from other threads
-/// won't necessarily be visible without external synchronisation.
+/// This runtime is guaranteed to have settled whenever the *across all threads* last borrow
+/// of it ceases, but only regarding effects originating on the current thread. Effects from
+/// other threads won't necessarily be visible without external synchronisation points.
 ///
 /// (This means that in addition to transiently borrowing calls, returned [`Future`]s
 /// **may** cause the [`GlobalSignalsRuntime`] not to settle until they are dropped.)
 ///
 /// Otherwise, it makes no additional guarantees over those specified in [`SignalsRuntimeRef`]'s documentation.
+///
+/// # Panics
+///
+/// [`SignalsRuntimeRef::Symbol`]s associated with the [`GlobalSignalsRuntime`] are ordered.  
+/// Given [`GSRSymbol`]s `a` and `b`, `b` can depend on `a` only iff `a` < `b` (by creation order).
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GlobalSignalsRuntime;
 
@@ -306,9 +362,11 @@ impl Debug for GlobalSignalsRuntime {
 	}
 }
 
-/// [`SignalsRuntimeRef::Symbol`] for [`GlobalSignalsRuntime`].
+/// A [`SignalsRuntimeRef::Symbol`] associated with the [`GlobalSignalsRuntime`].
+///
+/// Given [`GSRSymbol`]s `a` and `b`, `b` can depend on `a` only iff `a` < `b` (by creation order).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GSRSymbol(ASymbol);
+pub struct GSRSymbol(pub(crate) ASymbol);
 
 impl Debug for GSRSymbol {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -316,9 +374,14 @@ impl Debug for GSRSymbol {
 	}
 }
 
-/// [`SignalsRuntimeRef::CallbackTableTypes`] for [`GlobalSignalsRuntime`].
-#[repr(transparent)]
-pub struct GlobalCallbackTableTypes(ACallbackTableTypes);
+mod global_callback_table_types {
+	use super::ACallbackTableTypes;
+
+	#[repr(transparent)]
+	pub struct GlobalCallbackTableTypes(ACallbackTableTypes);
+}
+use global_callback_table_types::GlobalCallbackTableTypes;
+
 impl CallbackTableTypes for GlobalCallbackTableTypes {
 	//SAFETY: Everything here must be the same as for `ACallbackTableTypes`!
 	type SubscribedStatus = bool;
@@ -409,26 +472,27 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 
 /// The `unsafe` at-runtime version of [`Callbacks`](`crate::raw::Callbacks`),
 /// mainly for use between [`RawSignal`](`crate::raw::RawSignal`) and [`SignalsRuntimeRef`].
+///
+/// # Safety
+///
+/// The function pointers in this type may only be used as documented on [`SignalsRuntimeRef`].
 #[repr(C)]
 #[non_exhaustive]
 pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
-	/// An "update" callback used to refresh stale signals.
+	/// A callback used to refresh stale signals.
 	///
-	/// Signals that are not currently subscribed don't auto-refresh and **may** remain stale for extended periods of time.
+	/// Signals that are not currently subscribed **should** *outside of explicit flushing* **not** be refreshed *by the runtime*.  
+	/// Signals **should** return only fresh values.  
+	/// Signals **may** remain stale indefinitely.  
+	/// Signals **may** be destroyed while stale.
 	///
-	/// # Safety
+	/// # Logic
 	///
-	/// This **must** be called by the runtime at most with the appropriate `callback_data` pointer introduced alongside the function pointer,
-	/// and **must not** be called concurrently within the group of callbacks associated with one `id`.
+	/// The runtime **must** record dependencies for this callback and update them afterwards.
 	pub update: Option<unsafe fn(*const T) -> Propagation>,
-	/// An "on subscribed change" callback used to notify a signal of a change in its subscribed-state.
+	/// A callback used to notify a signal of a change in its subscribed-state.
 	///
 	/// This is separate from the automatic refresh applied to stale signals that become subscribed to.
-	///
-	/// # Safety
-	///
-	/// This **must** be called by the runtime at most with the appropriate `callback_data` pointer introduced alongside the function pointer,
-	/// and **must not** be called concurrently within the group of callbacks associated with one `id`.
 	///
 	/// # Logic
 	///
@@ -496,14 +560,14 @@ pub trait CallbackTableTypes: 'static {
 }
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
-	/// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()`.
+	/// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()` in the signature.
 	///
 	/// Note that the callback functions still may only be called using the originally correct data pointer(s).
 	pub fn into_erased_ptr(this: *const Self) -> *const CallbackTable<(), CTT> {
 		unsafe { mem::transmute(this) }
 	}
 
-	/// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()`.
+	/// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()` in the signature.
 	///
 	/// Note that the callback functions still may only be called using the originally correct data pointer(s).
 	pub fn into_erased(self) -> CallbackTable<(), CTT> {
@@ -512,17 +576,19 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
 }
 
 /// A return value used by [`CallbackTable`]/[`Callbacks`](`crate::raw::Callbacks`) callbacks
-/// to indicate whether to flag dependent signals as stale.
+/// to indicate whether to flag dependent signals as stale and optionally also refresh them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[must_use = "The runtime should propagate notifications to dependents only when requested."]
 pub enum Propagation {
-	/// Mark at least directly dependent signals, and possibly refresh them.
+	/// Mark at least directly dependent signals as stale.  
+	/// The runtime decides whether and when to refresh them.
 	Propagate,
-	/// Do not mark dependent signals as stale, except through other (parallel) dependency relationships.
+	/// Do not mark dependent signals as stale because of this [`Propagation`].
 	Halt,
-	/// Mark and (possibly later!) refresh dependencies, even if not subscribed.
+	/// Asks the runtime to refresh dependencies, even those that are not subscribed.
 	///
-	/// This is transitive through [`Propagate`](`Propagation::Propagate`), but not [`Halt`](`Propagation::Halt`).
+	/// This **should** be transitive through [`Propagate`](`Propagation::Propagate`) of dependents,  
+	/// but **should not** be transitive through [`Halt`](`Propagation::Halt`).
 	FlushOut,
 }
 
