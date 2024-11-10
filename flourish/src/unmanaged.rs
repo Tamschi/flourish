@@ -385,7 +385,8 @@ macro_rules! effect_with_runtime {
 #[doc(hidden)]
 pub use crate::effect_with_runtime;
 
-/// A helper to bind macros on the stack.
+/// A helper to pin [`unmanaged`](`self`) signals on the stack.  
+/// Canonically [`unmanaged::signals_helper`](`signals_helper`).
 ///
 /// See [`unmanaged`#functions](`self`#functions) for help on individual patterns.
 ///
