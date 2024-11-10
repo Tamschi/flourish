@@ -2,6 +2,12 @@
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 #![doc = include_str!("../README.md")]
+//! # Quick-start
+//!
+//! - To create your own signals runtime, implement [`runtime::SignalsRuntimeRef`].
+//! - To easily create a compatible alternative to Flourish, wrap [`raw::RawSignal`].
+//!   - For tighter integration with Flourish, implement its `UnmanagedSignal` and optionally `UnmanagedSignalCell` traits.
+//! - To write application code, use only Flourish instead.
 //!
 //! # Threading Notes
 //!

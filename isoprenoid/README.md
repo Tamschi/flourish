@@ -1,7 +1,5 @@
-# `isoprenoid`
+# Isoprenoid
 
-TODO
+*Isoprenoid* is the signals runtime framework backing *Flourish*.
 
-```rust
-//TODO
-```
+Distinct major versions of *Flourish* are compatible as long as they use the same version of *Isoprenoid*.
