@@ -89,6 +89,7 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 		SR: Sized;
 }
 
+//TODO: Merge into UnmanagedSignal!
 /// **Combinators should implement this.** Allows [`SignalSR`](`crate::SignalSR`) and [`SubscriptionSR`](`crate::SubscriptionSR`) to manage subscriptions through conversions between each other.
 pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + UnmanagedSignal<T, SR>
