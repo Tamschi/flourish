@@ -119,7 +119,8 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> UnmanagedSignal
 		ComputedUncachedGuard(self.read_exclusive().0)
 	}
 
-	type Read<'r> = ComputedUncachedGuard<T>
+	type Read<'r>
+		= ComputedUncachedGuard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -137,7 +138,8 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> UnmanagedSignal
 		)
 	}
 
-	type ReadExclusive<'r> = ComputedUncachedGuardExclusive<T>
+	type ReadExclusive<'r>
+		= ComputedUncachedGuardExclusive<T>
 	where
 		Self: 'r + Sized,
 		T: 'r;

@@ -119,7 +119,8 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, 
 		ComputedUncachedMutGuard(self.read_exclusive().0)
 	}
 
-	type Read<'r> = ComputedUncachedMutGuard<T>
+	type Read<'r>
+		= ComputedUncachedMutGuard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -138,7 +139,8 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, 
 		)
 	}
 
-	type ReadExclusive<'r> = ComputedUncachedMutGuardExclusive<T>
+	type ReadExclusive<'r>
+		= ComputedUncachedMutGuardExclusive<T>
 	where
 		Self: 'r + Sized,
 		T: 'r;

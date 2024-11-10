@@ -198,7 +198,8 @@ impl<
 		ReducedGuard(touch.read().unwrap())
 	}
 
-	type Read<'r> = ReducedGuard<'r, T>
+	type Read<'r>
+		= ReducedGuard<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -212,7 +213,8 @@ impl<
 		ReducedGuardExclusive(touch.write().unwrap())
 	}
 
-	type ReadExclusive<'r> = ReducedGuardExclusive<'r, T>
+	type ReadExclusive<'r>
+		= ReducedGuardExclusive<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;

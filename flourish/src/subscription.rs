@@ -512,7 +512,8 @@ unsafe fn assume_init_subscription<
 			AbiShim(self.project_ref().0.read())
 		}
 
-		type Read<'r> = AbiShim<S::Read<'r>>
+		type Read<'r>
+			= AbiShim<S::Read<'r>>
 		where
 			Self: 'r + Sized,
 			T: 'r + Sync;
@@ -525,7 +526,8 @@ unsafe fn assume_init_subscription<
 			AbiShim(self.project_ref().0.read_exclusive())
 		}
 
-		type ReadExclusive<'r> = AbiShim<S::ReadExclusive<'r>>
+		type ReadExclusive<'r>
+			= AbiShim<S::ReadExclusive<'r>>
 		where
 			Self: 'r + Sized,
 			T: 'r;

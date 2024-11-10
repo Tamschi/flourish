@@ -169,7 +169,8 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Unm
 		FoldedGuard(touch.read().unwrap())
 	}
 
-	type Read<'r> = FoldedGuard<'r, T>
+	type Read<'r>
+		= FoldedGuard<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -183,7 +184,8 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Unm
 		FoldedGuardExclusive(touch.write().unwrap())
 	}
 
-	type ReadExclusive<'r> = FoldedGuardExclusive<'r, T>
+	type ReadExclusive<'r>
+		= FoldedGuardExclusive<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;

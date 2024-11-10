@@ -162,7 +162,8 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> UnmanagedSi
 		CachedGuard(touch.read().unwrap())
 	}
 
-	type Read<'r> = CachedGuard<'r, T>
+	type Read<'r>
+		= CachedGuard<'r, T>
 	where
 		Self: 'r + Sized,
 		T: Sync;
@@ -176,7 +177,8 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> UnmanagedSi
 		CachedGuardExclusive(touch.write().unwrap())
 	}
 
-	type ReadExclusive<'r> = CachedGuardExclusive<'r, T>
+	type ReadExclusive<'r>
+		= CachedGuardExclusive<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;

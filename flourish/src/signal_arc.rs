@@ -212,7 +212,9 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 
 	/// A getter/setter splitter like [`into_read_only_and_self`](`SignalArc::into_read_only_and_self`),
 	/// but additionally type-erases the `S` type parameter for easy storage.
-	pub fn into_dyn_read_only_and_self<'a>(self) -> (SignalArcDyn<'a, T, SR>, SignalArcDynCell<'a, T, SR>)
+	pub fn into_dyn_read_only_and_self<'a>(
+		self,
+	) -> (SignalArcDyn<'a, T, SR>, SignalArcDynCell<'a, T, SR>)
 	where
 		S: 'a,
 	{

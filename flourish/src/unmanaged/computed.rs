@@ -164,7 +164,8 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, 
 		ComputedGuard(touch.read().unwrap())
 	}
 
-	type Read<'r> = ComputedGuard<'r, T>
+	type Read<'r>
+		= ComputedGuard<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -178,7 +179,8 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, 
 		ComputedGuardExclusive(touch.write().unwrap())
 	}
 
-	type ReadExclusive<'r> = ComputedGuardExclusive<'r, T>
+	type ReadExclusive<'r>
+		= ComputedGuardExclusive<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;

@@ -150,7 +150,8 @@ impl<T: Send + ?Sized, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for InertCe
 		InertCellGuard(touch.read().unwrap())
 	}
 
-	type Read<'r> = InertCellGuard<'r, T>
+	type Read<'r>
+		= InertCellGuard<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -164,7 +165,8 @@ impl<T: Send + ?Sized, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for InertCe
 		InertCellGuardExclusive(touch.write().unwrap())
 	}
 
-	type ReadExclusive<'r> = InertCellGuardExclusive<'r, T>
+	type ReadExclusive<'r>
+		= InertCellGuardExclusive<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
@@ -293,7 +295,8 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		}))
 	}
 
-	type ChangeEager<'f> = private::DetachedFuture<'f, Result<Result<T, T>, T>>
+	type ChangeEager<'f>
+		= private::DetachedFuture<'f, Result<Result<T, T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -333,7 +336,8 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		}))
 	}
 
-	type ReplaceEager<'f> = private::DetachedFuture<'f, Result<T, T>>
+	type ReplaceEager<'f>
+		= private::DetachedFuture<'f, Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -371,7 +375,8 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		}))
 	}
 
-	type UpdateEager<'f, U: 'f, F: 'f> = private::DetachedFuture<'f, Result<U, F>>
+	type UpdateEager<'f, U: 'f, F: 'f>
+		= private::DetachedFuture<'f, Result<U, F>>
 	where
 		Self: 'f + Sized;
 

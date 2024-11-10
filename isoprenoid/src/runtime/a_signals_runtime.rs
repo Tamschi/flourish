@@ -215,8 +215,9 @@ impl ASignalsRuntime {
 						borrow = (**lock).borrow_mut();
 						borrow = match propagation {
 							Propagation::Halt => borrow,
-							Propagation::Propagate => self
-								.mark_dependencies_stale(dependency, &lock, borrow, false),
+							Propagation::Propagate => {
+								self.mark_dependencies_stale(dependency, &lock, borrow, false)
+							}
 							Propagation::FlushOut => {
 								self.mark_dependencies_stale(dependency, &lock, borrow, true)
 							}
@@ -293,8 +294,9 @@ impl ASignalsRuntime {
 						borrow = (**lock).borrow_mut();
 						borrow = match propagation {
 							Propagation::Halt => borrow,
-							Propagation::Propagate => self
-								.mark_dependencies_stale(dependency, &lock, borrow, false),
+							Propagation::Propagate => {
+								self.mark_dependencies_stale(dependency, &lock, borrow, false)
+							}
 							Propagation::FlushOut => {
 								self.mark_dependencies_stale(dependency, &lock, borrow, true)
 							}
@@ -401,7 +403,16 @@ impl ASignalsRuntime {
 
 		if flush {
 			for symbol in dependents {
-				if borrow.stale_queue.replace(Stale { symbol, flush }).is_none() && borrow.interdependencies.subscribers_by_dependency.entry(symbol).or_default().is_empty() {
+				if borrow
+					.stale_queue
+					.replace(Stale { symbol, flush })
+					.is_none() && borrow
+					.interdependencies
+					.subscribers_by_dependency
+					.entry(symbol)
+					.or_default()
+					.is_empty()
+				{
 					// The dependency wasn't marked stale yet and also won't update, so recurse.
 					// Note that flushing is propagated during the refresh instead!
 					borrow = self.mark_dependencies_stale(symbol, lock, borrow, false);
@@ -409,7 +420,14 @@ impl ASignalsRuntime {
 			}
 		} else {
 			for symbol in dependents {
-				if borrow.stale_queue.insert(Stale { symbol, flush }) && borrow.interdependencies.subscribers_by_dependency.entry(symbol).or_default().is_empty() {
+				if borrow.stale_queue.insert(Stale { symbol, flush })
+					&& borrow
+						.interdependencies
+						.subscribers_by_dependency
+						.entry(symbol)
+						.or_default()
+						.is_empty()
+				{
 					// The dependency wasn't marked stale yet and also won't update, so recurse.
 					borrow = self.mark_dependencies_stale(symbol, lock, borrow, false);
 				}
@@ -603,9 +621,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 			borrow = (*lock).borrow_mut();
 			borrow = match propagation {
-				Propagation::Propagate => {
-					self.mark_dependencies_stale(id, &lock, borrow, false)
-				}
+				Propagation::Propagate => self.mark_dependencies_stale(id, &lock, borrow, false),
 				Propagation::Halt => borrow,
 				Propagation::FlushOut => self.mark_dependencies_stale(id, &lock, borrow, true),
 			};
@@ -787,9 +803,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 			let (propagation, t) = f();
 			borrow = match propagation {
-				Propagation::Propagate => {
-					this.mark_dependencies_stale(id, &lock, borrow, false)
-				}
+				Propagation::Propagate => this.mark_dependencies_stale(id, &lock, borrow, false),
 				Propagation::Halt => borrow,
 				Propagation::FlushOut => this.mark_dependencies_stale(id, &lock, borrow, true),
 			};

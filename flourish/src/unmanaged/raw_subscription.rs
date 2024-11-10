@@ -127,7 +127,8 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> UnmanagedSi
 		RawSubscriptionGuard(self.project_ref().0.read())
 	}
 
-	type Read<'r> = RawSubscriptionGuard<'r, T>
+	type Read<'r>
+		= RawSubscriptionGuard<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -140,7 +141,8 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> UnmanagedSi
 		RawSubscriptionGuardExclusive(self.project_ref().0.read_exclusive())
 	}
 
-	type ReadExclusive<'r> = RawSubscriptionGuardExclusive<'r, T>
+	type ReadExclusive<'r>
+		= RawSubscriptionGuardExclusive<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;

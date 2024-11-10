@@ -41,7 +41,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 		match *self {}
 	}
 
-	type Read<'r> = OpaqueGuard<T>
+	type Read<'r>
+		= OpaqueGuard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -54,9 +55,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 		match *self {}
 	}
 
-	type ReadExclusive<'r> = OpaqueGuard<T>
+	type ReadExclusive<'r>
+		= OpaqueGuard<T>
 	where
-		Self: 'r + Sized, T: 'r;
+		Self: 'r + Sized,
+		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
@@ -128,10 +131,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	type ChangeEager<'f> = OpaqueFuture<Result<Result<T, T>, T>>
-		    where
-			    Self: 'f + Sized,
-			    T: 'f + Sized;
+	type ChangeEager<'f>
+		= OpaqueFuture<Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
 
 	fn replace_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueFuture<Result<T, T>>
 	where
@@ -141,10 +145,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	type ReplaceEager<'f> = OpaqueFuture<Result<T, T>>
-		    where
-			    Self: 'f + Sized,
-			    T: 'f + Sized;
+	type ReplaceEager<'f>
+		= OpaqueFuture<Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
 
 	fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		self: Pin<&Self>,
@@ -156,9 +161,10 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	type UpdateEager<'f, U: 'f, F: 'f> = OpaqueFuture<Result<U, F>>
-		    where
-			    Self: 'f + Sized;
+	type UpdateEager<'f, U: 'f, F: 'f>
+		= OpaqueFuture<Result<U, F>>
+	where
+		Self: 'f + Sized;
 
 	fn change_eager_dyn<'f>(
 		self: Pin<&Self>,

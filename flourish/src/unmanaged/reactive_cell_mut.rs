@@ -259,7 +259,8 @@ impl<
 		ReactiveCellMutGuard(touch.read().unwrap())
 	}
 
-	type Read<'r> = ReactiveCellMutGuard<'r, T>
+	type Read<'r>
+		= ReactiveCellMutGuard<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r + Sync;
@@ -273,7 +274,8 @@ impl<
 		ReactiveCellMutGuardExclusive(touch.write().unwrap())
 	}
 
-	type ReadExclusive<'r> = ReactiveCellMutGuardExclusive<'r, T>
+	type ReadExclusive<'r>
+		= ReactiveCellMutGuardExclusive<'r, T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
@@ -418,7 +420,8 @@ impl<
 		}))
 	}
 
-	type ChangeEager<'f> = private::DetachedFuture<'f, Result<Result<T, T>, T>>
+	type ChangeEager<'f>
+		= private::DetachedFuture<'f, Result<Result<T, T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -458,7 +461,8 @@ impl<
 		}))
 	}
 
-	type ReplaceEager<'f> = private::DetachedFuture<'f, Result<T, T>>
+	type ReplaceEager<'f>
+		= private::DetachedFuture<'f, Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -496,7 +500,8 @@ impl<
 		}))
 	}
 
-	type UpdateEager<'f, U: 'f, F: 'f> = private::DetachedFuture<'f, Result<U, F>>
+	type UpdateEager<'f, U: 'f, F: 'f>
+		= private::DetachedFuture<'f, Result<U, F>>
 	where
 		Self: 'f + Sized;
 
