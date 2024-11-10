@@ -16,7 +16,7 @@ use pin_project::pin_project;
 
 use crate::{shadow_clone, traits::Guard};
 
-use super::{Subscribable, UnmanagedSignal, UnmanagedSignalCell};
+use super::{UnmanagedSignal, UnmanagedSignalCell};
 
 #[pin_project]
 pub(crate) struct InertCell<T: ?Sized + Send, SR: SignalsRuntimeRef> {
@@ -191,9 +191,7 @@ impl<T: Send + ?Sized, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for InertCe
 	{
 		self.signal.clone_runtime_ref()
 	}
-}
 
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for InertCell<T, SR> {
 	fn subscribe(self: Pin<&Self>) {
 		let signal = self.project_ref().signal;
 		signal.subscribe();

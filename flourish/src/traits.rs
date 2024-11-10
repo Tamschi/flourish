@@ -83,20 +83,7 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 	where
 		T: 'r;
 
-	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
-	fn clone_runtime_ref(&self) -> SR
-	where
-		SR: Sized;
-}
-
-//TODO: Merge into UnmanagedSignal!
-/// **Combinators should implement this.** Allows [`SignalSR`](`crate::SignalSR`) and [`SubscriptionSR`](`crate::SubscriptionSR`) to manage subscriptions through conversions between each other.
-pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
-	Send + Sync + UnmanagedSignal<T, SR>
-{
-	//TODO: Update docs here!
-
-	/// Subscribes this [`Subscribable`] intrinsically.
+	/// Subscribes this [`UnmanagedSignal`] intrinsically.
 	///
 	/// If necessary, this instance is initialised first, so that callbacks are active for it.
 	///
@@ -107,21 +94,26 @@ pub trait Subscribable<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// Iff this method is called in parallel, initialising and subscribing calls **may** differ!
 	fn subscribe(self: Pin<&Self>);
 
-	/// Unsubscribes this [`Subscribable`] intrinsically.
+	/// Unsubscribes this [`UnmanagedSignal`] intrinsically.
 	///
 	/// # Logic
 	///
-	/// Iff this isn't balanced with previous [`.subscribe()`](`Subscribable::subscribe`)
+	/// Iff this isn't balanced with previous [`.subscribe()`](`UnmanagedSignal::subscribe`)
 	/// calls on this instance, the runtime **should** panic and **may** exhibit
 	/// unexpected behaviour (but not undefined behaviour).
 	fn unsubscribe(self: Pin<&Self>);
+
+	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
+	fn clone_runtime_ref(&self) -> SR
+	where
+		SR: Sized;
 }
 
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
 pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
-	Send + Sync + Subscribable<T, SR>
+	Send + Sync + UnmanagedSignal<T, SR>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///

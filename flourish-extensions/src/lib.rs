@@ -8,7 +8,7 @@ pub mod prelude {
 	use std::ops::{AddAssign, Sub};
 
 	use ext_trait::extension;
-	use flourish::{unmanaged::Subscribable, SignalArc, SignalsRuntimeRef};
+	use flourish::{unmanaged::UnmanagedSignal, SignalArc, SignalsRuntimeRef};
 	use flourish_extra::{delta, sparse_tally};
 	use num_traits::Zero;
 
@@ -20,7 +20,7 @@ pub mod prelude {
 	impl<'a, T: 'a + Send + ?Sized, SR: 'a + SignalsRuntimeRef> SignalArc<T, Opaque, SR> {
 		fn delta<V: 'a + Send>(
 			fn_pin: impl 'a + Send + FnMut() -> V,
-		) -> SignalArc<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> SignalArc<T, impl Sized + UnmanagedSignal<T, SR>, SR>
 		where
 			T: Zero,
 			for<'b> &'b V: Sub<Output = T>,
@@ -32,7 +32,7 @@ pub mod prelude {
 		fn delta_with_runtime<V: 'a + Send>(
 			fn_pin: impl 'a + Send + FnMut() -> V,
 			runtime: SR,
-		) -> SignalArc<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> SignalArc<T, impl Sized + UnmanagedSignal<T, SR>, SR>
 		where
 			T: Zero,
 			for<'b> &'b V: Sub<Output = T>,
@@ -42,7 +42,7 @@ pub mod prelude {
 
 		fn sparse_tally<V: 'a + Send>(
 			fn_pin: impl 'a + Send + FnMut() -> V,
-		) -> SignalArc<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> SignalArc<T, impl Sized + UnmanagedSignal<T, SR>, SR>
 		where
 			T: Zero + Send + AddAssign<V>,
 			SR: Default,
@@ -53,7 +53,7 @@ pub mod prelude {
 		fn sparse_tally_with_runtime<V: 'a + Send>(
 			fn_pin: impl 'a + Send + FnMut() -> V,
 			runtime: SR,
-		) -> SignalArc<T, impl Sized + Subscribable<T, SR>, SR>
+		) -> SignalArc<T, impl Sized + UnmanagedSignal<T, SR>, SR>
 		where
 			T: Zero + Send + AddAssign<V>,
 		{

@@ -18,7 +18,7 @@ use tap::Conv;
 use crate::{
 	opaque::Opaque,
 	signal_arc::SignalWeakDynCell,
-	traits::{Subscribable, UnmanagedSignalCell},
+	traits::{UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{
 		computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced, InertCell,
 		ReactiveCell, ReactiveCellMut,
@@ -38,7 +38,7 @@ pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + Signal
 	inner: UnsafeCell<Signal_<T, S, SR>>,
 }
 
-pub type SignalDyn<'a, T, SR> = Signal<T, dyn 'a + Subscribable<T, SR>, SR>;
+pub type SignalDyn<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 pub type SignalDynCell<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
 impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
@@ -47,7 +47,7 @@ impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> 
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
 	for Signal<T, S, SR>
 where
 	S: Debug,
@@ -57,10 +57,10 @@ where
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
-	/// Creates a new [`SignalArc`] from the provided unmanaged [`Subscribable`].
+	/// Creates a new [`SignalArc`] from the provided unmanaged [`UnmanagedSignal`].
 	pub fn new(unmanaged: S) -> SignalArc<T, S, SR>
 	where
 		S: Sized,
@@ -78,7 +78,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -92,7 +92,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn computed_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -110,7 +110,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`debounced`](`debounced()`).
 	pub fn debounced<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized + PartialEq,
 		SR: 'a + Default,
@@ -129,7 +129,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn debounced_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized + PartialEq,
 		SR: 'a,
@@ -142,7 +142,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`computed_uncached`](`computed_uncached()`).
 	pub fn computed_uncached<'a>(
 		fn_pin: impl 'a + Send + Sync + Fn() -> T,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -156,7 +156,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn computed_uncached_with_runtime<'a>(
 		fn_pin: impl 'a + Send + Sync + Fn() -> T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -171,7 +171,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
 	pub fn computed_uncached_mut<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -187,7 +187,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn computed_uncached_mut_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -201,7 +201,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn folded<'a>(
 		init: T,
 		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -216,7 +216,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		init: T,
 		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -231,7 +231,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn reduced<'a>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -247,7 +247,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -525,7 +525,7 @@ pub(crate) struct Signal_<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized 
 
 pub(crate) struct Strong<
 	T: ?Sized + Send,
-	S: ?Sized + Subscribable<T, SR>,
+	S: ?Sized + UnmanagedSignal<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
 	strong: *const Signal<T, S, SR>,
@@ -533,7 +533,7 @@ pub(crate) struct Strong<
 
 pub(crate) struct Weak<
 	T: ?Sized + Send,
-	S: ?Sized + Subscribable<T, SR>,
+	S: ?Sized + UnmanagedSignal<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
 	weak: *const Signal<T, S, SR>,
@@ -541,69 +541,69 @@ pub(crate) struct Weak<
 
 /// # Safety
 ///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`Subscribable`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
-	for Signal<T, S, SR>
+/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Send for Signal<T, S, SR>
 {
 }
 
 /// # Safety
 ///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`Subscribable`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
-	for Signal_<T, S, SR>
+/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Send for Signal_<T, S, SR>
 {
 }
 
 /// # Safety
 ///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`Subscribable`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
-	for Strong<T, S, SR>
+/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Send for Strong<T, S, SR>
 {
 }
 
 /// # Safety
 ///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`Subscribable`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
-	for Weak<T, S, SR>
+/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Send for Weak<T, S, SR>
 {
 }
 
 /// # Safety
 ///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`Subscribable`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
-	for Signal<T, S, SR>
+/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Sync for Signal<T, S, SR>
 {
 }
 
 /// # Safety
 ///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`Subscribable`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
-	for Signal_<T, S, SR>
+/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Sync for Signal_<T, S, SR>
 {
 }
 
 /// # Safety
 ///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`Subscribable`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
-	for Strong<T, S, SR>
+/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Sync for Strong<T, S, SR>
 {
 }
 
 /// # Safety
 ///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`Subscribable`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
-	for Weak<T, S, SR>
+/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Sync for Weak<T, S, SR>
 {
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Strong<T, S, SR>
 {
 	pub(crate) fn pin(managed: S) -> Self
@@ -656,7 +656,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 		}
 	}
 
-	pub(crate) fn into_dyn<'a>(self) -> Strong<T, dyn 'a + Subscribable<T, SR>, SR>
+	pub(crate) fn into_dyn<'a>(self) -> Strong<T, dyn 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a + Sized,
 	{
@@ -677,7 +677,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
 	for Strong<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
@@ -687,7 +687,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Borrow<Signal<T, S, SR>> for Strong<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
@@ -695,7 +695,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Weak<T, S, SR>
 {
 	fn _inner(&self) -> &Signal_<T, S, SR> {
@@ -718,7 +718,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 		None
 	}
 
-	pub(crate) fn into_dyn<'a>(self) -> Weak<T, dyn 'a + Subscribable<T, SR>, SR>
+	pub(crate) fn into_dyn<'a>(self) -> Weak<T, dyn 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a + Sized,
 	{
@@ -735,7 +735,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
 	for Strong<T, S, SR>
 {
 	fn drop(&mut self) {
@@ -746,7 +746,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
 	for Weak<T, S, SR>
 {
 	fn drop(&mut self) {
@@ -758,7 +758,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> ToOwned
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> ToOwned
 	for Signal<T, S, SR>
 {
 	type Owned = SignalArc<T, S, SR>;
@@ -771,7 +771,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for Strong<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -785,7 +785,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for Weak<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -805,7 +805,7 @@ impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> 
 }
 
 /// Adapters.
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
 	pub fn subscribe(&self) -> Subscription<T, S, SR> {
@@ -836,7 +836,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 		self
 	}
 
-	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + Subscribable<T, SR>, SR>
+	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 	{
@@ -845,7 +845,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 }
 
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
 	/// Records `self` as dependency without accessing the value.

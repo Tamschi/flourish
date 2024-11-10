@@ -8,7 +8,7 @@ use std::{
 };
 
 use flourish::{
-	unmanaged::{Subscribable, UnmanagedSignal, UnmanagedSignalCell},
+	unmanaged::{UnmanagedSignal, UnmanagedSignalCell},
 	Guard, Propagation, SignalsRuntimeRef,
 };
 
@@ -81,9 +81,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 	{
 		match *self {}
 	}
-}
 
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for Opaque {
 	fn subscribe(self: Pin<&Self>) {
 		match *self {}
 	}

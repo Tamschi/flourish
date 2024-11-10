@@ -16,7 +16,7 @@ use pin_project::pin_project;
 
 use crate::{shadow_clone, traits::Guard};
 
-use super::{Subscribable, UnmanagedSignal, UnmanagedSignalCell};
+use super::{UnmanagedSignal, UnmanagedSignalCell};
 
 #[pin_project]
 #[repr(transparent)]
@@ -300,18 +300,7 @@ impl<
 	{
 		self.signal.clone_runtime_ref()
 	}
-}
 
-impl<
-		T: ?Sized + Send,
-		HandlerFnPin: Send
-			+ FnMut(
-				&mut T,
-				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-			) -> Propagation,
-		SR: SignalsRuntimeRef,
-	> Subscribable<T, SR> for ReactiveCellMut<T, HandlerFnPin, SR>
-{
 	fn subscribe(self: Pin<&Self>) {
 		let signal = self.project_ref().signal;
 		signal.subscribe();

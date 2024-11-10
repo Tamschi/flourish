@@ -17,13 +17,13 @@ use crate::{
 	shadow_clone,
 	signal::Strong,
 	signals_helper,
-	traits::{Subscribable, UnmanagedSignal, UnmanagedSignalCell},
+	traits::{UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{computed, folded, reduced},
 	Guard, Signal, SignalArc,
 };
 
 /// Type of [`SubscriptionSR`]s after type-erasure. Dynamic dispatch.
-pub type SubscriptionDyn<'a, T, SR> = Subscription<T, dyn 'a + Subscribable<T, SR>, SR>;
+pub type SubscriptionDyn<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 
 /// Type of [`SubscriptionSR`]s after type-erasure. Dynamic dispatch.
 pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
@@ -33,13 +33,13 @@ pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSign
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct Subscription<
 	T: ?Sized + Send,
-	S: ?Sized + Subscribable<T, SR>,
+	S: ?Sized + UnmanagedSignal<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
 	pub(crate) subscribed: Strong<T, S, SR>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
 	for Subscription<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
@@ -49,7 +49,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Borrow<Signal<T, S, SR>> for Subscription<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
@@ -57,7 +57,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
 	for Subscription<T, S, SR>
 where
 	T: Debug,
@@ -71,16 +71,16 @@ where
 	}
 }
 
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
-	for Subscription<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Send for Subscription<T, S, SR>
 {
 }
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
-	for Subscription<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Sync for Subscription<T, S, SR>
 {
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
 	for Subscription<T, S, SR>
 {
 	fn drop(&mut self) {
@@ -88,7 +88,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for Subscription<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -102,7 +102,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 impl<
 		'a,
 		T: 'a + ?Sized + Send,
-		S: 'a + Sized + Subscribable<T, SR>,
+		S: 'a + Sized + UnmanagedSignal<T, SR>,
 		SR: 'a + ?Sized + SignalsRuntimeRef,
 	> From<Subscription<T, S, SR>> for SubscriptionDyn<'a, T, SR>
 {
@@ -111,16 +111,16 @@ impl<
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {
-	/// Constructs a new [`SubscriptionSR`] from the given "raw" [`Subscribable`].
+	/// Constructs a new [`SubscriptionSR`] from the given "raw" [`UnmanagedSignal`].
 	///
 	/// The subscribable is subscribed-to intrinsically.
 	///
 	/// # Panics
 	///
-	/// Iff the call to [`Subscribable::subscribe`] fails. This should never happen, as
+	/// Iff the call to [`UnmanagedSignal::subscribe`] fails. This should never happen, as
 	/// the subscribable shouldn't have been in a state where it could be subscribed to
 	/// before pinning.
 	pub fn new(source: S) -> Self
@@ -151,7 +151,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
 	}
 }
 
-impl<T: ?Sized + Send, S: Sized + Subscribable<T, SR>, SR: SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {
 	/// Erases the (generally opaque) `S` type parameter of the underlying [`Signal`],
@@ -214,7 +214,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
-	) -> Subscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -228,7 +228,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	pub fn computed_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
-	) -> Subscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -242,7 +242,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	pub fn folded<'a>(
 		init: T,
 		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
-	) -> Subscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -257,7 +257,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		init: T,
 		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
 		runtime: SR,
-	) -> Subscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -272,7 +272,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	pub fn reduced<'a>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
-	) -> Subscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -288,7 +288,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
 		runtime: SR,
-	) -> Subscription<T, impl 'a + Sized + Subscribable<T, SR>, SR>
+	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -305,7 +305,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	pub fn skipped_while<'f, 'a: 'f>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
-	) -> impl 'f + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	) -> impl 'f + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -323,7 +323,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		mut predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
 		runtime: SR,
-	) -> impl 'f + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	) -> impl 'f + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -353,7 +353,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	pub fn filtered<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Copy,
 		SR: 'a + Default,
@@ -367,7 +367,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		mut fn_pin: impl 'a + Send + FnMut() -> T,
 		mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
 		runtime: SR,
-	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Copy,
 		SR: 'a,
@@ -408,7 +408,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// yields only the payloads of [`Some`] variants returned by `fn_pin`.
 	pub fn filter_mapped<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> Option<T>,
-	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Copy,
 		SR: 'a + Default,
@@ -421,7 +421,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	pub fn filter_mapped_with_runtime<'a>(
 		mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 		runtime: SR,
-	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + Subscribable<T, SR>, SR>>
+	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Copy,
 		SR: 'a,
@@ -460,11 +460,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 
 unsafe fn assume_init_subscription<
 	T: ?Sized + Send + Copy,
-	S: Subscribable<MaybeUninit<T>, SR>,
+	S: UnmanagedSignal<MaybeUninit<T>, SR>,
 	SR: SignalsRuntimeRef,
 >(
 	sub: Subscription<MaybeUninit<T>, S, SR>,
-) -> Subscription<T, impl Subscribable<T, SR>, SR> {
+) -> Subscription<T, impl UnmanagedSignal<T, SR>, SR> {
 	#[pin_project]
 	#[repr(transparent)]
 	struct AbiShim<T: ?Sized>(#[pin] T);
@@ -564,11 +564,7 @@ unsafe fn assume_init_subscription<
 		{
 			self.0.clone_runtime_ref()
 		}
-	}
 
-	impl<T: Send + Copy, S: Subscribable<MaybeUninit<T>, SR>, SR: SignalsRuntimeRef>
-		Subscribable<T, SR> for AbiShim<S>
-	{
 		fn subscribe(self: Pin<&Self>) {
 			self.project_ref().0.subscribe()
 		}

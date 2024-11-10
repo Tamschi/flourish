@@ -9,7 +9,7 @@ use std::{
 
 use isoprenoid::runtime::SignalsRuntimeRef;
 
-use crate::traits::{Guard, Subscribable, UnmanagedSignal, UnmanagedSignalCell};
+use crate::traits::{Guard, UnmanagedSignal, UnmanagedSignalCell};
 
 pub enum Opaque {}
 
@@ -74,20 +74,18 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 		match *self {}
 	}
 
-	fn clone_runtime_ref(&self) -> SR
-	where
-		SR: Sized,
-	{
-		match *self {}
-	}
-}
-
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscribable<T, SR> for Opaque {
 	fn subscribe(self: Pin<&Self>) {
 		match *self {}
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
+		match *self {}
+	}
+
+	fn clone_runtime_ref(&self) -> SR
+	where
+		SR: Sized,
+	{
 		match *self {}
 	}
 }

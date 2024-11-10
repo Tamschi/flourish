@@ -12,13 +12,11 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::{Guard, Subscribable};
-
-use super::UnmanagedSignal;
+use crate::traits::{Guard, UnmanagedSignal};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct Cached<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>(
+pub(crate) struct Cached<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
 	#[pin] RawSignal<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>,
 );
 
@@ -61,12 +59,12 @@ impl<'a, T: ?Sized> Borrow<T> for CachedGuardExclusive<'a, T> {
 }
 
 // TODO: Safety documentation.
-unsafe impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef + Sync> Sync
+unsafe impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef + Sync> Sync
 	for Cached<T, S, SR>
 {
 }
 
-impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
+impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
 	pub(crate) fn new(source: S) -> Self {
 		let runtime = source.clone_runtime_ref();
 		Self(RawSignal::with_runtime(
@@ -88,13 +86,13 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Cached<T, S
 }
 
 enum E {}
-impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>
+impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	Callbacks<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR> for E
 {
 	const UPDATE: Option<
 		fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Propagation,
 	> = {
-		fn eval<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>(
+		fn eval<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
 			source: Pin<&ForceSyncUnpin<S>>,
 			cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
 		) -> Propagation {
@@ -120,7 +118,7 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef>
 ///
 /// These are the only functions that access `cache`.
 /// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
+impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
 	unsafe fn init<'a>(
 		source: Pin<&'a ForceSyncUnpin<S>>,
 		cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
@@ -132,7 +130,7 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Cached<T, S
 	}
 }
 
-impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
+impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
 	for Cached<T, S, SR>
 {
 	fn touch(self: Pin<&Self>) {
@@ -203,11 +201,7 @@ impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> UnmanagedSi
 	{
 		self.0.clone_runtime_ref()
 	}
-}
 
-impl<T: Send + Clone, S: Subscribable<T, SR>, SR: SignalsRuntimeRef> Subscribable<T, SR>
-	for Cached<T, S, SR>
-{
 	fn subscribe(self: Pin<&Self>) {
 		let signal = self.project_ref().0;
 		signal.subscribe();

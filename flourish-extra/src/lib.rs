@@ -4,7 +4,7 @@
 use std::ops::{AddAssign, Sub};
 
 use flourish::{
-	unmanaged::{folded, Subscribable},
+	unmanaged::{folded, UnmanagedSignal},
 	Propagation, SignalsRuntimeRef, Subscription,
 };
 use num_traits::Zero;
@@ -16,7 +16,7 @@ use num_traits::Zero;
 pub fn delta<'a, V: 'a + Send, T: 'a + Send + Zero, SR: 'a + SignalsRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> V,
 	runtime: SR,
-) -> impl 'a + Subscribable<T, SR>
+) -> impl 'a + UnmanagedSignal<T, SR>
 where
 	for<'b> &'b V: Sub<Output = T>,
 {
@@ -38,7 +38,7 @@ where
 pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalsRuntimeRef>(
 	mut fn_pin: impl 'a + Send + FnMut() -> V,
 	runtime: SR,
-) -> impl 'a + Subscribable<T, SR> {
+) -> impl 'a + UnmanagedSignal<T, SR> {
 	folded(
 		T::zero(),
 		move |tally| {
@@ -52,6 +52,6 @@ pub fn sparse_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + Sign
 pub fn eager_tally<'a, V: 'a, T: 'a + Zero + Send + AddAssign<V>, SR: 'a + SignalsRuntimeRef>(
 	fn_pin: impl 'a + Send + FnMut() -> V,
 	runtime: SR,
-) -> Subscription<T, impl 'a + Subscribable<T, SR>, SR> {
+) -> Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR> {
 	Subscription::new(sparse_tally(fn_pin, runtime))
 }

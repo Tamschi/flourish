@@ -8,17 +8,17 @@ use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::{
 	signal::{Signal, Strong, Weak},
-	traits::{Subscribable, UnmanagedSignalCell},
+	traits::{UnmanagedSignal, UnmanagedSignalCell},
 };
 
 /// Type of [`SignalSR`]s after type-erasure. Dynamic dispatch.
-pub type SignalArcDyn<'a, T, SR> = SignalArc<T, dyn 'a + Subscribable<T, SR>, SR>;
+pub type SignalArcDyn<'a, T, SR> = SignalArc<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 
 /// Type of [`SignalSR`]s after cell-type-erasure. Dynamic dispatch.
 pub type SignalArcDynCell<'a, T, SR> = SignalArc<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
 /// Type of [`SignalWeak`]s after type-erasure or [`SignalDyn`] after downgrade. Dynamic dispatch.
-pub type SignalWeakDyn<'a, T, SR> = SignalWeak<T, dyn 'a + Subscribable<T, SR>, SR>;
+pub type SignalWeakDyn<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 
 /// Type of [`SignalWeak`]s after cell-type-erasure or [`SignalDynCell`] after downgrade. Dynamic dispatch.
 pub type SignalWeakDynCell<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
@@ -30,13 +30,13 @@ pub type SignalWeakDynCell<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignalCe
 #[repr(transparent)]
 pub struct SignalWeak<
 	T: ?Sized + Send,
-	S: ?Sized + Subscribable<T, SR>,
+	S: ?Sized + UnmanagedSignal<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
 	pub(crate) weak: Weak<T, S, SR>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalWeak<T, S, SR>
 {
 	/// Tries to obtain a [`SignalArc`] from this [`SignalWeak`].
@@ -81,13 +81,13 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 #[must_use = "Signals are generally inert unless subscribed to."]
 pub struct SignalArc<
 	T: ?Sized + Send,
-	S: ?Sized + Subscribable<T, SR>,
+	S: ?Sized + UnmanagedSignal<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
 	pub(super) strong: Strong<T, S, SR>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for SignalArc<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -97,7 +97,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for SignalWeak<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -107,7 +107,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
 	for SignalArc<T, S, SR>
 where
 	T: Debug,
@@ -121,7 +121,7 @@ where
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
 	for SignalArc<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
@@ -131,7 +131,7 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Borrow<Signal<T, S, SR>> for SignalArc<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
@@ -139,19 +139,19 @@ impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRunt
 	}
 }
 
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Send
-	for SignalArc<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Send for SignalArc<T, S, SR>
 {
 }
-unsafe impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef> Sync
-	for SignalArc<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Sync for SignalArc<T, S, SR>
 {
 }
 
-impl<T: ?Sized + Send, S: ?Sized + Subscribable<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalArc<T, S, SR>
 {
-	/// Creates a new [`SignalSR`] from the provided raw [`Subscribable`].
+	/// Creates a new [`SignalSR`] from the provided raw [`UnmanagedSignal`].
 	pub fn new(source: S) -> Self
 	where
 		S: Sized,
@@ -192,7 +192,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	SignalArc<T, S, SR>
 {
 	/// Obscures the cell API, allowing only reads and subscriptions.
-	pub fn into_read_only<'a>(self) -> SignalArc<T, impl 'a + Subscribable<T, SR>, SR>
+	pub fn into_read_only<'a>(self) -> SignalArc<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a,
 	{
@@ -203,7 +203,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	/// Equivalent to a getter/setter splitter.
 	pub fn into_read_only_and_self<'a>(
 		self,
-	) -> (SignalArc<T, impl 'a + Subscribable<T, SR>, SR>, Self)
+	) -> (SignalArc<T, impl 'a + UnmanagedSignal<T, SR>, SR>, Self)
 	where
 		S: 'a,
 	{

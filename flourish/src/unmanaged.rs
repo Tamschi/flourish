@@ -10,7 +10,7 @@
 
 use isoprenoid::runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef};
 
-pub use crate::traits::{Subscribable, UnmanagedSignal, UnmanagedSignalCell};
+pub use crate::traits::{UnmanagedSignal, UnmanagedSignalCell};
 
 mod cached;
 pub(crate) use cached::Cached;
@@ -137,8 +137,8 @@ macro_rules! reactive_cell_mut_with_runtime {
 pub use crate::reactive_cell_mut_with_runtime;
 
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalsRuntimeRef>(
-	source: impl 'a + Subscribable<T, SR>,
-) -> impl 'a + Subscribable<T, SR> {
+	source: impl 'a + UnmanagedSignal<T, SR>,
+) -> impl 'a + UnmanagedSignal<T, SR> {
 	Cached::<T, _, SR>::new(source)
 }
 #[macro_export]
@@ -163,7 +163,7 @@ pub use crate::cached_from_source;
 pub fn computed<'a, T: 'a + Send, F: 'a + Send + FnMut() -> T, SR: 'a + SignalsRuntimeRef>(
 	fn_pin: F,
 	runtime: SR,
-) -> impl 'a + Subscribable<T, SR> {
+) -> impl 'a + UnmanagedSignal<T, SR> {
 	Computed::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
@@ -193,7 +193,7 @@ pub fn debounced<
 >(
 	fn_pin: F,
 	runtime: SR,
-) -> impl 'a + Subscribable<T, SR> {
+) -> impl 'a + UnmanagedSignal<T, SR> {
 	Reduced::<T, _, _, SR>::new(
 		fn_pin,
 		|value, new_value| {
@@ -234,7 +234,7 @@ pub fn computed_uncached<
 >(
 	fn_pin: F,
 	runtime: SR,
-) -> impl 'a + Subscribable<T, SR> {
+) -> impl 'a + UnmanagedSignal<T, SR> {
 	ComputedUncached::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
@@ -264,7 +264,7 @@ pub fn computed_uncached_mut<
 >(
 	fn_pin: F,
 	runtime: SR,
-) -> impl 'a + Subscribable<T, SR> {
+) -> impl 'a + UnmanagedSignal<T, SR> {
 	ComputedUncachedMut::<T, _, SR>::new(fn_pin, runtime)
 }
 #[macro_export]
@@ -290,7 +290,7 @@ pub fn folded<'a, T: 'a + Send, SR: 'a + SignalsRuntimeRef>(
 	init: T,
 	fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
 	runtime: SR,
-) -> impl 'a + Subscribable<T, SR> {
+) -> impl 'a + UnmanagedSignal<T, SR> {
 	Folded::new(init, fold_fn_pin, runtime)
 }
 #[macro_export]
@@ -307,7 +307,7 @@ pub fn reduced<'a, T: 'a + Send, SR: 'a + SignalsRuntimeRef>(
 	select_fn_pin: impl 'a + Send + FnMut() -> T,
 	reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
 	runtime: SR,
-) -> impl 'a + Subscribable<T, SR> {
+) -> impl 'a + UnmanagedSignal<T, SR> {
 	Reduced::new(select_fn_pin, reduce_fn_pin, runtime)
 }
 #[macro_export]

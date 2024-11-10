@@ -13,9 +13,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::{Guard, Subscribable};
-
-use super::UnmanagedSignal;
+use crate::traits::{Guard, UnmanagedSignal};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -239,15 +237,7 @@ impl<
 	{
 		self.0.clone_runtime_ref()
 	}
-}
 
-impl<
-		T: Send,
-		S: Send + FnMut() -> T,
-		M: Send + FnMut(&mut T, T) -> Propagation,
-		SR: SignalsRuntimeRef,
-	> Subscribable<T, SR> for Reduced<T, S, M, SR>
-{
 	fn subscribe(self: Pin<&Self>) {
 		let signal = self.project_ref().0;
 		signal.subscribe();
