@@ -309,7 +309,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		self.handle.unsubscribe()
 	}
 
-	/// Schedules an update on the `Eager` and `Lazy` without waiting for completion.
+	/// Schedules access to the pinned `Eager` and `Lazy` without waiting for completion.
 	///
 	/// # Safety Notes
 	///
@@ -334,7 +334,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		self.handle.update_or_enqueue(update);
 	}
 
-	/// Immediately schedules an update on the `Eager` and `Lazy`.
+	/// Immediately schedules access to `Eager` and `Lazy`.
+	///
+	/// Instead of pinning, `self` is borrowed for the lifetime of the future.
 	///
 	/// # Returns
 	///
@@ -354,14 +356,14 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		T: 'f + Send,
 		F: 'f + Send + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
 	>(
-		self: Pin<&Self>,
+		&'f self,
 		f: F,
 	) -> impl 'f + Send + Future<Output = Result<T, F>>
 	where
 		Eager: 'f,
 		Lazy: 'f,
 	{
-		let eager = AssertSend(&self.eager as *const Eager);
+		let eager = &self.eager;
 		let lazy = AssertSend(&self.lazy as *const OnceSlot<Lazy>);
 		let f = Arc::new(Mutex::new(Some(f)));
 
@@ -381,7 +383,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 					.expect("unreachable")
 					.take()
 					.expect("unreachable");
-				unsafe { f(eager.get(), lazy.get().get()) }
+				f(eager, unsafe { lazy.get().get() })
 			}
 		});
 		async move {
@@ -396,8 +398,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		}
 	}
 
-
-	/// Immediately schedules an update on the pinned `Eager` and `Lazy`.
+	/// Immediately schedules access to the pinned `Eager` and `Lazy`.
 	///
 	/// # Returns
 	///
@@ -464,22 +465,19 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		}
 	}
 
-	///TODO
-	/// Immediately schedules an update on the `Eager` and `Lazy`.
+	/// Synchronously gives access to the `Eager` and `Lazy` *without pinning*.
 	///
-	/// # Returns
+	/// # Deadlocks
 	///
-	/// A [`Future`] handle that becomes [`Poll::Ready`](`core::task::Poll::Ready`) when the scheduled update is complete or cancelled.
+	/// This function **may** easily deadlock iff called in a signal-related callback.
 	///
-	/// Drop this handle to cancel the update if still possible.
-	///
-	/// # Safety Notes
-	///
-	/// [`stop`](`RawSignal::stop`) also drops associated enqueued updates.
+	/// > If in doubt, don't!
 	///
 	/// # Panics
 	///
 	/// **May** panic iff called *not* between [`project_or_init`](`RawSignal::project_or_init`) and [`stop`](`RawSignal::stop`).
+	///
+	/// **May** panic iff called in a signal-related callback.
 	pub fn update_blocking<T>(
 		&self,
 		f: impl FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
@@ -488,6 +486,19 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 			.update_blocking(move || f(&self.eager, self.lazy.get()))
 	}
 
+	/// Synchronously gives access to the `Eager` and `Lazy`.
+	///
+	/// # Deadlocks
+	///
+	/// This function **may** easily deadlock iff called in a signal-related callback.
+	///
+	/// > If in doubt, don't!
+	///
+	/// # Panics
+	///
+	/// **May** panic iff called *not* between [`project_or_init`](`RawSignal::project_or_init`) and [`stop`](`RawSignal::stop`).
+	///
+	/// **May** panic iff called in a signal-related callback.
 	pub fn update_blocking_pin<T>(
 		self: Pin<&Self>,
 		f: impl FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
@@ -500,32 +511,40 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		})
 	}
 
-	pub fn update_dependency_set<T, F: FnOnce(Pin<&Eager>, Pin<&Lazy>) -> T>(
+	/// Safe wrapper for [`SignalsRuntimeRef::update_dependency_set`]
+	/// that gives access to the `Eager` and `Lazy`.
+	pub fn update_dependency_set<T>(
 		self: Pin<&Self>,
-		f: F,
+		f: impl FnOnce(Pin<&Eager>, Pin<&Lazy>) -> T,
 	) -> T {
 		self.handle.update_dependency_set(move || unsafe {
 			f(
 				Pin::new_unchecked(&self.eager),
 				Pin::new_unchecked(match self.lazy.get() {
 					Some(lazy) => lazy,
-					None => panic!("`RawSignal::track` may only be used after initialisation."),
+					None => panic!(
+						"`RawSignal::update_dependency_set` may only be used after initialisation."
+					),
 				}),
 			)
 		})
 	}
 
-	pub fn clone_runtime_ref(&self) -> SR
-	where
-		SR: Sized,
-	{
+	/// Wraps [`SR::clone`](`Clone::clone`).
+	pub fn clone_runtime_ref(&self) -> SR {
 		self.handle.runtime.clone()
 	}
 
+	/// Wraps [`SignalsRuntimeRef::stop`].
 	pub fn stop(&self) {
 		self.handle.stop();
 	}
 
+	/// Instructs the signals runtime to release all resources associated with this [`RawSignal`],
+	/// then, if initialised, drops the `Lazy` after calling `before_deinit`.
+	///
+	/// Note that calling this function *isn't* always necessary to avoid leaks,
+	/// as [`RawSignal::drop`] also calls through to [`SignalsRuntimeRef::purge`].
 	pub fn purge_and_deinit_with<T>(
 		self: Pin<&mut Self>,
 		before_deinit: impl FnOnce(Pin<&Eager>, Pin<&mut Lazy>) -> T,
@@ -550,6 +569,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 	}
 }
 
+/// 1. Instructs the runtime to release all resources associated with this [`RawSignal`].
+/// 2. Drops the `Lazy`, iff initialised.
+/// 3. Drops the `Eager`.
 impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
 	fn drop(&mut self) {
 		if self.lazy.get().is_some() {
@@ -558,18 +580,24 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> Drop for RawSignal
 	}
 }
 
-/// Static callback tables used to set up each [`RawSignal`].
+/// Describes static callback tables used to set up each [`RawSignal`].
 ///
 /// For each [`RawSignal`] instance, these functions are called altogether at most once at a time.
 pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
 	/// The primary update callback for signals. Whenever a signal has internally cached state,
 	/// it should specify an [`UPDATE`](`Callbacks::UPDATE`) handler to recompute it.
 	///
-	/// **Note:** At least with the default runtime, the stale flag *always* propagates while this is [`None`] or there are no active subscribers.
+	/// # Logic Notes
+	///
+	/// If this is [`None`] or the [`RawSignal`] isn't subscribed to,
+	/// the runtime (implicitly) **should** always propagate staleness
+	/// to dependents *without* refreshing the [`RawSignal`].
+	///
+	/// The runtime (implicitly) **must** record dependencies for this callback and update them for this [`RawSignal`] afterwards.
 	///
 	/// # Safety
 	///
-	/// Only called once at a time for each initialised [`RawSignal`].
+	/// Only called once at a time for each initialised [`RawSignal`], and not concurrently with [`ON_SUBSCRIBED_CHANGE`](`Callbacks::ON_SUBSCRIBED_CHANGE`).
 	const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Propagation>;
 
 	/// A subscription change notification callback.
@@ -582,7 +610,7 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
 	///
 	/// # Safety
 	///
-	/// Only called once at a time for each initialised [`RawSignal`], and not concurrently with [`Self::UPDATE`].
+	/// Only called once at a time for each initialised [`RawSignal`], and not concurrently with [`UPDATE`](`Callbacks::UPDATE`).
 	const ON_SUBSCRIBED_CHANGE: Option<
 		fn(
 			source: Pin<&RawSignal<Eager, Lazy, SR>>,
@@ -593,9 +621,9 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
 	>;
 }
 
-/// A [`Callbacks`] implementation that only specifies [`None`].
+/// A vacant [`Callbacks`] implementation that only specifies [`None`].
 ///
-/// When using this [`Callbacks`], updates still propagate to dependent signals.
+/// When using this [`Callbacks`], updates (implicitly) **should** still propagate to dependent signals.
 ///
 /// Callbacks are internally type-erased, so [`None`] helps to skip locks in some circumstances.
 pub enum NoCallbacks {}

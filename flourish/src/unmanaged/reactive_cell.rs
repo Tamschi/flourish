@@ -468,7 +468,7 @@ impl<
 		Self: 'f + Sized,
 	{
 		let update = Arc::new(Mutex::new(Some(update)));
-		let f = self.project_ref().signal.update_eager({
+		let f = self.project_ref().signal.update_eager_pin({
 			shadow_clone!(update);
 			move |value, _| {
 				let update = update
@@ -582,7 +582,7 @@ impl<
 		T: 'f,
 	{
 		let update = Arc::new(Mutex::new(Some(update)));
-		let f = self.project_ref().signal.update_eager({
+		let f = self.project_ref().signal.update_eager_pin({
 			let update = Arc::downgrade(&update);
 			move |value, _| {
 				(

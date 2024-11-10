@@ -493,6 +493,7 @@ pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
 	///
 	/// The runtime **must** record dependencies for this callback and update them afterwards.
 	pub update: Option<unsafe fn(*const T) -> Propagation>,
+
 	/// A callback used to notify a signal of a change in its subscribed-state.
 	///
 	/// This is separate from the automatic refresh applied to stale signals that become subscribed to.
