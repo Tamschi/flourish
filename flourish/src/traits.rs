@@ -2,20 +2,22 @@ use std::{borrow::Borrow, future::Future, ops::Deref, pin::Pin};
 
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
-/// **Combinators should implement this.** Interface for "raw" (stack-pinnable) signals that have an accessible value.
+/// "Unmanaged" (stack-pinnable) signals that have an accessible value.
+///
+/// **Combinators should implement this.**
 ///
 /// # Safety Notes
 ///
-/// It's sound to transmute [`dyn Source<_>`](`Source`) between different associated `Value`s as long as that's sound and they're ABI-compatible.
+/// It's sound to transmute [`dyn UnmanagedSignal<T, SR>`](`UnmanagedSignal`) between different `T`s as long as that's sound and they're ABI-compatible.
 ///
-/// Note that dropping the [`dyn Source<_>`](`Source`) dynamically **transmutes back**.
+/// Note that dropping the [`dyn UnmanagedSignal<T, SR>`](`UnmanagedSignal`) dynamically **transmutes back** since it drops the value as the original type.
 pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency without accessing the value.
 	fn touch(self: Pin<&Self>);
 
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
-	/// Prefer [`Source::touch`] where possible.
+	/// Prefer [`touch`](`UnmanagedSignal::touch`) where possible.
 	fn get(self: Pin<&Self>) -> T
 	where
 		T: Sync + Copy,
@@ -25,14 +27,14 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 
 	/// Records `self` as dependency and retrieves a clone of the value.
 	///
-	/// Prefer [`Source::get`] where available.
+	/// Prefer [`get`](`UnmanagedSignal::get`) where available.
 	fn get_clone(self: Pin<&Self>) -> T
 	where
 		T: Sync + Clone;
 
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
-	/// Prefer [`Source::get`] where available.
+	/// Prefer [`get`](`UnmanagedSignal::get`) where available.
 	fn get_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Copy,
@@ -42,7 +44,7 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 
 	/// Records `self` as dependency and retrieves a clone of the value.
 	///
-	/// Prefer [`Source::get_clone`] where available.
+	/// Prefer [`get_clone`](`UnmanagedSignal::get_clone`) where available.
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Clone;
@@ -53,6 +55,7 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 		Self: Sized,
 		T: 'r + Sync;
 
+	/// Return type of [`read`](`UnmanagedSignal::read`).
 	type Read<'r>: 'r + Guard<T>
 	where
 		Self: 'r + Sized,
@@ -60,25 +63,26 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 
 	/// Records `self` as dependency and allows borrowing the value.
 	///
-	/// Prefer [`Source::read`] where available.
+	/// Prefer [`read`](`UnmanagedSignal::read`) where available.
 	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Self::ReadExclusive<'r>
 	where
 		Self: Sized,
 		T: 'r;
 
+	/// Return type of [`read_exclusive`](`UnmanagedSignal::read_exclusive`).
 	type ReadExclusive<'r>: 'r + Guard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
 
-	/// The same as [`Source::read`], but object-safe.
+	/// The same as [`read`](`UnmanagedSignal::read`), but `dyn`-compatible.
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync;
 
-	/// The same as [`Source::read_exclusive`], but object-safe.
+	/// The same as [`read_exclusive`](`UnmanagedSignal::read_exclusive`), but `dyn`-compatible.
 	///
-	/// Prefer [`Source::read_dyn`] where available.
+	/// Prefer [`read_dyn`](`UnmanagedSignal::read_dyn`) where available.
 	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r;
@@ -89,9 +93,7 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 	///
 	/// # Logic
 	///
-	/// The implementor **must** ensure dependencies are evaluated and current iff [`Some`] is returned.
-	///
-	/// Iff this method is called in parallel, initialising and subscribing calls **may** differ!
+	/// Iff this method is called concurrently, initialising and subscribing calls **may** differ!
 	fn subscribe(self: Pin<&Self>);
 
 	/// Unsubscribes this [`UnmanagedSignal`] intrinsically.
@@ -103,7 +105,7 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 	/// unexpected behaviour (but not undefined behaviour).
 	fn unsubscribe(self: Pin<&Self>);
 
-	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
+	/// Clones this [`UnmanagedSignal`]'s [`SignalsRuntimeRef`].
 	fn clone_runtime_ref(&self) -> SR
 	where
 		SR: Sized;
@@ -150,7 +152,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		Self: Sized,
 		T: 'static;
 
-	/// The same as [`update`](`UnmanagedSignalCell::update`), but object-safe.
+	/// The same as [`update`](`UnmanagedSignalCell::update`), but `dyn`-compatible.
 	fn update_dyn(
 		self: Pin<&Self>,
 		update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>,
@@ -180,6 +182,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq;
 
+	/// Return type of [`change_eager`](`UnmanagedSignalCell::change_eager`).
 	type ChangeEager<'f>: 'f + Send + Future<Output = Result<Result<T, T>, T>>
 	where
 		Self: 'f + Sized,
@@ -208,6 +211,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		Self: 'f + Sized,
 		T: 'f + Sized;
 
+	/// Return type of [`replace_eager`](`UnmanagedSignalCell::replace_eager`).
 	type ReplaceEager<'f>: 'f + Send + Future<Output = Result<T, T>>
 	where
 		Self: 'f + Sized,
@@ -239,11 +243,12 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		Self: 'f + Sized;
 
+	/// Return type of [`update_eager`](`UnmanagedSignalCell::update_eager`).
 	type UpdateEager<'f, U: 'f, F: 'f>: 'f + Send + Future<Output = Result<U, F>>
 	where
 		Self: 'f + Sized;
 
-	/// The same as [`change_eager`](`UnmanagedSignalCell::change_eager`), but object-safe.
+	/// The same as [`change_eager`](`UnmanagedSignalCell::change_eager`), but `dyn`-compatible.
 	fn change_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
@@ -251,7 +256,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		T: 'f + Sized + PartialEq;
 
-	/// The same as [`replace_eager`](`UnmanagedSignalCell::replace_eager`), but object-safe.
+	/// The same as [`replace_eager`](`UnmanagedSignalCell::replace_eager`), but `dyn`-compatible.
 	fn replace_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
@@ -259,7 +264,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		T: 'f + Sized;
 
-	/// The same as [`update_eager`](`UnmanagedSignalCell::update_eager`), but object-safe.
+	/// The same as [`update_eager`](`UnmanagedSignalCell::update_eager`), but `dyn`-compatible.
 	fn update_eager_dyn<'f>(
 		self: Pin<&Self>,
 		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
@@ -324,9 +329,11 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		Self: Sized;
 
-	/// The same as [`update_blocking`](`UnmanagedSignalCell::update_blocking`), but object-safe.
+	/// The same as [`update_blocking`](`UnmanagedSignalCell::update_blocking`), but `dyn`-compatible.
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>);
 
+	/// Convenience method to split a pinning reference to this [`UnmanagedSignalCell`]
+	/// into a read-only/writable pair.
 	fn as_source_and_cell(
 		self: Pin<&Self>,
 	) -> (
@@ -340,8 +347,17 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	}
 }
 
-//FIXME: This really should just specify `Borrow<Self::Target>`,
-//       but that makes it not object-safe currently.
+/// Read-guards returned by `read…` methods.
+///
+/// > **FIXME**
+/// >
+/// > Ideally, this trait would be:
+/// >
+/// > ```
+/// > # use std::{borrow::Borrow, ops::Deref};
+/// > // Not dyn-compatible as of Rust 1.82 ☹️
+/// > pub trait Guard: Deref + Borrow<Self::Target> {}
+/// > ```
+/// >
+/// > See: <https://github.com/rust-lang/rust/issues/65078>
 pub trait Guard<T: ?Sized>: Deref<Target = T> + Borrow<T> {}
-
-//TODO: `SubscribablePin`/`SubscribablePinRef` traits to unify `SignalCell`s, `Signal`s and their `Ref`-types.

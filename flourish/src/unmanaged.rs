@@ -1,6 +1,6 @@
 //! This module contains raw unmanaged signals that can be pinned directly on the stack.
 //!
-//! In most application code, it's recommended to use [`Signal`](`crate::Signal`) instead,
+//! In most application code, you should use [`Signal`](`crate::Signal`) instead,
 //! which abstracts memory management and keeping track of subscriptions.
 //!
 //! Still, these building blocks are sometimes useful for composition and abstraction.
@@ -44,8 +44,9 @@ pub(crate) mod raw_subscription;
 pub(crate) mod raw_effect;
 pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 
-//TODO: Can these individual macros still communicate their eventual return type?
+//TODO: Can the individual macro placeholders in this module still communicate their eventual return type?
 
+/// Unmanaged version of [`Signal::cell_with_runtime`](`crate::Signal::cell_with_runtime`).
 pub fn inert_cell<T: Send, SR: SignalsRuntimeRef>(
 	initial_value: T,
 	runtime: SR,
@@ -71,6 +72,7 @@ macro_rules! inert_cell_with_runtime {
 #[doc(hidden)]
 pub use crate::inert_cell_with_runtime;
 
+/// Unmanaged version of [`Signal::cell_reactive_with_runtime`](`crate::Signal::cell_reactive_with_runtime`).
 pub fn reactive_cell<
 	T: Send,
 	H: Send
@@ -102,6 +104,7 @@ macro_rules! reactive_cell_with_runtime {
 #[doc(hidden)]
 pub use crate::reactive_cell_with_runtime;
 
+/// Unmanaged version of [`Signal::cell_reactive_mut_with_runtime`](`crate::Signal::cell_reactive_mut_with_runtime`).
 pub fn reactive_cell_mut<
 	T: Send,
 	H: Send
@@ -136,6 +139,7 @@ macro_rules! reactive_cell_mut_with_runtime {
 #[doc(hidden)]
 pub use crate::reactive_cell_mut_with_runtime;
 
+/// Wraps another [`UnmanagedSignal`] to add a result cache.
 pub fn cached<'a, T: 'a + Send + Clone, SR: 'a + SignalsRuntimeRef>(
 	source: impl 'a + UnmanagedSignal<T, SR>,
 ) -> impl 'a + UnmanagedSignal<T, SR> {
@@ -160,6 +164,7 @@ macro_rules! cached_from_source {
 #[doc(hidden)]
 pub use crate::cached_from_source;
 
+/// Unmanaged version of [`Signal::computed_with_runtime`](`crate::Signal::computed_with_runtime`).
 pub fn computed<'a, T: 'a + Send, F: 'a + Send + FnMut() -> T, SR: 'a + SignalsRuntimeRef>(
 	fn_pin: F,
 	runtime: SR,
@@ -185,6 +190,7 @@ macro_rules! computed_with_runtime {
 #[doc(hidden)]
 pub use crate::computed_with_runtime;
 
+/// Unmanaged version of [`Signal::debounced_with_runtime`](`crate::Signal::debounced_with_runtime`).
 pub fn debounced<
 	'a,
 	T: 'a + Send + PartialEq,
@@ -226,6 +232,7 @@ macro_rules! debounced_with_runtime {
 #[doc(hidden)]
 pub use crate::debounced_with_runtime;
 
+/// Unmanaged version of [`Signal::computed_uncached_with_runtime`](`crate::Signal::computed_uncached_with_runtime`).
 pub fn computed_uncached<
 	'a,
 	T: 'a + Send,
@@ -256,6 +263,7 @@ macro_rules! computed_uncached_with_runtime {
 #[doc(hidden)]
 pub use crate::computed_uncached_with_runtime;
 
+/// Unmanaged version of [`Signal::computed_uncached_mut_with_runtime`](`crate::Signal::computed_uncached_mut_with_runtime`).
 pub fn computed_uncached_mut<
 	'a,
 	T: 'a + Send,
@@ -286,6 +294,7 @@ macro_rules! computed_uncached_mut_with_runtime {
 #[doc(hidden)]
 pub use crate::computed_uncached_mut_with_runtime;
 
+/// Unmanaged version of [`Signal::folded_with_runtime`](`crate::Signal::folded_with_runtime`).
 pub fn folded<'a, T: 'a + Send, SR: 'a + SignalsRuntimeRef>(
 	init: T,
 	fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
@@ -303,6 +312,7 @@ macro_rules! folded {
 #[doc(hidden)]
 pub use crate::folded;
 
+/// Unmanaged version of [`Signal::reduced_with_runtime`](`crate::Signal::reduced_with_runtime`).
 pub fn reduced<'a, T: 'a + Send, SR: 'a + SignalsRuntimeRef>(
 	select_fn_pin: impl 'a + Send + FnMut() -> T,
 	reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
@@ -376,6 +386,10 @@ macro_rules! effect_with_runtime {
 pub use crate::effect_with_runtime;
 
 /// A helper to bind macros on the stack.
+///
+/// See [`unmanaged`#functions](`self`#functions) for help on individual patterns.
+///
+/// The last two branches improve error messages and enable repetitions, respectively.
 #[macro_export]
 macro_rules! signals_helper {
 	{let $name:ident = inert_cell!($initial_value:expr$(,)?);} => {

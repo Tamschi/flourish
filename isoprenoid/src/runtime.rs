@@ -580,7 +580,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
 }
 
 /// A return value used by [`CallbackTable`]/[`Callbacks`](`crate::raw::Callbacks`) callbacks
-/// to indicate whether to flag dependent signals as stale and optionally also refresh them.
+/// to indicate whether to flag dependent signals as stale and optionally also refresh ones not currently subscribed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[must_use = "The runtime should propagate notifications to dependents only when requested."]
 pub enum Propagation {
@@ -593,6 +593,10 @@ pub enum Propagation {
 	///
 	/// This **should** be transitive through [`Propagate`](`Propagation::Propagate`) of dependents,  
 	/// but **should not** be transitive through [`Halt`](`Propagation::Halt`).
+	///
+	/// > **Hint**
+	/// >
+	/// > Use this variant to purge heavy or reference-counted resources store in dependent signals.
 	FlushOut,
 }
 

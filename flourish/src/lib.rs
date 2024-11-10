@@ -38,11 +38,9 @@ pub use traits::Guard;
 
 pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
-//TODO: Remove prelude?
 pub mod prelude {
-	//! Flourish's value accessor traits ([`SourcePin`](`crate::traits::SourcePin`),
-	//! [`UnmanagedSignalCellPin`](`crate::traits::UnmanagedSignalCellPin`), [`Source`](`crate::traits::Source`)
-	//! and [`UnmanagedSignalCell`](`crate::traits::UnmanagedSignalCell`)), anonymously.
+	//! Unmanaged signal accessors, anonymously.  
+	//! You don't need this to use managed signals.
 
 	pub use crate::traits::{UnmanagedSignal as _, UnmanagedSignalCell as _};
 }
