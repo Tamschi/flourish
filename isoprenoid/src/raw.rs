@@ -113,7 +113,7 @@ impl<SR: SignalsRuntimeRef> SignalId<SR> {
 
 mod once_slot;
 
-/// A mid-level signal primitive that safely encapsulates a signal lifecycle.
+/// A mid-level signal primitive that safely encapsulates most signal lifecycles.
 ///
 /// Conceptually, this type resembles a lazy cell but with a persistent `Eager` slot.  
 /// You can borrow the pin-projected `Eager` and `Lazy` values by initialising the
@@ -621,11 +621,10 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
 	>;
 }
 
-/// A vacant [`Callbacks`] implementation that only specifies [`None`].
+/// A vacant [`Callbacks`] implementation that specifies [`None`] for all callbacks.  
+/// (Callbacks are called dynamically by the [`SignalsRuntimeRef`], so [`None`] helps to skip locks in some circumstances.)
 ///
-/// When using this [`Callbacks`], updates (implicitly) **should** still propagate to dependent signals.
-///
-/// Callbacks are internally type-erased, so [`None`] helps to skip locks in some circumstances.
+/// When using this [`Callbacks`] implementation, updates (implicitly) **should** still propagate to dependent signals.
 pub enum NoCallbacks {}
 impl<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> Callbacks<Eager, Lazy, SR>
 	for NoCallbacks

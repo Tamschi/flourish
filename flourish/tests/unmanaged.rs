@@ -9,7 +9,7 @@ mod _validator;
 use _validator::Validator;
 
 #[test]
-fn use_macros() {
+fn use_unmanaged() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
