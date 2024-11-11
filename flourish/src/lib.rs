@@ -16,7 +16,7 @@ pub mod conversions;
 mod opaque;
 
 mod signal;
-pub use signal::Signal;
+pub use signal::{Signal, SignalDyn, SignalDynCell};
 
 pub mod unmanaged;
 
@@ -39,10 +39,10 @@ pub use traits::Guard;
 pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 pub mod prelude {
-	//! Unmanaged signal accessors, anonymously.  
-	//! You don't need this to use managed signals.
+	//! Unmanaged signal accessors and [`SignalsRuntimeRef`].
 
-	pub use crate::traits::{UnmanagedSignal as _, UnmanagedSignalCell as _};
+	pub use crate::unmanaged::{UnmanagedSignal, UnmanagedSignalCell};
+	pub use crate::SignalsRuntimeRef;
 }
 
 #[doc(hidden = "macro-only")]
@@ -57,7 +57,7 @@ pub mod __ {
 
 /// Shadows each identifier in place with its [`Clone::clone`].
 ///
-/// This is useful to create additional handles:
+/// This is useful to duplicate smart pointers:
 ///
 /// ```
 /// # {
@@ -89,13 +89,21 @@ macro_rules! shadow_clone {
 
 /// Shadows each reference in place with its [`ToOwned::Owned`].
 ///
-/// This is useful to create cyclic cells:
+/// This is useful to upgrade and persist borrows:
 ///
 /// ```
-/// # {
-/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-/// //TODO
-/// # }
+/// use std::ops::Add;
+/// use flourish::{prelude::*, shadow_ref_to_owned, Signal, SignalArc, SignalDyn};
+///
+/// fn live_sum<'a, SR: 'a + SignalsRuntimeRef>(
+/// 	a: &SignalDyn<'a, u64, SR>,
+/// 	b: &SignalDyn<'a, u64, SR>,
+/// ) -> SignalArc<u64, impl 'a + UnmanagedSignal<u64, SR>, SR> {
+/// 	Signal::computed_with_runtime({
+/// 		shadow_ref_to_owned!(a, b);
+/// 		move || a.get() + b.get()
+/// 	}, a.clone_runtime_ref())
+/// }
 /// ```
 #[macro_export]
 macro_rules! shadow_ref_to_owned {
