@@ -2,7 +2,7 @@ use std::{
 	borrow::Borrow,
 	cell::UnsafeCell,
 	fmt::{self, Debug, Formatter},
-	future::{Future, IntoFuture},
+	future::Future,
 	marker::{PhantomData, PhantomPinned},
 	mem::{self, ManuallyDrop, MaybeUninit},
 	ops::Deref,
@@ -38,7 +38,9 @@ pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + Signal
 	inner: UnsafeCell<Signal_<T, S, SR>>,
 }
 
+/// Type of [`Signal`] after type-erasure.
 pub type SignalDyn<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
+/// Type of [`Signal`] after cell-type-erasure.
 pub type SignalDynCell<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
 impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
@@ -75,6 +77,16 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # let input = Signal::cell(1);
+	/// Signal::computed(|| input.get() + 1);
+	/// # }
+	/// ```
+	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
@@ -87,6 +99,15 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	}
 
 	/// A simple cached computation.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// Signal::computed_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
+	/// # }
+	/// ```
 	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed_with_runtime<'a>(
@@ -103,6 +124,16 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// Doesn't update its cache or propagate iff the new result is equal.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # let input = Signal::cell(1);
+	/// Signal::debounced(|| input.get() + 1);
+	/// # }
+	/// ```
 	///
 	/// Note that iff there is no subscriber,
 	/// this signal and its dependents will still become stale unconditionally.
@@ -122,6 +153,15 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Doesn't update its cache or propagate iff the new result is equal.
 	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// Signal::debounced_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
+	/// # }
+	/// ```
+	///
 	/// Note that iff there is no subscriber,
 	/// this signal and its dependents will still become stale unconditionally.
 	///
@@ -139,6 +179,16 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 
 	/// A simple **uncached** computation.
 	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # let input = Signal::cell(1);
+	/// Signal::computed_uncached(|| input.get() + 1);
+	/// # }
+	/// ```
+	///
 	/// Wraps [`computed_uncached`](`computed_uncached()`).
 	pub fn computed_uncached<'a>(
 		fn_pin: impl 'a + Send + Sync + Fn() -> T,
@@ -151,6 +201,15 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	}
 
 	/// A simple **uncached** computation.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// Signal::computed_uncached_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
+	/// # }
+	/// ```
 	///
 	/// Wraps [`computed_uncached`](`computed_uncached()`).
 	pub fn computed_uncached_with_runtime<'a>(
@@ -168,6 +227,21 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ⚠️ Care must be taken to avoid unexpected behaviour!
 	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # let input = Signal::cell(1);
+	/// let mut read_count = 0;
+	/// Signal::computed_uncached_mut(move || {
+	/// 	input.touch();
+	/// 	read_count += 1;
+	/// 	read_count
+	/// });
+	/// # }
+	/// ```
+	///
 	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
 	pub fn computed_uncached_mut<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
@@ -183,6 +257,20 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ⚠️ Care must be taken to avoid unexpected behaviour!
 	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # let input = &Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// let mut read_count = 0;
+	/// Signal::computed_uncached_mut_with_runtime(move || {
+	/// 	input.touch();
+	/// 	read_count += 1;
+	/// 	read_count
+	/// }, input.clone_runtime_ref());
+	/// # }
+	/// ```
+	///
 	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
 	pub fn computed_uncached_mut_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
@@ -197,6 +285,22 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 
 	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
 	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation};
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #[derive(Default, Clone)] struct Container;
+	/// # impl Container { fn sort(&mut self) {} }
+	/// # let input = Signal::cell(Container);
+	/// Signal::folded(Container::default(), move |value| {
+	/// 	value.clone_from(&input.read());
+	/// 	value.sort();
+	/// 	Propagation::Propagate
+	/// });
+	/// # }
+	/// ```
+	///
 	/// Wraps [`folded`](`folded()`).
 	pub fn folded<'a>(
 		init: T,
@@ -210,6 +314,21 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	}
 
 	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # #[derive(Default, Clone)] struct Container;
+	/// # impl Container { fn sort(&mut self) {} }
+	/// # let input = Signal::cell_with_runtime(Container, GlobalSignalsRuntime);
+	/// Signal::folded_with_runtime(Container::default(), |value| {
+	/// 	value.clone_from(&input.read());
+	/// 	value.sort();
+	/// 	Propagation::Propagate
+	/// }, input.clone_runtime_ref());
+	/// # }
+	/// ```
 	///
 	/// Wraps [`folded`](`folded()`).
 	pub fn folded_with_runtime<'a>(
@@ -227,6 +346,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
 	/// Dependencies are detected across both closures.
 	///
+	/// TODO: Example
+	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced<'a>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
@@ -241,6 +362,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 
 	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
 	/// Dependencies are detected across both closures.
+	///
+	/// TODO: Example
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced_with_runtime<'a>(

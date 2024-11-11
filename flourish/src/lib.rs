@@ -41,8 +41,10 @@ pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeR
 pub mod prelude {
 	//! Unmanaged signal accessors and [`SignalsRuntimeRef`].
 
-	pub use crate::unmanaged::{UnmanagedSignal, UnmanagedSignalCell};
-	pub use crate::SignalsRuntimeRef;
+	pub use crate::{
+		unmanaged::{UnmanagedSignal, UnmanagedSignalCell},
+		SignalsRuntimeRef,
+	};
 }
 
 #[doc(hidden = "macro-only")]
