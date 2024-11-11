@@ -343,6 +343,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		SignalArc::new(folded(init, fold_fn_pin, runtime))
 	}
 
+	//TODO: `folded_with`
+
 	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
 	/// Dependencies are detected across both closures.
 	///
