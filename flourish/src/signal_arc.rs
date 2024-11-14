@@ -11,16 +11,16 @@ use crate::{
 	traits::{UnmanagedSignal, UnmanagedSignalCell},
 };
 
-/// Type of [`SignalSR`]s after type-erasure. Dynamic dispatch.
+/// Type of [`SignalArc`]s after type-erasure.
 pub type SignalArcDyn<'a, T, SR> = SignalArc<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 
-/// Type of [`SignalSR`]s after cell-type-erasure. Dynamic dispatch.
+/// Type of [`SignalArc`]s after cell-type-erasure.
 pub type SignalArcDynCell<'a, T, SR> = SignalArc<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-/// Type of [`SignalWeak`]s after type-erasure or [`SignalDyn`] after downgrade. Dynamic dispatch.
+/// Type of [`SignalWeak`]s after type-erasure or [`SignalArcDyn`] after downgrade.
 pub type SignalWeakDyn<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 
-/// Type of [`SignalWeak`]s after cell-type-erasure or [`SignalDynCell`] after downgrade. Dynamic dispatch.
+/// Type of [`SignalWeak`]s after cell-type-erasure or [`SignalArcDynCell`] after downgrade.
 pub type SignalWeakDynCell<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
 /// A weak reference to a [`Signal`].
@@ -47,8 +47,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 
 	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
 
-	/// Erases the (generally opaque) `S` type parameter of the [`Signal`], allowing the
-	/// weak signal handle to be stored easily.
+	/// Erases the (generally opaque) type parameter `S`, allowing the weak signal handle
+	/// to be stored easily.
 	pub fn into_dyn<'a>(self) -> SignalWeakDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
@@ -59,8 +59,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		}
 	}
 
-	/// Erases the (generally opaque) `S` type parameter of the [`Signal`], allowing the
-	/// weak signal cell handle to be stored easily.
+	/// Erases the (generally opaque) type parameter `S`, allowing the weak signal cell
+	/// handle to be stored easily.
 	pub fn into_dyn_cell<'a>(self) -> SignalWeakDynCell<'a, T, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
@@ -72,12 +72,12 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-/// A largely type-erased signal handle that is all of [`Clone`], [`Send`], [`Sync`] and [`Unpin`].
+/// A reference-counting [`Signal`] handle that is all of [`Clone`], [`Send`], [`Sync`] and [`Unpin`].
 ///
-/// To access values, import [`SourcePin`].
+/// Inherits value accessors from [`Signal`].
 ///
-/// Signals are not evaluated unless they are subscribed-to (or on demand if if not current).  
-/// Uncached signals are instead evaluated on direct demand **only** (but still communicate subscriptions and invalidation).
+/// Note that [`Signal`] implements [`ToOwned<Owned = SignalArc>`](`ToOwned`),
+/// so in cases where ownership is not always required, prefer [`&Signal`](`&`) as function parameter type!
 #[must_use = "Signals are generally inert unless subscribed to."]
 pub struct SignalArc<
 	T: ?Sized + Send,
@@ -151,20 +151,22 @@ unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + S
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalArc<T, S, SR>
 {
-	/// Creates a new [`SignalSR`] from the provided raw [`UnmanagedSignal`].
-	pub fn new(source: S) -> Self
+	/// Creates a new [`SignalArc`] from the provided [`UnmanagedSignal`].
+	///
+	/// For additional constructors, see [`Signal`].
+	pub fn new(unmanaged: S) -> Self
 	where
 		S: Sized,
 	{
 		SignalArc {
-			strong: Strong::pin(source),
+			strong: Strong::pin(unmanaged),
 		}
 	}
 
 	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
 
-	/// Erases the (generally opaque) `S` type parameter of the [`Signal`], allowing the
-	/// signal handle to be stored easily.
+	/// Erases the (generally opaque) type parameter `S`, allowing the signal handle to
+	/// be stored easily.
 	pub fn into_dyn<'a>(self) -> SignalArcDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
@@ -175,8 +177,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		}
 	}
 
-	/// Erases the (generally opaque) `S` type parameter of the [`Signal`], allowing the
-	/// signal cell handle to be stored easily.
+	/// Erases the (generally opaque) type parameter `S`, allowing the signal cell handle
+	/// to be stored easily.
 	pub fn into_dyn_cell<'a>(self) -> SignalArcDynCell<'a, T, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
@@ -211,7 +213,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 
 	/// A getter/setter splitter like [`into_read_only_and_self`](`SignalArc::into_read_only_and_self`),
-	/// but additionally type-erases the `S` type parameter for easy storage.
+	/// but additionally type-erases the type parameter `S` for easy storage.
 	pub fn into_dyn_read_only_and_self<'a>(
 		self,
 	) -> (SignalArcDyn<'a, T, SR>, SignalArcDynCell<'a, T, SR>)

@@ -22,13 +22,13 @@ use crate::{
 	Guard, Signal, SignalArc,
 };
 
-/// Type of [`SubscriptionSR`]s after type-erasure. Dynamic dispatch.
+/// Type of [`Subscription`]s after type-erasure.
 pub type SubscriptionDyn<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 
-/// Type of [`SubscriptionSR`]s after type-erasure. Dynamic dispatch.
+/// Type of [`Subscription`]s after cell-type-erasure.
 pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-/// Intrinsically-subscribed version of [`SignalSR`].  
+/// Intrinsically-subscribing version of [`SignalArc`].  
 /// Can be directly constructed but also converted to and from that type.
 #[must_use = "Subscriptions are cancelled when dropped."]
 pub struct Subscription<
@@ -84,6 +84,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	for Subscription<T, S, SR>
 {
 	fn drop(&mut self) {
+		//FIXME: This can be optimised (in a major version bump!) to drop exclusively-
+		//       handled `Signal`s without unsubscribing first, which in turn may skip
+		//       `FlushOut`-processing in some cases.
 		self.subscribed._managed().unsubscribe();
 	}
 }
@@ -114,32 +117,26 @@ impl<
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {
-	/// Constructs a new [`SubscriptionSR`] from the given "raw" [`UnmanagedSignal`].
+	/// Constructs a new [`Subscription`] from the given [`UnmanagedSignal`].
 	///
-	/// The subscribable is subscribed-to intrinsically.
-	///
-	/// # Panics
-	///
-	/// Iff the call to [`UnmanagedSignal::subscribe`] fails. This should never happen, as
-	/// the subscribable shouldn't have been in a state where it could be subscribed to
-	/// before pinning.
-	pub fn new(source: S) -> Self
+	/// Subscribes to it intrinsically in the process.
+	pub fn new(unmanaged: S) -> Self
 	where
 		S: Sized,
 	{
-		source.clone_runtime_ref().run_detached(|| {
-			let strong = Strong::pin(source);
+		unmanaged.clone_runtime_ref().run_detached(|| {
+			let strong = Strong::pin(unmanaged);
 			strong._managed().subscribe();
 			Self { subscribed: strong }
 		})
 	}
 
-	/// Unsubscribes the [`SubscriptionSR`], turning it into a [`SignalSR`] in the process.
+	/// Unsubscribes the [`Subscription`], turning it into a [`SignalArc`] in the process.
 	///
-	/// The underlying [`Source`](`crate::raw::Source`) may remain effectively subscribed due to subscribed dependencies.
-	#[must_use = "Use `drop(self)` instead of converting first. The effect is the same."]
+	/// The underlying [`Signal`] may remain subscribed-to due to other subscriptions.
+	#[must_use = "Use `drop(self)` instead of converting first. Dropping directly may be more efficient in the future."]
 	pub fn unsubscribe(self) -> SignalArc<T, S, SR> {
-		//FIXME: This could avoid refcounting up and down and the associated memory barriers.
+		//FIXME: This could avoid refcounting up and down and at least some of the associated memory barriers.
 		self.to_signal()
 	} // Implicit drop(self) unsubscribes.
 
@@ -154,8 +151,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef
 impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {
-	/// Erases the (generally opaque) `S` type parameter of the underlying [`Signal`],
-	/// allowing the subscription to be stored easily.
+	/// Erases the (generally opaque) type parameter `S`, allowing the [`Subscription`] to
+	/// be stored easily.
 	pub fn into_dyn<'a>(self) -> SubscriptionDyn<'a, T, SR>
 	where
 		T: 'a,
@@ -170,8 +167,8 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 		}
 	}
 
-	/// Erases the (generally opaque) `S` type parameter of the underlying [`Signal`],
-	/// allowing the cell subscription to be stored easily.
+	/// Erases the (generally opaque) type parameter `S`, allowing the
+	/// cell-[`Subscription`] to be stored easily.
 	pub fn into_dyn_cell<'a>(self) -> SubscriptionDynCell<'a, T, SR>
 	where
 		T: 'a,
@@ -191,10 +188,10 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 ///
 /// # Omissions
 ///
-/// The "uncached" versions of [`computed`](`computed()`) are intentionally not wrapped here,
-/// as their behaviour may be unexpected at first glance.
+/// The "uncached" and "debounced" versions of [`computed`](`computed()`) are
+/// intentionally not wrapped here, as their behaviour may be unexpected at first glance.
 ///
-/// You can still easily construct them as [`SignalSR`] and subscribe afterwards:
+/// You can still easily construct them as [`SignalArc`] and subscribe afterwards:
 ///
 /// ```
 /// # {
@@ -205,11 +202,26 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 ///
 /// // The closure runs once on subscription, but not to refresh `sub`!
 /// // It re-runs with each access of its value through `SourcePin`, instead.
-/// let sub = Signal::computed_uncached(|| ()).subscribe();
+/// let sub_uncached = Signal::computed_uncached(|| ()).subscribe();
+///
+/// // The closure re-runs on each refresh, even if the inputs are equal!
+/// // However, dependent signals are only invalidated if the result changed.
+/// let sub_debounced = Signal::debounced(|| ()).subscribe();
 /// # }
 /// ```
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// A simple cached computation.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+	/// # let input = Signal::cell(1);
+	/// Subscription::computed(|| input.get() + 1);
+	/// # }
+	/// ```
 	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed<'a>(
@@ -224,6 +236,15 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 
 	/// A simple cached computation.
 	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// Subscription::computed_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
+	/// # }
+	/// ```
+	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
@@ -236,7 +257,23 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		Subscription::new(computed(fn_pin, runtime))
 	}
 
-	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// The closure mutates the value and returns a [`Propagation`].
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation};
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #[derive(Default, Clone)] struct Container;
+	/// # impl Container { fn sort(&mut self) {} }
+	/// # let input = Signal::cell(Container);
+	/// Signal::folded(Container::default(), move |value| {
+	/// 	value.clone_from(&input.read());
+	/// 	value.sort();
+	/// 	Propagation::Propagate
+	/// });
+	/// # }
+	/// ```
 	///
 	/// Wraps [`folded`](`folded()`).
 	pub fn folded<'a>(
@@ -250,7 +287,22 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		Subscription::new(folded(init, fold_fn_pin, SR::default()))
 	}
 
-	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// The closure mutates the value and returns a [`Propagation`].
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # #[derive(Default, Clone)] struct Container;
+	/// # impl Container { fn sort(&mut self) {} }
+	/// # let input = Signal::cell_with_runtime(Container, GlobalSignalsRuntime);
+	/// Signal::folded_with_runtime(Container::default(), |value| {
+	/// 	value.clone_from(&input.read());
+	/// 	value.sort();
+	/// 	Propagation::Propagate
+	/// }, input.clone_runtime_ref());
+	/// # }
+	/// ```
 	///
 	/// Wraps [`folded`](`folded()`).
 	pub fn folded_with_runtime<'a>(
@@ -265,8 +317,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		Subscription::new(folded(init, fold_fn_pin, runtime))
 	}
 
-	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// `select_fn_pin` computes each value.
+	/// `reduce_fn_pin` updates the current value with the next and returns a [`Propagation`].
 	/// Dependencies are detected across both closures.
+	///
+	/// TODO: Example
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced<'a>(
@@ -280,8 +335,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		Subscription::new(reduced(select_fn_pin, reduce_fn_pin, SR::default()))
 	}
 
-	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// `select_fn_pin` computes each value.
+	/// `reduce_fn_pin` updates the current value with the next and returns a [`Propagation`].
 	/// Dependencies are detected across both closures.
+	///
+	/// TODO: Example
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced_with_runtime<'a>(
@@ -299,9 +357,10 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// When awaited, subscribes to the given expressions but only returns [`Poll::Ready`](`core::task::Poll::Ready`)
 	/// once `predicate_fn_pin` returns `true`.
 	///
-	/// Note that while `predicate_fn_pin` is reactive (and automatically dependent on the
-	/// resulting subscription), its exclusive dependencies do not cause `select_fn_pin`
-	/// to re-run.
+	/// TODO: Example
+	///
+	/// Note that dependencies of `predicate_fn_pin` are tracked separately and
+	/// do not cause `select_fn_pin` to re-run.
 	pub fn skipped_while<'f, 'a: 'f>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
@@ -316,9 +375,10 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// When awaited, subscribes to the given expressions but only returns [`Poll::Ready`](`core::task::Poll::Ready`)
 	/// once `predicate_fn_pin` returns `true`.
 	///
-	/// Note that while `predicate_fn_pin` is reactive (and automatically dependent on the
-	/// resulting subscription), its exclusive dependencies do not cause `select_fn_pin`
-	/// to re-run.
+	/// TODO: Example
+	///
+	/// Note that dependencies of `predicate_fn_pin` are tracked separately and
+	/// do not cause `select_fn_pin` to re-run.
 	pub fn skipped_while_with_runtime<'f, 'a: 'f>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		mut predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
@@ -333,7 +393,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 			{
 				let once = OnceCell::<()>::new();
 				signals_helper! {
-						let effect = effect_with_runtime!({
+					let effect = effect_with_runtime!({
 						let (sub, once) = (&sub, &once);
 						move || {
 							if !predicate_fn_pin(&**sub.read_exclusive_dyn()) {
@@ -350,6 +410,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 
 	/// When awaited, subscribes to its inputs (from both closures) and resolves to a
 	/// [`Subscription`] that yields only values for which `predicate_fn_pin` returns `true`.
+	///
+	/// TODO: Example
 	pub fn filtered<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
@@ -363,6 +425,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 
 	/// When awaited, subscribes to its inputs (from both closures) and resolves to a
 	/// [`Subscription`] that yields only values for which `predicate_fn_pin` returns `true`.
+	///
+	/// TODO: Example
 	pub fn filtered_with_runtime<'a>(
 		mut fn_pin: impl 'a + Send + FnMut() -> T,
 		mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
@@ -406,6 +470,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 
 	/// When awaited, subscribes to its inputs and resolves to a [`Subscription`] that
 	/// yields only the payloads of [`Some`] variants returned by `fn_pin`.
+	///
+	/// TODO: Example
 	pub fn filter_mapped<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
@@ -418,6 +484,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 
 	/// When awaited, subscribes to its inputs and resolves to a [`Subscription`] that
 	/// yields only the payloads of [`Some`] variants returned by `fn_pin`.
+	///
+	/// TODO: Example
 	pub fn filter_mapped_with_runtime<'a>(
 		mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 		runtime: SR,

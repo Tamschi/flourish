@@ -4,13 +4,13 @@ use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::unmanaged::new_raw_unsubscribed_effect;
 
-/// An [`EffectSR`] subscribes to signal sources just like a [`SubscriptionSR`](`crate::SubscriptionSR`) does,
-/// but instead of caching the value and thereby requiring [`Clone`], it executes side-effects.
+/// An [`Effect`] subscribes to signal sources just like a [`Subscription`](`crate::Subscription`) does,
+/// but instead of exposing the value, its main use is to execute side-effects with cleanup.
 ///
-/// Please note that when an update is received, `drop` consumes the previous value *before* `f` creates the next.
+/// Please note that when the effect is refreshed, `drop_fn_pin` consumes the previous value *before* `fn_pin` creates the next.
 /// *Both* closures are part of the dependency detection scope.
 ///
-/// The specified `drop` function also runs when the [`EffectSR`] is dropped.
+/// The specified `drop_fn_pin` function also runs when the [`Effect`] is dropped.
 #[must_use = "Effects are cancelled when dropped."]
 pub struct Effect<'a, SR: 'a + ?Sized + SignalsRuntimeRef> {
 	_raw_effect: Pin<Box<dyn 'a + DropHandle>>,
@@ -21,7 +21,7 @@ trait DropHandle {}
 impl<T: ?Sized> DropHandle for T {}
 
 impl<'a, SR: SignalsRuntimeRef> Effect<'a, SR> {
-	/// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on notification and drop.
+	/// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on refresh and drop.
 	///
 	/// *Both* closures are part of the dependency detection scope.
 	pub fn new<T: 'a + Send>(
@@ -34,7 +34,7 @@ impl<'a, SR: SignalsRuntimeRef> Effect<'a, SR> {
 		Self::new_with_runtime(fn_pin, drop_fn_pin, SR::default())
 	}
 
-	/// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on notification and drop.
+	/// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on refresh and drop.
 	///
 	/// *Both* closures are part of the dependency detection scope.
 	pub fn new_with_runtime<T: 'a + Send>(

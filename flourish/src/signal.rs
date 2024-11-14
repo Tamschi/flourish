@@ -9,6 +9,7 @@ use std::{
 	pin::Pin,
 	process::abort,
 	sync::atomic::{AtomicUsize, Ordering},
+	usize,
 };
 
 use futures_lite::FutureExt as _;
@@ -62,14 +63,14 @@ where
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
-	/// Creates a new [`SignalArc`] from the provided unmanaged [`UnmanagedSignal`].
+	/// Creates a new [`SignalArc`] from the provided [`UnmanagedSignal`].
+	///
+	/// Convenience wrapper for [`SignalArc::new`].
 	pub fn new(unmanaged: S) -> SignalArc<T, S, SR>
 	where
 		S: Sized,
 	{
-		SignalArc {
-			strong: Strong::pin(unmanaged),
-		}
+		SignalArc::new(unmanaged)
 	}
 }
 
@@ -283,7 +284,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		SignalArc::new(computed_uncached_mut(fn_pin, runtime))
 	}
 
-	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// The closure mutates the value and returns a [`Propagation`].
 	///
 	/// ```
 	/// # {
@@ -313,7 +314,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		Self::folded_with_runtime(init, fold_fn_pin, SR::default())
 	}
 
-	/// The closure mutates the value and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// The closure mutates the value and returns a [`Propagation`].
 	///
 	/// ```
 	/// # {
@@ -343,9 +344,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		SignalArc::new(folded(init, fold_fn_pin, runtime))
 	}
 
-	//TODO: `folded_with`
-
-	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// `select_fn_pin` computes each value.
+	/// `reduce_fn_pin` updates the current value with the next and returns a [`Propagation`].
 	/// Dependencies are detected across both closures.
 	///
 	/// TODO: Example
@@ -362,7 +362,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		Self::reduced_with_runtime(select_fn_pin, reduce_fn_pin, SR::default())
 	}
 
-	/// `select_fn_pin` computes each value, `reduce_fn_pin` updates current with next and can choose to [`Halt`](`Update::Halt`) propagation.
+	/// `select_fn_pin` computes each value.
+	/// `reduce_fn_pin` updates the current value with the next and returns a [`Propagation`].
 	/// Dependencies are detected across both closures.
 	///
 	/// TODO: Example

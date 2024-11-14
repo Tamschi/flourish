@@ -119,7 +119,7 @@ let (_source, _source_cell) = inert_cell.as_source_and_cell();
 let (_source, _source_cell) = reactive_cell.as_source_and_cell();
 ```
 
-Additionally, inside `flourish::raw`, you can find constructor functions for unpinned raw signals that enable composition with data-inlining.
+Additionally, inside `flourish::raw`, you can find constructor functions for unpinned unmanaged signals that enable composition with data-inlining.
 
 ## Linking signals
 

@@ -109,4 +109,4 @@ impl<
 	}
 }
 
-//TODO: Conversion from raw UnmanagedSignalCell.
+//TODO: Conversion from UnmanagedSignalCell.
