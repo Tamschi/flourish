@@ -82,7 +82,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use flourish::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
 	/// # let input = Signal::cell(1);
 	/// Signal::computed(|| input.get() + 1);
 	/// # }
@@ -130,7 +131,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use flourish::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
 	/// # let input = Signal::cell(1);
 	/// Signal::debounced(|| input.get() + 1);
 	/// # }
@@ -184,7 +186,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use flourish::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
 	/// # let input = Signal::cell(1);
 	/// Signal::computed_uncached(|| input.get() + 1);
 	/// # }
@@ -232,7 +235,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use flourish::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
 	/// # let input = Signal::cell(1);
 	/// let mut read_count = 0;
 	/// Signal::computed_uncached_mut(move || {
@@ -290,7 +294,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use flourish::{GlobalSignalsRuntime, Propagation};
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
 	/// # let input = Signal::cell(Container);
@@ -384,6 +389,29 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 
 /// Cell constructors.
 impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
+	/// A thread-safe value cell that's mutable through shared references.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
+	/// # #[derive(Default, Clone)] struct Container;
+	/// # impl Container { fn sort(&mut self) {} }
+	/// # let input = Signal::cell(Container);
+	/// let cell = Signal::cell(0);
+	///
+	/// cell.change(1);
+	/// cell.replace(2);
+	/// cell.update(|value| {
+	/// 	*value += 1;
+	/// 	Propagation::Propagate
+	/// });
+	/// # }
+	/// ```
 	pub fn cell<'a>(
 		initial_value: T,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
@@ -394,6 +422,24 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		Self::cell_with_runtime(initial_value, SR::default())
 	}
 
+	/// A thread-safe value cell that's mutable through shared references.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// let cell = Signal::cell_with_runtime(0, GlobalSignalsRuntime);
+	///
+	/// cell.change(1);
+	/// cell.replace(2);
+	/// cell.update(|value| {
+	/// 	*value += 1;
+	/// 	Propagation::Propagate
+	/// });
+	/// # }
+	/// ```
 	pub fn cell_with_runtime<'a>(
 		initial_value: T,
 		runtime: SR,
@@ -407,6 +453,34 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
+	/// A thread-safe value cell that may reference itself.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalWeakDynCell};
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
+	/// # struct Resource {}
+	/// # fn get_from_cache(name: &str) -> Option<Resource> { None }
+	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, target: SignalWeakDynCell<'_, Option<Resource>, SR>) {}
+	/// fn load_into<SR: SignalsRuntimeRef>(
+	/// 	target: &SignalWeakDynCell<'_, Option<Resource>, SR>,
+	/// 	name: &str,
+	/// ) -> Option<Resource> {
+	/// 	if let Some(resource) = get_from_cache(name) {
+	/// 		Some(resource)
+	/// 	} else {
+	/// 		start_loading(name, target.clone());
+	/// 		None
+	/// 	}
+	/// }
+	///
+	/// let cell = Signal::cell_cyclic(|weak| load_into(weak, "resource"));
+	/// # }
+	/// ```
 	pub fn cell_cyclic<'a>(
 		make_initial_value: impl 'a + FnOnce(&SignalWeakDynCell<'a, T, SR>) -> T,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
@@ -417,6 +491,35 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		Self::cell_cyclic_with_runtime(make_initial_value, SR::default())
 	}
 
+	/// A thread-safe value cell that may reference itself.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalWeakDynCell};
+	/// # struct Resource {}
+	/// # fn get_from_cache(name: &str) -> Option<Resource> { None }
+	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, target: SignalWeakDynCell<'_, Option<Resource>, SR>) {}
+	/// fn load_into<SR: SignalsRuntimeRef>(
+	/// 	target: &SignalWeakDynCell<'_, Option<Resource>, SR>,
+	/// 	name: &str,
+	/// ) -> Option<Resource> {
+	/// 	if let Some(resource) = get_from_cache(name) {
+	/// 		Some(resource)
+	/// 	} else {
+	/// 		start_loading(name, target.clone());
+	/// 		None
+	/// 	}
+	/// }
+	///
+	/// let cell = Signal::cell_cyclic_with_runtime(
+	/// 	|weak| load_into(weak, "resource"),
+	/// 	GlobalSignalsRuntime,
+	/// );
+	/// # }
+	/// ```
 	pub fn cell_cyclic_with_runtime<'a>(
 		make_initial_value: impl 'a + FnOnce(&SignalWeakDynCell<'a, T, SR>) -> T,
 		runtime: SR,
@@ -437,17 +540,33 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
-	pub fn cell_reactive<
-		'a,
-		HandlerFnPin: 'a
+	/// A thread-safe value cell that can observe subscription status changes.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
+	/// # #[derive(Default, Clone)] struct Container;
+	/// # impl Container { fn sort(&mut self) {} }
+	/// # let input = Signal::cell(Container);
+	/// let cell = Signal::cell_reactive(0, |value, status| {
+	/// 		dbg!(status);
+	/// 		Propagation::Halt
+	/// 	});
+	/// # }
+	/// ```
+	pub fn cell_reactive<'a>(
+		initial_value: T,
+		on_subscribed_change_fn_pin: impl 'a
 			+ Send
 			+ FnMut(
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-	>(
-		initial_value: T,
-		on_subscribed_change_fn_pin: HandlerFnPin,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
@@ -456,17 +575,28 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		Self::cell_reactive_with_runtime(initial_value, on_subscribed_change_fn_pin, SR::default())
 	}
 
-	pub fn cell_reactive_with_runtime<
-		'a,
-		HandlerFnPin: 'a
+	/// A thread-safe value cell that can observe subscription status changes.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// let cell = Signal::cell_reactive_with_runtime(0, |value, status| {
+	/// 		dbg!(status);
+	/// 		Propagation::Halt
+	/// 	}, GlobalSignalsRuntime);
+	/// # }
+	/// ```
+	pub fn cell_reactive_with_runtime<'a>(
+		initial_value: T,
+		on_subscribed_change_fn_pin: impl 'a
 			+ Send
 			+ FnMut(
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-	>(
-		initial_value: T,
-		on_subscribed_change_fn_pin: HandlerFnPin,
 		runtime: SR,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
@@ -1125,11 +1255,11 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	}
 
 	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`Signal::change_eager`) when polled.
-	///
-	/// # Logic
-	///
-	/// The [`Future`] *does not* hold a strong reference to `self`.
-	fn change_async<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<Result<T, T>, T>>
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	pub fn change_async<'f>(
+		&self,
+		new_value: T,
+	) -> private::DetachedFuture<'f, Result<Result<T, T>, T>>
 	where
 		T: 'f + Sized + PartialEq,
 		S: 'f + Sized,
@@ -1150,11 +1280,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	}
 
 	/// Cheaply creates a [`Future`] that has the effect of [`replace_eager`](`Signal::replace_eager`) when polled.
-	///
-	/// # Logic
-	///
-	/// The [`Future`] *does not* hold a strong reference to `self`.
-	fn replace_async<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<T, T>>
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	pub fn replace_async<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<T, T>>
 	where
 		T: 'f + Sized,
 		S: 'f + Sized,
@@ -1175,11 +1302,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	}
 
 	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`Signal::update_eager`) when polled.
-	///
-	/// # Logic
-	///
-	/// The [`Future`] *does not* hold a strong reference to `self`.
-	fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	pub fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
 	) -> private::DetachedFuture<'f, Result<U, F>>
@@ -1202,7 +1326,11 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		)
 	}
 
-	fn change_async_dyn<'f>(
+	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`Signal::change_eager`) when polled.
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	///
+	/// Prefer [`change_async`](`Signal::change_async`) where possible.
+	pub fn change_async_dyn<'f>(
 		&self,
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
@@ -1229,7 +1357,11 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		}
 	}
 
-	fn replace_async_dyn<'f>(
+	/// Cheaply creates a [`Future`] that has the effect of [`replace_eager`](`Signal::replace_eager`) when polled.
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	///
+	/// Prefer [`replace_async`](`Signal::replace_async`) where possible.
+	pub fn replace_async_dyn<'f>(
 		&self,
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
@@ -1258,7 +1390,11 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		}
 	}
 
-	fn update_async_dyn<'f>(
+	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`Signal::update_eager`) when polled.
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	///
+	/// Prefer [`update_async`](`Signal::update_async`) where possible.
+	pub fn update_async_dyn<'f>(
 		&self,
 		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
 	) -> Box<
@@ -1502,7 +1638,7 @@ mod private {
 
 	#[must_use = "Async futures have no effect iff dropped before polling (and may cancel their effect iff dropped)."]
 	#[pin_project]
-	pub(crate) struct DetachedFuture<'f, Output: 'f>(
+	pub struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 		#[pin] pub(super) PhantomPinned,
 	);

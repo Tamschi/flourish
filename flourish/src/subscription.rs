@@ -239,7 +239,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # use flourish::{GlobalSignalsRuntime, Signal, Subscription};
 	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
 	/// Subscription::computed_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
@@ -264,10 +264,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use flourish::{GlobalSignalsRuntime, Propagation};
 	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
 	/// # let input = Signal::cell(Container);
-	/// Signal::folded(Container::default(), move |value| {
+	/// Subscription::folded(Container::default(), move |value| {
 	/// 	value.clone_from(&input.read());
 	/// 	value.sort();
 	/// 	Propagation::Propagate
@@ -292,11 +293,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal, Subscription};
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
 	/// # let input = Signal::cell_with_runtime(Container, GlobalSignalsRuntime);
-	/// Signal::folded_with_runtime(Container::default(), |value| {
+	/// Subscription::folded_with_runtime(Container::default(), |value| {
 	/// 	value.clone_from(&input.read());
 	/// 	value.sort();
 	/// 	Propagation::Propagate
