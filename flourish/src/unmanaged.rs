@@ -36,6 +36,9 @@ pub(crate) use reactive_cell_mut::ReactiveCellMut;
 mod folded;
 pub(crate) use folded::Folded;
 
+//TODO?: folded_emplaced
+//TODO?: folded_with
+
 mod reduced;
 pub(crate) use reduced::Reduced;
 
