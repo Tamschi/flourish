@@ -550,9 +550,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// # use flourish::{GlobalSignalsRuntime, Propagation};
 	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
 	///
-	/// # #[derive(Default, Clone)] struct Container;
-	/// # impl Container { fn sort(&mut self) {} }
-	/// # let input = Signal::cell(Container);
 	/// let cell = Signal::cell_reactive(0, |value, status| {
 	/// 		dbg!(status);
 	/// 		Propagation::Halt
@@ -612,6 +609,26 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
+	/// A thread-safe value cell that can observe subscription status changes and may
+	/// reference itself.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
+	/// let cell = Signal::cell_cyclic_reactive(|weak| (0, {
+	/// 		shadow_ref_to_owned!(weak);
+	/// 		move |value, status| {
+	/// 			assert_eq!(weak.upgrade().unwrap().get(), *value);
+	/// 			dbg!(status);
+	/// 			Propagation::Halt
+	/// 	}}));
+	/// # }
+	/// ```
 	pub fn cell_cyclic_reactive<
 		'a,
 		HandlerFnPin: 'a
@@ -635,6 +652,24 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		)
 	}
 
+	/// A thread-safe value cell that can observe subscription status changes and may
+	/// reference itself.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, Signal};
+	/// let cell = Signal::cell_cyclic_reactive_with_runtime(|weak| (0, {
+	/// 		shadow_ref_to_owned!(weak);
+	/// 		move |value, status| {
+	/// 			assert_eq!(weak.upgrade().unwrap().get(), *value);
+	/// 			dbg!(status);
+	/// 			Propagation::Halt
+	/// 	}}), GlobalSignalsRuntime);
+	/// # }
+	/// ```
 	pub fn cell_cyclic_reactive_with_runtime<
 		'a,
 		HandlerFnPin: 'a
@@ -666,6 +701,28 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
+	/// A thread-safe value cell that can observe subscription status changes.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation};
+	/// # fn create_heavy_resource_arc() {}
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
+	/// let cell = Signal::cell_reactive_mut(None, |value, status| {
+	/// 		if status {
+	/// 			value.get_or_insert_with(create_heavy_resource_arc);
+	/// 			Propagation::Propagate
+	/// 		} else {
+	/// 			*value = None;
+	/// 			Propagation::FlushOut
+	/// 		}
+	/// 	});
+	/// # }
+	/// ```
 	pub fn cell_reactive_mut<'a>(
 		initial_value: T,
 		on_subscribed_change_fn_pin: impl 'a
@@ -686,6 +743,26 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		)
 	}
 
+	/// A thread-safe value cell that can observe subscription status changes.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # fn create_heavy_resource_arc() {}
+	/// let cell = Signal::cell_reactive_mut_with_runtime(None, |value, status| {
+	/// 		if status {
+	/// 			value.get_or_insert_with(create_heavy_resource_arc);
+	/// 			Propagation::Propagate
+	/// 		} else {
+	/// 			*value = None;
+	/// 			Propagation::FlushOut
+	/// 		}
+	/// 	}, GlobalSignalsRuntime);
+	/// # }
+	/// ```
 	pub fn cell_reactive_mut_with_runtime<'a>(
 		initial_value: T,
 		on_subscribed_change_fn_pin: impl 'a
@@ -709,6 +786,49 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
+	/// A thread-safe value cell that can observe subscription status changes and may
+	/// reference itself.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalArcDynCell};
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
+	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalArcDynCell<'_, (usize, Resource<()>), SR>) {}
+	/// enum Resource<T> {
+	/// 	Offline,
+	/// 	Pending,
+	/// 	Ready(T),
+	/// }
+	///
+	/// impl<T> Resource<T> {
+	/// 	fn is_offline(&self) -> bool {
+	/// 		matches!(self, Self::Offline)
+	/// 	}
+	/// }
+	///
+	/// let cell = Signal::cell_cyclic_reactive_mut(|weak| ((0, Resource::Offline), {
+	/// 		shadow_ref_to_owned!(weak);
+	/// 		move |(generation, value), status| {
+	/// 			// The order of operations doesn't matter here, as the signal value is locked exclusively here.
+	/// 			if status && value.is_offline() {
+	/// 				*value = Resource::Pending;
+	/// 				start_loading("resource", *generation, weak.upgrade().unwrap_or_else(|| unreachable!()));
+	/// 				Propagation::Propagate
+	/// 			} else if !status {
+	/// 				*value = Resource::Offline;
+	/// 				*generation += 1;
+	/// 				Propagation::FlushOut
+	/// 			} else {
+	/// 				Propagation::Halt
+	/// 			}
+	/// 		}
+	/// 	}));
+	/// # }
+	/// ```
 	pub fn cell_cyclic_reactive_mut<
 		'a,
 		HandlerFnPin: 'a
@@ -732,6 +852,47 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		)
 	}
 
+	/// A thread-safe value cell that can observe subscription status changes and may
+	/// reference itself.
+	///
+	/// Modification of the value can cause dependent signals to update.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalArcDynCell};
+	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalArcDynCell<'_, (usize, Resource<()>), SR>) {}
+	/// enum Resource<T> {
+	/// 	Offline,
+	/// 	Pending,
+	/// 	Ready(T),
+	/// }
+	///
+	/// impl<T> Resource<T> {
+	/// 	fn is_offline(&self) -> bool {
+	/// 		matches!(self, Self::Offline)
+	/// 	}
+	/// }
+	///
+	/// let cell = Signal::cell_cyclic_reactive_mut_with_runtime(|weak| ((0, Resource::Offline), {
+	/// 		shadow_ref_to_owned!(weak);
+	/// 		move |(generation, value), status| {
+	/// 			// The order of operations doesn't matter here, as the signal value is locked exclusively here.
+	/// 			if status && value.is_offline() {
+	/// 				*value = Resource::Pending;
+	/// 				start_loading("resource", *generation, weak.upgrade().unwrap_or_else(|| unreachable!()));
+	/// 				Propagation::Propagate
+	/// 			} else if !status {
+	/// 				*value = Resource::Offline;
+	/// 				*generation += 1;
+	/// 				Propagation::FlushOut
+	/// 			} else {
+	/// 				Propagation::Halt
+	/// 			}
+	/// 		}
+	/// 	}), GlobalSignalsRuntime);
+	/// # }
+	/// ```
 	pub fn cell_cyclic_reactive_mut_with_runtime<
 		'a,
 		HandlerFnPin: 'a
