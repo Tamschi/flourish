@@ -1,4 +1,3 @@
 [workspace]
-edition = "2021"
 members = ["flourish", "flourish-extensions", "flourish-extra", "isoprenoid"]
 resolver = "2"
