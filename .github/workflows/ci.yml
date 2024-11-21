@@ -1,0 +1,42 @@
+# Rudimentary workflows adapted from <https://doc.rust-lang.org/cargo/guide/continuous-integration.html#verifying-rust-version>.
+
+name: Cargo Build & Test
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_and_test:
+    name: Rust project - latest
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+          - beta
+          - nightly
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: cargo build --verbose
+      - run: cargo test --verbose --features _test
+  latest_deps:
+    name: Latest Dependencies
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update stable && rustup default stable
+      - run: cargo update --verbose
+      - run: cargo build --verbose
+      - run: cargo test --verbose --features _test
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: taiki-e/install-action@cargo-hack
+    - run: cargo hack check --rust-version --workspace --all-targets --features _test
