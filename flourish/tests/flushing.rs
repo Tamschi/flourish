@@ -51,3 +51,44 @@ fn flushed() {
 	drop(a);
 	seen.expect([]);
 }
+
+#[test]
+fn opportunistic_skip() {
+	let seen = &Validator::new();
+
+	let a = Signal::cell_reactive_mut(false, |value, status| {
+		*value = status;
+		Propagation::FlushOut
+	});
+	let s = Signal::computed(|| seen.push(a.get()));
+	seen.expect([]);
+
+	let s = s.into_subscription();
+	seen.expect([true]);
+
+	drop(s);
+	drop(a);
+	seen.expect([]);
+}
+
+#[test]
+fn no_skip_if_not_exclusive() {
+	let seen = &Validator::new();
+
+	let a = Signal::cell_reactive_mut(false, |value, status| {
+		*value = status;
+		Propagation::FlushOut
+	});
+	let s = Signal::computed(|| seen.push(a.get()));
+	seen.expect([]);
+
+	let sub = s.to_subscription();
+	seen.expect([true]);
+
+	drop(sub);
+	seen.expect([false]);
+
+	drop(s);
+	drop(a);
+	seen.expect([]);
+}

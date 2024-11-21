@@ -3,7 +3,6 @@
 use flourish::{shadow_clone, GlobalSignalsRuntime};
 
 type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
 mod _validator;
 use _validator::Validator;
@@ -38,7 +37,7 @@ fn auto_dependencies() {
 	});
 	v.expect([]);
 
-	let subscription = Subscription::computed(|| signal.touch());
+	let subscription = signal.to_subscription();
 	v.expect([""]);
 
 	a.replace_blocking("a");

@@ -36,7 +36,7 @@ pub struct Subscription<
 	S: ?Sized + UnmanagedSignal<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
-	pub(crate) subscribed: Strong<T, S, SR>,
+	pub(crate) subscribed: ManuallyDrop<Strong<T, S, SR>>,
 }
 
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
@@ -84,10 +84,18 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	for Subscription<T, S, SR>
 {
 	fn drop(&mut self) {
-		//FIXME: This can be optimised (in a major version bump!) to drop exclusively-
-		//       handled `Signal`s without unsubscribing first, which in turn may skip
-		//       `FlushOut`-processing in some cases.
-		self.subscribed._managed().unsubscribe();
+		//FIXME: This has the right semantics of skipping `.unsubscribe()` when exclusive,
+		//       but almost certainly isn't optimised well.
+		let weak = self.subscribed.downgrade();
+		unsafe {
+			// SAFETY: Dropped only once, here.
+			ManuallyDrop::drop(&mut self.subscribed);
+		}
+		if let Some(strong) = weak.upgrade() {
+			// The managed `Signal` wasn't exclusive (so it wasn't purged from the signals runtime),
+			// so decrement its subscription count.
+			strong._managed().unsubscribe();
+		}
 	}
 }
 
@@ -127,14 +135,19 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef
 		unmanaged.clone_runtime_ref().run_detached(|| {
 			let strong = Strong::pin(unmanaged);
 			strong._managed().subscribe();
-			Self { subscribed: strong }
+			// Important: Wrap only after subscribing succeeds!
+			//            If there's a panic, we still want to release the `Strong` but without calling `.unsubscribe()`.
+			//            (Technically the `<Self as Drop>::drop` also avoids this, but that's extra work anyway.)
+			Self {
+				subscribed: ManuallyDrop::new(strong),
+			}
 		})
 	}
 
 	/// Unsubscribes the [`Subscription`], turning it into a [`SignalArc`] in the process.
 	///
 	/// The underlying [`Signal`] may remain subscribed-to due to other subscriptions.
-	#[must_use = "Use `drop(self)` instead of converting first. Dropping directly may be more efficient in the future."]
+	#[must_use = "Use `drop(self)` instead of converting first. Dropping directly can skip signal refreshes caused by `Propagation::FlushOut`."]
 	pub fn unsubscribe(self) -> SignalArc<T, S, SR> {
 		//FIXME: This could avoid refcounting up and down and at least some of the associated memory barriers.
 		self.to_signal()
@@ -143,7 +156,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef
 	/// Cheaply clones this handle into a [`SignalSR`].
 	pub fn to_signal(self) -> SignalArc<T, S, SR> {
 		SignalArc {
-			strong: self.subscribed.clone(),
+			strong: (*self.subscribed).clone(),
 		}
 	}
 }
@@ -162,7 +175,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 		unsafe {
 			let this = ManuallyDrop::new(self);
 			SubscriptionDyn {
-				subscribed: this.subscribed.unsafe_copy().into_dyn(),
+				subscribed: ManuallyDrop::new(this.subscribed.unsafe_copy().into_dyn()),
 			}
 		}
 	}
@@ -178,7 +191,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 		unsafe {
 			let this = ManuallyDrop::new(self);
 			SubscriptionDynCell {
-				subscribed: this.subscribed.unsafe_copy().into_dyn_cell(),
+				subscribed: ManuallyDrop::new(this.subscribed.unsafe_copy().into_dyn_cell()),
 			}
 		}
 	}
@@ -202,11 +215,11 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 ///
 /// // The closure runs once on subscription, but not to refresh `sub`!
 /// // It re-runs with each access of its value through `SourcePin`, instead.
-/// let sub_uncached = Signal::computed_uncached(|| ()).subscribe();
+/// let sub_uncached = Signal::computed_uncached(|| ()).into_subscription();
 ///
 /// // The closure re-runs on each refresh, even if the inputs are equal!
 /// // However, dependent signals are only invalidated if the result changed.
-/// let sub_debounced = Signal::debounced(|| ()).subscribe();
+/// let sub_debounced = Signal::debounced(|| ()).into_subscription();
 /// # }
 /// ```
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {

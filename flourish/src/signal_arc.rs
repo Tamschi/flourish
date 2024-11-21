@@ -1,6 +1,7 @@
 use std::{
 	borrow::Borrow,
 	fmt::{self, Debug, Formatter},
+	mem::ManuallyDrop,
 	ops::Deref,
 };
 
@@ -196,7 +197,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	pub fn into_subscription(self) -> Subscription<T, S, SR> {
 		self.strong._managed().subscribe();
 		Subscription {
-			subscribed: self.strong,
+			subscribed: ManuallyDrop::new(self.strong),
 		}
 	}
 }

@@ -24,7 +24,7 @@ use crate::{
 		computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced, InertCell,
 		ReactiveCell, ReactiveCellMut,
 	},
-	Guard, SignalArc, SignalWeak, Subscription,
+	Guard, SignalArc, SignalArcDyn, SignalArcDynCell, SignalWeak, Subscription,
 };
 
 /// A reference-counted signal.
@@ -1229,10 +1229,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	///
 	/// Where you consume an owned [`SignalArc`], prefer [`SignalArc::into_subscription`] to avoid some memory barriers.
 	pub fn to_subscription(&self) -> Subscription<T, S, SR> {
-		(*ManuallyDrop::new(Subscription {
-			subscribed: Strong { strong: self },
-		}))
-		.clone()
+		self.to_owned().into_subscription()
 	}
 
 	/// Creates a new [`SignalWeak`] for this [`Signal`].
@@ -1265,6 +1262,30 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 	{
 		self
+	}
+
+	/// Reborrows without the [`UnmanagedSignal`] `S` in the type signature.
+	pub fn to_dyn<'a>(&self) -> SignalArcDyn<'a, T, SR>
+	where
+		S: 'a + Sized,
+	{
+		self.to_owned().into_dyn()
+	}
+
+	/// Reborrows without the [`UnmanagedSignalCell`] `S` in the type signature.
+	pub fn to_dyn_cell<'a>(&self) -> SignalArcDynCell<'a, T, SR>
+	where
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+	{
+		self.to_owned().into_dyn_cell()
+	}
+
+	/// Reborrows with the [`UnmanagedSignalCell`] `S` replaced by an opqaue [`UnmanagedSignal`] in the type signature.
+	pub fn to_read_only<'a>(&self) -> SignalArc<T, impl 'a + UnmanagedSignal<T, SR>, SR>
+	where
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+	{
+		self.to_owned()
 	}
 }
 

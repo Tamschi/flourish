@@ -155,7 +155,7 @@ let signal = Signal::computed({
   })
 }); // nothing
 
-let subscription = Subscription::computed(|| signal.touch()); // ""
+let subscription = signal.to_subscription(); // ""
 
 // Note: `change` and `replace` may be deferred (but are safe to use in callbacks)!
 //        Use the `…_blocking` and `…_async` variants as needed.
@@ -235,3 +235,7 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |`Pin<Ptr: ?Sized>`|Type-erasure for the aforementioned clean inline-pinning signals.|
 |["`super let`"](https://blog.m-ou.se/super-let/) (or equivalent)|Easier-to-use macros for unmanaged/inline signals.|
 |"`FnPin`[`Mut`]" closures with simple return type, also implemented by current `FnMut` closures and functions | This could nicely potentially allow safe `\|\| { let x = pin!(…); loop { yield …; } }` closures for the "fn_pin" parameters, where currently only `FnMut` is accepted and any inline pinning requires `unsafe`.|
+
+## Open Questions
+
+- Would a `WeakSubscription` be useful?
