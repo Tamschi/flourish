@@ -1,5 +1,5 @@
-# Isoprenoid
+# `isoprenoid`
 
-*Isoprenoid* is the signals runtime framework backing *Flourish*.
+`isoprenoid` is the signals runtime framework backing *flourish*.
 
-Distinct major versions of *Flourish* are compatible as long as they use the same version of *Isoprenoid*.
+Distinct major versions of *flourish* are compatible as long as they use the same version of `isoprenoid`.

@@ -267,3 +267,9 @@ This mainly affects certain optimisations not being in place yet, but does have 
 - Would a `WeakSubscription` be useful? It would keep a `Signal` subscribed without preventing its destruction.
 
   On one hand that may be useful to keep certain caches fresh. On the other hand, it would make it *a lot* easier to cause hard-to-debug side effects.
+
+- `Signal` doesn't have `.as_unmanaged()` or `.as_unmanaged_cell()` methods (`(&self) -> Pin<&impl 'a + Unmanaged…>`) because that would give access to the unmanaged `.subscribe()` and `.unsubscribe()` which, while safe, are easy to misuse. Shimming this is easy, but comes with a little overhead.
+
+  How important is it to have a common trait for value access and cell updates here?
+  (It's quite complicated due to dyn-compatibility rules, as in `Signal` access to those methods is
+  controlled by `S: Sized` instead of `Self: Sized`.)
