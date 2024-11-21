@@ -110,18 +110,6 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<
-		'a,
-		T: 'a + ?Sized + Send,
-		S: 'a + Sized + UnmanagedSignal<T, SR>,
-		SR: 'a + ?Sized + SignalsRuntimeRef,
-	> From<Subscription<T, S, SR>> for SubscriptionDyn<'a, T, SR>
-{
-	fn from(value: Subscription<T, S, SR>) -> Self {
-		value.into_dyn()
-	}
-}
-
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {

@@ -1,7 +1,7 @@
 //! These *should* be relatively intuitive with regard to Rust's idioms.  
 //! Still, navigating the managed handles isn't trivial at first, so here's a set of conversion tables.
 //!
-//! (Note that these tables are wide and scroll horizntally.)
+//! (Note that these tables are wide and scroll horizontally.)
 //!
 //! ## with [`UnmanagedSignalCell`]
 //!
@@ -110,6 +110,54 @@ impl<
 	> From<SignalArc<T, S, SR>> for SignalArcDynCell<'a, T, SR>
 {
 	fn from(value: SignalArc<T, S, SR>) -> Self {
+		value.into_dyn_cell()
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignal<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<SignalWeak<T, S, SR>> for SignalWeakDyn<'a, T, SR>
+{
+	fn from(value: SignalWeak<T, S, SR>) -> Self {
+		value.into_dyn()
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<SignalWeak<T, S, SR>> for SignalWeakDynCell<'a, T, SR>
+{
+	fn from(value: SignalWeak<T, S, SR>) -> Self {
+		value.into_dyn_cell()
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignal<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<Subscription<T, S, SR>> for SubscriptionDyn<'a, T, SR>
+{
+	fn from(value: Subscription<T, S, SR>) -> Self {
+		value.into_dyn()
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<Subscription<T, S, SR>> for SubscriptionDynCell<'a, T, SR>
+{
+	fn from(value: Subscription<T, S, SR>) -> Self {
 		value.into_dyn_cell()
 	}
 }
