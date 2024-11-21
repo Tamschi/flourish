@@ -1,5 +1,5 @@
-//! These *should* be relatively intuitive with regard to Rust's idioms.  
-//! Still, navigating the managed handles isn't trivial at first, so here's a set of conversion tables.
+//! Conversions between this library's managed-signal-related types.
+//! (Documentation module.)
 //!
 //! (Note that these tables are wide and scroll horizontally.)
 //!

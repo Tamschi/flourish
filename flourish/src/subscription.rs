@@ -22,10 +22,10 @@ use crate::{
 	Guard, Signal, SignalArc,
 };
 
-/// Type of [`Subscription`]s after type-erasure.
+/// [`Subscription`] after type-erasure.
 pub type SubscriptionDyn<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 
-/// Type of [`Subscription`]s after cell-type-erasure.
+/// [`Subscription`] after cell-type-erasure.
 pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
 /// Intrinsically-subscribing version of [`SignalArc`].  

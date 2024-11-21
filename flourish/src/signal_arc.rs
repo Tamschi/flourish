@@ -13,16 +13,16 @@ use crate::{
 	Subscription,
 };
 
-/// Type of [`SignalArc`]s after type-erasure.
+/// [`SignalArc`] after type-erasure.
 pub type SignalArcDyn<'a, T, SR> = SignalArc<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 
-/// Type of [`SignalArc`]s after cell-type-erasure.
+/// [`SignalArc`] after cell-type-erasure.
 pub type SignalArcDynCell<'a, T, SR> = SignalArc<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-/// Type of [`SignalWeak`]s after type-erasure or [`SignalArcDyn`] after downgrade.
+/// [`SignalWeak`] after type-erasure and result of [`SignalDyn::downgrade`](`crate::SignalDyn::downgrade`).
 pub type SignalWeakDyn<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 
-/// Type of [`SignalWeak`]s after cell-type-erasure or [`SignalArcDynCell`] after downgrade.
+/// [`SignalWeak`] after cell-type-erasure and result of [`SignalDynCell::downgrade`](`crate::SignalDynCell::downgrade`).
 pub type SignalWeakDynCell<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
 /// A weak reference to a [`Signal`].

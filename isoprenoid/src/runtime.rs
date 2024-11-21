@@ -380,6 +380,7 @@ impl Debug for GSRSymbol {
 mod global_callback_table_types {
 	use super::ACallbackTableTypes;
 
+	#[allow(unreachable_pub)]
 	#[repr(transparent)]
 	pub struct GlobalCallbackTableTypes(ACallbackTableTypes);
 }
@@ -391,6 +392,7 @@ impl CallbackTableTypes for GlobalCallbackTableTypes {
 }
 
 #[cfg(feature = "global_signals_runtime")]
+/// **The feature `"global_signals_runtime"` is required to enable this implementation.**
 unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 	type Symbol = GSRSymbol;
 	type CallbackTableTypes = GlobalCallbackTableTypes;
@@ -609,6 +611,7 @@ mod private {
 
 	use futures_lite::FutureExt;
 
+	#[allow(unreachable_pub)] // Used with "global_signals_runtime".
 	pub struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 	);

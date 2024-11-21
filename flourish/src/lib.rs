@@ -2,7 +2,11 @@
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 // #![warn(clippy::single_call_fn)]
+//! <details><summary>README / Quick Start (click to expand)</summary>
+//!
 #![cfg_attr(feature = "_doc", doc = include_str!("../README.md"))]
+//!
+//! </details>
 //!
 //! # Threading Notes
 //!
@@ -39,7 +43,8 @@ pub use traits::Guard;
 pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 pub mod prelude {
-	//! Unmanaged signal accessors and [`SignalsRuntimeRef`].
+	//! Unmanaged signal accessors and [`SignalsRuntimeRef`].  
+	//! Not necessary to use managed signals.
 
 	pub use crate::{
 		unmanaged::{UnmanagedSignal, UnmanagedSignalCell},

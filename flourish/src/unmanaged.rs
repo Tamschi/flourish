@@ -1,4 +1,4 @@
-//! This module contains unmanaged signals that can be pinned directly on the stack.
+//! Unmanaged signals that can be pinned directly on the stack.
 //!
 //! In most application code, you should use [`Signal`](`crate::Signal`) instead,
 //! which abstracts memory management and keeping track of subscriptions.

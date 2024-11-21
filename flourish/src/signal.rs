@@ -39,9 +39,9 @@ pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + Signal
 	inner: UnsafeCell<Signal_<T, S, SR>>,
 }
 
-/// Type of [`Signal`] after type-erasure.
+/// [`Signal`] after type-erasure.
 pub type SignalDyn<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
-/// Type of [`Signal`] after cell-type-erasure.
+/// [`Signal`] after cell-type-erasure.
 pub type SignalDynCell<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
 impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {

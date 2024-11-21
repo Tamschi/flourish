@@ -1,6 +1,6 @@
 # *flourish*
 
-Convenient and composable signals for Rust.
+Convenient and full-featured signals for Rust.
 
 The API design emphasises efficient resource management and performance-aware code without compromising on ease of use at near-zero boilerplate.
 

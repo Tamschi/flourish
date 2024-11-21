@@ -1,6 +1,6 @@
 # flourish (isoprenoid)
 
-TODO
+This repository contains the [*flourish*](./flourish/README.md) and [`isoprenoid`](./isoprenoid/README.md) crates.
 
 ## Documentation
 
