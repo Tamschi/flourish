@@ -150,15 +150,10 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef
 	#[must_use = "Use `drop(self)` instead of converting first. Dropping directly can skip signal refreshes caused by `Propagation::FlushOut`."]
 	pub fn unsubscribe(self) -> SignalArc<T, S, SR> {
 		//FIXME: This could avoid refcounting up and down and at least some of the associated memory barriers.
-		self.to_signal()
-	} // Implicit drop(self) unsubscribes.
-
-	/// Cheaply clones this handle into a [`SignalSR`].
-	pub fn to_signal(self) -> SignalArc<T, S, SR> {
 		SignalArc {
 			strong: (*self.subscribed).clone(),
 		}
-	}
+	} // Implicit drop(self) unsubscribes.
 }
 
 impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
@@ -192,6 +187,25 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 			let this = ManuallyDrop::new(self);
 			SubscriptionDynCell {
 				subscribed: ManuallyDrop::new(this.subscribed.unsafe_copy().into_dyn_cell()),
+			}
+		}
+	}
+}
+
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	Subscription<T, S, SR>
+{
+	/// Obscures the cell API, allowing only reads and subscriptions.
+	pub fn into_read_only<'a>(self) -> Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>
+	where
+		S: 'a,
+	{
+		unsafe {
+			//SAFETY: Prevents dropping of the original `Weak`,
+			//        so that the net count doesn't change.
+			let this = ManuallyDrop::new(self);
+			Subscription {
+				subscribed: ManuallyDrop::new(this.subscribed.unsafe_copy()),
 			}
 		}
 	}

@@ -1135,6 +1135,10 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		None
 	}
 
+	pub(crate) unsafe fn unsafe_copy(&self) -> Self {
+		Self { weak: self.weak }
+	}
+
 	pub(crate) fn into_dyn<'a>(self) -> Weak<T, dyn 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a + Sized,
@@ -1256,7 +1260,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		self
 	}
 
-	/// Reborrows with the [`UnmanagedSignalCell`] `S` replaced by an opqaue [`UnmanagedSignal`] in the type signature.
+	/// Reborrows with the [`UnmanagedSignalCell`] `S` replaced by an opaque [`UnmanagedSignal`] in the type signature.
 	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
@@ -1289,7 +1293,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-/// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
+/// Value accessors.
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
@@ -1300,7 +1304,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
-	/// Prefer [`SourcePin::touch`] where possible.
+	/// Prefer [`Signal::touch`] where possible.
 	pub fn get(&self) -> T
 	where
 		T: Sync + Copy,
@@ -1310,7 +1314,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 
 	/// Records `self` as dependency and retrieves a clone of the value.
 	///
-	/// Prefer [`SourcePin::get`] where available.
+	/// Prefer [`Signal::get`] where available.
 	pub fn get_clone(&self) -> T
 	where
 		T: Sync + Clone,
@@ -1320,7 +1324,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
-	/// Prefer [`SourcePin::get`] where available.
+	/// Prefer [`Signal::get`] where available.
 	pub fn get_exclusive(&self) -> T
 	where
 		T: Copy,
@@ -1330,7 +1334,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 
 	/// Records `self` as dependency and retrieves a clone of the value.
 	///
-	/// Prefer [`SourcePin::get_clone`] where available.
+	/// Prefer [`Signal::get_clone`] where available.
 	pub fn get_clone_exclusive(&self) -> T
 	where
 		T: Clone,
@@ -1349,7 +1353,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 
 	/// Records `self` as dependency and allows borrowing the value.
 	///
-	/// Prefer [`SourcePin::read`] where available.
+	/// Prefer [`Signal::read`] where available.
 	pub fn read_exclusive<'r>(&'r self) -> S::ReadExclusive<'r>
 	where
 		S: Sized,
@@ -1358,7 +1362,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		self._managed().read_exclusive()
 	}
 
-	/// The same as [`SourcePin::read`], but dyn-compatible.
+	/// The same as [`Signal::read`], but dyn-compatible.
+	///
+	/// Prefer [`Signal::read`] where available.
 	pub fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r + Sync,
@@ -1366,9 +1372,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		self._managed().read_dyn()
 	}
 
-	/// The same as [`SourcePin::read_exclusive`], but dyn-compatible.
+	/// The same as [`Signal::read_exclusive`], but dyn-compatible.
 	///
-	/// Prefer [`SourcePin::read_dyn`] where available.
+	/// Prefer [`Signal::read_dyn`] where available.
 	pub fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
@@ -1376,7 +1382,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		self._managed().read_exclusive_dyn()
 	}
 
-	/// Clones this [`SourcePin`]'s [`SignalsRuntimeRef`].
+	/// Clones this [`Signal`]'s [`SignalsRuntimeRef`].
 	pub fn clone_runtime_ref(&self) -> SR
 	where
 		SR: Sized,

@@ -1,31 +1,32 @@
-# `flourish`
+# *flourish*
 
 Convenient and composable signals for Rust.
 
 The API design emphasises efficient resource management and performance-aware code without compromising on ease of use at near-zero boilerplate.
 
-🚧 This is a(n optimisable) proof of concept! 🚧  
-🚧 The API is full-featured, but the code is not (much at all) optimised. 🚧
+🚧 This is a(n optimisable) proof of concept! The API is full-featured, but the code is not (much at all) optimised. However, high degrees of optimisation should be possible without breaking changes. 🚧
 
-Flourish is a signals library inspired by [🚦 JavaScript Signals standard proposal🚦](https://github.com/tc39/proposal-signals?tab=readme-ov-file#-javascript-signals-standard-proposal) (but Rust-y).
+*flourish* is a signals library inspired by [🚦 JavaScript Signals standard proposal🚦](https://github.com/tc39/proposal-signals?tab=readme-ov-file#-javascript-signals-standard-proposal) (but Rust-y).
 
-When combined with for example [`Option`](https://doc.rust-lang.org/stable/core/option/enum.Option.html) and [`Future`](https://doc.rust-lang.org/stable/core/future/trait.Future.html), `flourish` can model asynchronous-and-cancellable resource loads. See the crate `flourish-extra` for example combinators and `flourish-extensions` to use them conveniently through constructor extensions.
+When combined with for example [`Option`](https://doc.rust-lang.org/stable/core/option/enum.Option.html) and [`Future`](https://doc.rust-lang.org/stable/core/future/trait.Future.html), *flourish* can model asynchronous-and-cancellable resource loads efficiently.
 
-This makes it a suitable replacement for most standard use cases of RxJS-style observables, though *with the included runtime* it **may debounce propagation and as such isn't suited for sequences**. (You should probably prefer channels for those. flourish does work well with reference-counted resources, however, and can flush them from stale unsubscribed signals. //TODO)
+This makes it a suitable replacement for most standard use cases of RxJS-style observables, though *with the included runtime* it **may debounce propagation and as such isn't suited for sequences**. (You should probably prefer channels for those. *flourish* does work well with reference-counted resources, however, and can flush them from stale unsubscribed signals.)
+
+**Distinct major versions of this library are logically cross-compatible**, as long as they use the same version of `isoprenoid`.
 
 ## Known Issues
 
 ⚠️ The update task queue is currently not fair whatsoever, so one thread looping inside signal processing will block all others.  
-(You *can* substitute your own `SignalsRuntimeRef` implementation if you'd like to experiment. Nearly all types in this crate are generic over the runtime, so that which you're working with is easy to identify.)
+(You *can* substitute your own `SignalsRuntimeRef` implementation if you'd like to experiment. All relevant types in this crate are generic over the runtime, so that which you're working with is easy to identify or preset via type alias.)
 
-⚠️ The panic handling in the included runtime really isn't good.  
+⚠️ The panic handling in the included runtime isn't good yet.  
 Fixing this doesn't incur API changes, and I don't need it right now, so I haven't implemented panic routing that would preserve the runtime when callbacks fail.
 
 ## Prelude
 
-Flourish's prelude re-exports its accessor traits anonymously.
+*flourish*'s prelude re-exports its unmanaged accessor traits and the `SignalsRuntimeRef` trait. *You need neither to work with managed signals*, but are likely to make use of the traits for custom low-level combinators.
 
-If you can't call `.get()` or `.change(…)`, this import is what you're looking for:
+If you can't call `.get()` or `.change(…)` on pinned unmanaged signals, this import is what you're looking for:
 
 ```rust
 use flourish::prelude::*;
@@ -154,7 +155,7 @@ let signal = Signal::computed({
   })
 }); // nothing
 
-// For demo purposes, the original `SignalArc` is kept here.
+// For demo purposes, the original `SignalArc` is preserved here.
 // To consume it, write `.into_subscription()`, which is more efficient.
 let subscription = signal.to_subscription(); // ""
 
@@ -169,10 +170,12 @@ a.change("a"); // nothing
 b.change("b"); // "b"
 
 drop(subscription);
-index.change(3); // nothing
+index.change(3); // nothing, even though `signal` still exists
+
+drop(signal);
 ```
 
-`Signal`s are fully lazy, so they only update while subscribed or to refresh their value if dirty.
+`Signal`s are fully lazy, so they generally only run their closures while subscribed or to refresh their value if dirty.
 
 The default `GlobalSignalsRuntime` notifies signals iteratively from earlier to later when possible. Only one such notification cascade is processed at a time with this runtime.
 
@@ -180,11 +183,33 @@ The default `GlobalSignalsRuntime` notifies signals iteratively from earlier to 
 
 ## Unsizing
 
-TODO
+As mentioned in passing earlier, closure types captured in signals in this library can be erased from smart pointers and references. For example:
+
+```rust
+
+use flourish::{shadow_clone, GlobalSignalsRuntime, Propagation};
+
+// Choose a runtime:
+type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+
+let mut cell;
+cell = Signal::cell(()).into_dyn_cell();
+cell = Signal::cell_reactive((), |_, _| Propagation::Halt).into_dyn_cell();
+cell = Signal::cell_reactive((), |_, _| Propagation::Halt).into(); // via `Into`
+
+let mut signal;
+signal = Signal::cell(()).into_dyn();
+signal = Signal::cell_reactive((), |_, _| Propagation::Halt).into_dyn();
+signal = Signal::cell_reactive((), |_, _| Propagation::Halt).into(); // via `Into`
+signal = Signal::computed(|| ()).into_dyn();
+signal = Signal::computed(|| ()).into(); // via `Into`
+```
+
+There are additional conversion methods available. See the `conversions` module for details.
 
 ## Using an instantiated runtime
 
-You can use existing [`isoprenoid`] runtime instances with the included types and macros (but ideally, still alias these items for your own use):
+You can use existing `isoprenoid` runtime instances with the included types and macros (but ideally, still alias these items for your own use):
 
 ```rust
 use flourish::{signals_helper, GlobalSignalsRuntime, Propagation, Signal, Subscription};
@@ -214,7 +239,7 @@ signals_helper! {
 }
 ```
 
-Runtimes have some leeway regarding in which order they invoke the callbacks. A different runtime may also choose to combine propagation from distinct updates, reducing the amount of callback runs.
+Runtimes have some leeway regarding when and in which order they invoke the callbacks. They can also decide whether to perform all updates' effects separately or merge refresh cascades.
 
 ## Compiler (and Standard Library) Wishlist
 
@@ -224,19 +249,21 @@ This mainly affects certain optimisations not being in place yet, but does have 
 
 |Feature|What it would enable|
 |-|-|
-|[`coerce_unsized`](https://github.com/rust-lang/rust/issues/18598)|Unsizing coercions for various `SourcePin` (handle) types.<br>For now, please use `.into_dyn()` or the `From`/`Into` conversions instead.|
-|[`trait_upcasting`](https://github.com/rust-lang/rust/issues/65991)|Shrink `SignalCellSR` and `SignalCellRef` by at least half.|
+|[`coerce_unsized`](https://github.com/rust-lang/rust/issues/18598)|More type-erasure coercions for various `Signal` handle types (probably). For now, please use the respective conversion methods or `From`/`Into` conversions instead.|
+|[`trait_upcasting`](https://github.com/rust-lang/rust/issues/65991)|Conversions from `…DynCell` to `…Dyn`.|
 |Fix for [Unexpected higher-ranked lifetime error in GAT usage](https://github.com/rust-lang/rust/issues/100013)|(Cleanly) avoid boxing the inner closure in many "`_eager`" methods.|
 |Object-safety for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
-|[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of `SignalCellPin` implementations.|
+|[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of signal cell implementations.|
 |[`impl_trait_in_assoc_type`](https://github.com/rust-lang/rust/issues/63063)|Eliminate several surfaced internal types, resulting in better docs.|
-|[Precise capturing in RPITIT.](https://github.com/rust-lang/rust/pull/126746)|This would clean up the API quite a lot, by removing some GATs.|
-|Deref coercions in constant functions.|Make several conversions available as `const` methods.|
+|[Precise capturing in RPITIT](https://github.com/rust-lang/rust/pull/126746)|This would clean up the API quite a lot, by removing some GATs.|
+|Deref coercions in constant functions|Make several conversions available as `const` methods.|
 |[`arbitrary_self_types`](https://github.com/rust-lang/rust/issues/44874)|Inline-pinning of values (with a clean API).|
 |`Pin<Ptr: ?Sized>`|Type-erasure for the aforementioned clean inline-pinning signals.|
 |["`super let`"](https://blog.m-ou.se/super-let/) (or equivalent)|Easier-to-use macros for unmanaged/inline signals.|
-|"`FnPin`[`Mut`]" closures with simple return type, also implemented by current `FnMut` closures and functions | This could nicely potentially allow safe `\|\| { let x = pin!(…); loop { yield …; } }` closures for the "fn_pin" parameters, where currently only `FnMut` is accepted and any inline pinning requires `unsafe`.|
+|"`FnPin`" and "`FnPinMut`" closures with simple return type, also implemented by current `FnMut` closures and functions | This could nicely allow safe `\|\| { let x = pin!(…); loop { yield …; } }` closures for the "fn_pin" parameters, where currently only `FnMut` is accepted and any inline pinning requires `unsafe`.|
 
 ## Open Questions
 
-- Would a `WeakSubscription` be useful?
+- Would a `WeakSubscription` be useful? It would keep a `Signal` subscribed without preventing its destruction.
+
+  On one hand that may be useful to keep certain caches fresh. On the other hand, it would make it *a lot* easier to cause hard-to-debug side effects.

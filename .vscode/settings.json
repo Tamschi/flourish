@@ -3,6 +3,9 @@
         "combinators",
         "isoprenoid",
         "pinnable",
+        "Reborrows",
+        "restabilised",
+        "RPITIT",
         "scopeguard",
         "sptr"
     ],

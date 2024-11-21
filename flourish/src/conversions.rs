@@ -83,8 +83,8 @@ use std::{borrow::Borrow, ops::Deref};
 use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::{
-	signal_arc::SignalArcDynCell, traits::UnmanagedSignalCell, unmanaged::UnmanagedSignal, Signal,
-	SignalArc, SignalArcDyn, SignalDyn, SignalDynCell, SignalWeak, SignalWeakDyn,
+	signal_arc::SignalArcDynCell, traits::UnmanagedSignalCell, unmanaged::UnmanagedSignal, Effect,
+	Signal, SignalArc, SignalArcDyn, SignalDyn, SignalDynCell, SignalWeak, SignalWeakDyn,
 	SignalWeakDynCell, Subscription, SubscriptionDyn, SubscriptionDynCell,
 };
 
