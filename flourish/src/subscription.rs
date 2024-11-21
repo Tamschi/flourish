@@ -30,7 +30,7 @@ pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSign
 
 /// Intrinsically-subscribing version of [`SignalArc`].  
 /// Can be directly constructed but also converted to and from that type.
-#[must_use = "Subscriptions are cancelled when dropped."]
+#[must_use = "Subscriptions are undone when dropped."]
 pub struct Subscription<
 	T: ?Sized + Send,
 	S: ?Sized + UnmanagedSignal<T, SR>,

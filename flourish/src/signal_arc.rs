@@ -9,6 +9,7 @@ use isoprenoid::runtime::SignalsRuntimeRef;
 use crate::{
 	signal::{Signal, Strong, Weak},
 	traits::{UnmanagedSignal, UnmanagedSignalCell},
+	Subscription,
 };
 
 /// Type of [`SignalArc`]s after type-erasure.
@@ -186,6 +187,16 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		let Self { strong } = self;
 		SignalArcDynCell {
 			strong: strong.into_dyn_cell(),
+		}
+	}
+
+	/// Subscribes to the managed [`Signal`], converting this [`SignalArc`] into a [`Subscription`].
+	///
+	/// Compared to [`Signal::to_subscription`], this avoids some memory barriers.
+	pub fn into_subscription(self) -> Subscription<T, S, SR> {
+		self.strong._managed().subscribe();
+		Subscription {
+			subscribed: self.strong,
 		}
 	}
 }

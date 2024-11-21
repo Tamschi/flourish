@@ -1225,13 +1225,17 @@ impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> 
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
-	pub fn subscribe(&self) -> Subscription<T, S, SR> {
+	/// Creates a new [`Subscription`] for this [`Signal`].
+	///
+	/// Where you consume an owned [`SignalArc`], prefer [`SignalArc::into_subscription`] to avoid some memory barriers.
+	pub fn to_subscription(&self) -> Subscription<T, S, SR> {
 		(*ManuallyDrop::new(Subscription {
 			subscribed: Strong { strong: self },
 		}))
 		.clone()
 	}
 
+	/// Creates a new [`SignalWeak`] for this [`Signal`].
 	pub fn downgrade(&self) -> SignalWeak<T, S, SR> {
 		(*ManuallyDrop::new(SignalWeak {
 			weak: Weak { weak: self },
@@ -1239,6 +1243,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		.clone()
 	}
 
+	/// Reborrows without the [`UnmanagedSignal`] `S` in the type signature.
 	pub fn as_dyn<'a>(&self) -> &SignalDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
@@ -1246,6 +1251,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		self
 	}
 
+	/// Reborrows without the [`UnmanagedSignalCell`] `S` in the type signature.
 	pub fn as_dyn_cell<'a>(&self) -> &SignalDynCell<'a, T, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
@@ -1253,6 +1259,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		self
 	}
 
+	/// Reborrows with the [`UnmanagedSignalCell`] `S` replaced by an opqaue [`UnmanagedSignal`] in the type signature.
 	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,

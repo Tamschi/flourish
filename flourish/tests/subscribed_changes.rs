@@ -20,7 +20,7 @@ fn intrinsic() {
 	drop(a);
 	v.expect([]);
 
-	let s = s.subscribe();
+	let s = s.to_subscription();
 	v.expect([true]);
 
 	drop(s);
@@ -90,7 +90,7 @@ fn lifecycle() {
 	let s = Signal::computed(move || v.push(s.get()));
 	v.expect([]);
 
-	let s = s.subscribe();
+	let s = s.to_subscription();
 	v.expect([true]);
 
 	let s = s.unsubscribe();

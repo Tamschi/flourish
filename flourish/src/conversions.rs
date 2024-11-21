@@ -14,23 +14,61 @@
 //!
 //! Note that only side-effect-free conversions are supported via [`From`]:
 //!
-//! | from ↓ \ into →      | [`SignalCellSR`]       | [`SignalCellDyn`]           | [`SignalCellRef`]        | [`SignalCellRefDyn`]          |
-//! |----------------------|------------------------|-----------------------------|--------------------------|-------------------------------|
-//! | [`SignalCellSR`]     | [identity]             | [`.into_dyn()`][id1]        | (`&`)&nbsp;[`.as_ref()`][ar1] | (`&`)&nbsp;[`.as_ref_dyn()`][ard1] |
-//! | [`SignalCellDyn`]    | →                      | [identity]                  | →                        | (`&`)&nbsp;[`.as_ref()`][ar1]      |
-//! | [`SignalCellRef`]    | (`&`)&nbsp;[`.clone()`][c1] | (`&`)&nbsp;[`.clone_dyn()`][cd1] | [identity]               | [`.into_dyn()`][id2]          |
-//! | [`SignalCellRefDyn`] | →                      | (`&`)&nbsp;[`.clone()`][c1]      | →                        | [identity]                    |
+//! ## with [`UnmanagedSignalCell`]
 //!
-//! | from ↓ \ into →      | [`SignalSR`]                                           | [`SignalDyn`]                                                    | [`SignalRef`]                      | [`SignalRefDyn`]                      |
-//! |----------------------|--------------------------------------------------------|------------------------------------------------------------------|------------------------------------|---------------------------------------|
-//! | [`SignalCellSR`]     | [`.into_signal()`][is1]<br>(`&`)&nbsp;[`.to_signal()`][ts1] | [`.into_signal_dyn()`][isd1]<br>(`&`)&nbsp;[`.to_signal_dyn()`][tsd1] | (`&`)&nbsp;[`.as_signal_ref()`][asr1]   | (`&`)&nbsp;[`.as_signal_ref_dyn()`][asrd1] |
-//! | [`SignalCellDyn`]    | →                                                      | [`.into_signal()`][is1]<br>(`&`)&nbsp;[`.to_signal()`][ts1]           | →                                  | (`&`)&nbsp;[`.as_signal_ref()`][asr1]      |
-//! | [`SignalCellRef`]    | (`&`)&nbsp;[`.to_signal()`][ts2]                            | (`&`)&nbsp;[`.to_signal_dyn()`][tsd2]                                 | [`.into_signal_ref()`][isr1]       | [`.into_signal_ref()`][isrd1]         |
-//! | [`SignalCellRefDyn`] | →                                                      | (`&`)&nbsp;[`.to_signal()`][ts2]                                      | →                                  | [`.into_signal_ref()`][isr1]          |
-//! | [`SignalSR`]         | [identity]                                             | [`.into_dyn()`][id3]                                             | (`&`)&nbsp;[`.as_ref()`][ar2]           | (`&`)&nbsp;[`.as_ref_dyn()`][ard2]         |
-//! | [`SignalDyn`]        | →                                                      | [identity]                                                       | →                                  | (`&`)&nbsp;[`.as_ref()`][ar2]              |
-//! | [`SignalRef`]        | (`&`)&nbsp;[`.clone()`][c2]                                 | (`&`)&nbsp;[`.clone_dyn()`][cd2]                                      | [identity]                         | [`.into_dyn()`][id4]                  |
-//! | [`SignalRefDyn`]     | →                                                      | (`&`)&nbsp;[`.clone()`][c2]                                           | →                                  | [identity]                            |
+//! | from ↓ \ into →           | [`&`]‌[`Signal`] ([cell]) | [`&`]‌[`SignalDynCell`]             | [`SignalArc`] ([cell])   | [`SignalArcDynCell`]                  | [`SignalWeak`] ([cell]) | [`SignalWeakDynCell`]                 | [`Subscription`] ([cell]) | [`SubscriptionDynCell`]             |
+//! |---------------------------|--------------------------|------------------------------------|--------------------------|---------------------------------------|-------------------------|---------------------------------------|---------------------------|-------------------------------------|
+//! | [`&`]‌[`Signal`] ([cell])  | [identity] + [`Copy`]    | coercion / [`.as_dyn_cell()`]      | [`ToOwned`]              | via [`SignalArc`]                     | [`.downgrade()`]        | via [`SignalWeak`]                    | [`.to_subscription()`]    | via [`Subscription`]                |
+//! | [`&`]‌[`SignalDynCell`]    | [identity] + [`Copy`]    | [identity] + [`Copy`]              | [`ToOwned`]              | [`ToOwned`]                           | [`.downgrade()`]        | [`.downgrade()`]                      | [`.to_subscription()`]    | [`.to_subscription()`]              |
+//! | [`SignalArc`] ([cell])    | [`Deref`]                | via [`&`]‌[`Signal`]                | [identity] + [`Clone`]   | coercion / [`.into_dyn_cell()`][idc1] | via [`&`]‌[`Signal`]     | via [`&`]‌[`Signal`], [`SignalWeak`]   | [`.into_subscription()`]  | via [`Subscription`]                |
+//! | [`SignalArcDynCell`]      | [`Deref`]                | [`Deref`]                          | [identity] + [`Clone`]   | [identity] + [`Clone`]                | via [`&`]‌[`Signal`]     | via [`&`]‌[`Signal`]                   | [`.into_subscription()`]  | [`.into_subscription()`]            |
+//! | [`SignalWeak`] ([cell])   | via [`SignalArc`]        | via [`SignalArc`], [`&`]‌[`Signal`] | [`.upgrade()`]           | via [`SignalArc`]                     | [identity] + [`Clone`]  | coercion / [`.into_dyn_cell()`][idc2] | via [`SignalArc`]         | via [`SignalArc`], [`Subscription`] |
+//! | [`SignalWeakDynCell`]     | via [`SignalArc`]        | via [`SignalArc`]                  | [`.upgrade()`]           | [`.upgrade()`]                        | [identity] + [`Clone`]  | [identity] + [`Clone`]                | via [`SignalArc`]         | via [`SignalArc`]                   |
+//! | [`Subscription`] ([cell]) | [`Deref`]                | via [`&`]‌[`Signal`]                | [`.unsubscribe()`]       | via [`SignalArc`]                     | via [`&`]‌[`Signal`]     | via [`&`]‌[`Signal`], [`SignalWeak`]   | [identity] + [`Clone`]    | [`.into_dyn_cell()`][idc3]          |
+//! | [`SubscriptionDynCell`]   | [`Deref`]                | [`Deref`]                          | [`.unsubscribe()`]       | [`.unsubscribe()`]                    | via [`&`]‌[`Signal`]     | via [`&`]‌[`Signal`]                   | [identity] + [`Clone`]    | [identity] + [`Clone`]              |
+//!
+//! ## with [`UnmanagedSignal`]
+//!
+//! | from ↓ \ into →             | [`&`]‌[`Signal`] ([signal]) | [`&`]‌[`SignalDyn`]                 | [`SignalArc`] ([signal]) | [`SignalArcDyn`]                | [`SignalWeak`] ([signal]) | [`SignalWeakDyn`]                   | [`Subscription`] ([signal]) | [`SubscriptionDyn`]                 |
+//! |-----------------------------|----------------------------|------------------------------------|--------------------------|---------------------------------|---------------------------|-------------------------------------|-----------------------------|-------------------------------------|
+//! | [`&`]‌[`Signal`] ([signal])  | [identity] + [`Copy`]      | coercion / [`.as_dyn()`]           | [`ToOwned`]              | via [`SignalArc`]               | [`.downgrade()`]          | via [`SignalWeak`]                  | [`.to_subscription()`]      | via [`Subscription`]                |
+//! | [`&`]‌[`SignalDyn`]          | [identity] + [`Copy`]      | [identity] + [`Copy`]              | [`ToOwned`]              | [`ToOwned`]                     | [`.downgrade()`]          | [`.downgrade()`]                    | [`.to_subscription()`]      | [`.to_subscription()`]              |
+//! | [`SignalArc`] ([signal])    | [`Deref`]                  | via [`&`]‌[`Signal`]                | [identity] + [`Clone`]   | coercion / [`.into_dyn()`][id1] | via [`&`]‌[`Signal`]       | via [`&`]‌[`Signal`], [`SignalWeak`] | [`.into_subscription()`]    | via [`Subscription`]                |
+//! | [`SignalArcDyn`]            | [`Deref`]                  | [`Deref`]                          | [identity] + [`Clone`]   | [identity] + [`Clone`]          | via [`&`]‌[`Signal`]       | via [`&`]‌[`Signal`]                 | [`.into_subscription()`]    | [`.into_subscription()`]            |
+//! | [`SignalWeak`] ([signal])   | via [`SignalArc`]          | via [`SignalArc`], [`&`]‌[`Signal`] | [`.upgrade()`]           | via [`SignalArc`]               | [identity] + [`Clone`]    | coercion / [`.into_dyn()`][id2]     | via [`SignalArc`]           | via [`SignalArc`], [`Subscription`] |
+//! | [`SignalWeakDyn`]           | via [`SignalArc`]          | via [`SignalArc`]                  | [`.upgrade()`]           | [`.upgrade()`]                  | [identity] + [`Clone`]    | [identity] + [`Clone`]              | via [`SignalArc`]           | via [`SignalArc`]                   |
+//! | [`Subscription`] ([signal]) | [`Deref`]                  | via [`&`]‌[`Signal`]                | [`.unsubscribe()`]       | via [`SignalArc`]               | via [`&`]‌[`Signal`]       | via [`&`]‌[`Signal`], [`SignalWeak`] | [identity] + [`Clone`]      | [`.into_dyn()`][id3]                |
+//! | [`SubscriptionDyn`]         | [`Deref`]                  | [`Deref`]                          | [`.unsubscribe()`]       | [`.unsubscribe()`]              | via [`&`]‌[`Signal`]       | via [`&`]‌[`Signal`]                 | [identity] + [`Clone`]      | [identity] + [`Clone`]              |
+//!
+//! ## [`UnmanagedSignalCell`] to [`UnmanagedSignal`]
+//!
+//! | from (read-write) ↓ \ into (read-only) → | [`&`]‌[`Signal`] ([signal])   | [`&`]‌[`SignalDyn`]               | [`SignalArc`] ([signal])               | [`SignalArcDyn`]                | [`SignalWeak`] ([signal])                             | [`SignalWeakDyn`]                                     | [`Subscription`] ([signal])   | [`SubscriptionDyn`]           |
+//! |------------------------------------------|------------------------------|----------------------------------|----------------------------------------|---------------------------------|-------------------------------------------------------|-------------------------------------------------------|-------------------------------|-------------------------------|
+//! | [`&`]‌[`Signal`] ([cell])                 | [`.as_read_only()`]          | coercion / [`.as_dyn()`]         | via [`SignalArc`] ([cell])             | via [`SignalArc`] ([cell])      | via [`SignalWeak`] ([cell])                           | via [`SignalWeak`] ([cell])                           | via [`Subscription`] ([cell]) | via [`Subscription`] ([cell]) |
+//! | [`SignalArc`] ([cell])                   | via [`&`]‌[`Signal`] ([cell]) | via [`&`]‌[`Signal`] ([cell])     | coercion / [`.into_read_only()`][iro1] | coercion / [`.into_dyn()`][id1] | via [`&`]‌[`Signal`] ([cell]), [`SignalWeak`] ([cell]) | via [`&`]‌[`Signal`] ([cell]), [`SignalWeak`] ([cell]) | via [`Subscription`] ([cell]) | via [`Subscription`] ([cell]) |
+//! | [`SignalWeak`] ([cell])                  | TODO
+//! | [`Subscription`] ([cell])                | TODO
+//!
+//! [`.as_dyn_cell()`]: `Signal::as_dyn_cell`
+//! [`.downgrade()`]: `Signal::downgrade`
+//! [`.to_subscription()`]: `Signal::to_subscription`
+//! [idc1]: `SignalArc::into_dyn_cell`
+//! [`.into_subscription()`]: `SignalArc::into_subscription`
+//! [`.upgrade()`]: `SignalWeak::upgrade`
+//! [`.unsubscribe()`]: `Subscription::unsubscribe`
+//! [idc2]: `SignalWeak::into_dyn_cell`
+//! [idc3]: `Subscription::into_dyn_cell`
+//!
+//! [signal]: `UnmanagedSignal`
+//! [`.as_dyn()`]: `Signal::as_dyn`
+//! [id1]: `SignalArc::into_dyn`
+//! [id2]: `SignalWeak::into_dyn`
+//! [id3]: `Subscription::into_dyn`
+//!
+//! [`.as_read_only()`]: `Signal::as_read_only`
+//! [iro1]: `SignalArc::into_read_only`
+//! [iro2]: `SignalWeak::into_read_only`
+//! [iro3]: `Subscription::into_read_only`
 //!
 //! //TODO: Formatting!
 //! //TODO: Table for subscriptions.
@@ -39,6 +77,7 @@
 //! //TODO: On second thought, remove most of the convenience methods, implement [`Borrow`], [`ToOwned`], [`Deref`] and possibly [`AsRef`] instead.
 //! //      (Refcounting handles can wrap Refs!)
 //!
+//! [cell]: `UnmanagedSignalCell`
 //! [identity]: https://doc.rust-lang.org/stable/std/convert/trait.From.html#impl-From%3CT%3E-for-T
 //! [c1]: `SignalCellRef::clone`
 //! [id1]: `SignalCellSR::into_dyn`
@@ -74,11 +113,14 @@
 //!
 //! ## Side-effect conversions
 
+use std::ops::Deref;
+
 use isoprenoid::runtime::SignalsRuntimeRef;
 
 use crate::{
-	signal_arc::SignalArcDynCell, traits::UnmanagedSignalCell, unmanaged::UnmanagedSignal,
-	SignalArc, SignalArcDyn,
+	signal_arc::SignalArcDynCell, traits::UnmanagedSignalCell, unmanaged::UnmanagedSignal, Signal,
+	SignalArc, SignalArcDyn, SignalDyn, SignalDynCell, SignalWeak, SignalWeakDyn,
+	SignalWeakDynCell, Subscription, SubscriptionDyn, SubscriptionDynCell,
 };
 
 // into `SignalCellRefDyn`
