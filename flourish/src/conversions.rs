@@ -47,7 +47,24 @@
 //!
 //! ## [`Effect`]
 //!
-//! [`Effect`]'s are inconvertible.
+//! [`Effect`] is invariant over its state and closure types and as such inconvertible.
+//!
+//! ## [`From`]/[`Into`]
+//!
+//! [`From`] and [`Into`] are available for *side effect free* conversions. These are:
+//!
+//! - [identity]
+//! - unsizing / type-erasure
+//! - [`ToOwned`]
+//! - [`.downgrade()`] (with [`&`]‌[`Signal`] as input)
+//! - **combinations of the above**
+//!
+//! ## [`TryFrom`]/[`TryInto`]
+//!
+//! [`TryFrom`] and [`TryInto`] are available for *side effect free* fallible conversions. These are:
+//!
+//! - [`.upgrade()`] (with [`Result`]`<`[`SignalArc`]`, `[`SignalWeak`]`>` as output)
+//! - **combinations of the above with unsizing / type-erasure**
 //!
 //! [cell]: `UnmanagedSignalCell`
 //! [identity]: https://doc.rust-lang.org/stable/std/convert/trait.From.html#impl-From%3CT%3E-for-T
@@ -88,7 +105,31 @@ use crate::{
 	SignalWeakDynCell, Subscription, SubscriptionDyn, SubscriptionDynCell,
 };
 
-// TODO: `From`/`Into` conversions.
+impl<
+		'r,
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignal<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<&'r Signal<T, S, SR>> for &'r SignalDyn<'a, T, SR>
+{
+	fn from(value: &'r Signal<T, S, SR>) -> Self {
+		value
+	}
+}
+
+impl<
+		'r,
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<&'r Signal<T, S, SR>> for &'r SignalDynCell<'a, T, SR>
+{
+	fn from(value: &'r Signal<T, S, SR>) -> Self {
+		value
+	}
+}
 
 impl<
 		'a,
@@ -162,4 +203,121 @@ impl<
 	}
 }
 
-//TODO: Conversion from UnmanagedSignalCell.
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> From<S>
+	for SignalArc<T, S, SR>
+{
+	fn from(value: S) -> Self {
+		Self::new(value)
+	}
+}
+
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	From<&Signal<T, S, SR>> for SignalArc<T, S, SR>
+{
+	fn from(value: &Signal<T, S, SR>) -> Self {
+		value.to_owned()
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<&Signal<T, S, SR>> for SignalArcDyn<'a, T, SR>
+{
+	fn from(value: &Signal<T, S, SR>) -> Self {
+		value.to_dyn()
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<&Signal<T, S, SR>> for SignalArcDynCell<'a, T, SR>
+{
+	fn from(value: &Signal<T, S, SR>) -> Self {
+		value.to_dyn_cell()
+	}
+}
+
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	From<&Signal<T, S, SR>> for SignalWeak<T, S, SR>
+{
+	fn from(value: &Signal<T, S, SR>) -> Self {
+		value.downgrade()
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<&Signal<T, S, SR>> for SignalWeakDyn<'a, T, SR>
+{
+	fn from(value: &Signal<T, S, SR>) -> Self {
+		value.downgrade().into_dyn()
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> From<&Signal<T, S, SR>> for SignalWeakDynCell<'a, T, SR>
+{
+	fn from(value: &Signal<T, S, SR>) -> Self {
+		value.downgrade().into_dyn_cell()
+	}
+}
+
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	TryFrom<SignalWeak<T, S, SR>> for SignalArc<T, S, SR>
+{
+	type Error = SignalWeak<T, S, SR>;
+
+	fn try_from(value: SignalWeak<T, S, SR>) -> Result<Self, Self::Error> {
+		match value.upgrade() {
+			Some(strong) => Ok(strong),
+			None => Err(value),
+		}
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> TryFrom<SignalWeak<T, S, SR>> for SignalArcDyn<'a, T, SR>
+{
+	type Error = SignalWeak<T, S, SR>;
+
+	fn try_from(value: SignalWeak<T, S, SR>) -> Result<Self, Self::Error> {
+		match value.upgrade() {
+			Some(strong) => Ok(strong.into_dyn()),
+			None => Err(value),
+		}
+	}
+}
+
+impl<
+		'a,
+		T: 'a + ?Sized + Send,
+		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
+		SR: 'a + ?Sized + SignalsRuntimeRef,
+	> TryFrom<SignalWeak<T, S, SR>> for SignalArcDynCell<'a, T, SR>
+{
+	type Error = SignalWeak<T, S, SR>;
+
+	fn try_from(value: SignalWeak<T, S, SR>) -> Result<Self, Self::Error> {
+		match value.upgrade() {
+			Some(strong) => Ok(strong.into_dyn_cell()),
+			None => Err(value),
+		}
+	}
+}
