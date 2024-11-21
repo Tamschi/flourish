@@ -47,8 +47,6 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		self.weak.upgrade().map(|strong| SignalArc { strong })
 	}
 
-	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
-
 	/// Erases the (generally opaque) type parameter `S`, allowing the weak signal handle
 	/// to be stored easily.
 	pub fn into_dyn<'a>(self) -> SignalWeakDyn<'a, T, SR>
@@ -164,8 +162,6 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 			strong: Strong::pin(unmanaged),
 		}
 	}
-
-	//TODO: Various `From` and `TryFrom` conversions, including for unsizing.
 
 	/// Erases the (generally opaque) type parameter `S`, allowing the signal handle to
 	/// be stored easily.

@@ -35,7 +35,7 @@ where
 	}
 }
 
-/// TODO: Safety.
+// TODO: Safety documentation.
 unsafe impl<T: Send + ?Sized, SR: SignalsRuntimeRef + Sync> Sync for InertCell<T, SR> {}
 
 struct AssertSync<T: ?Sized>(T);

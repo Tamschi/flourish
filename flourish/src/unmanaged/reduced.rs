@@ -62,7 +62,7 @@ impl<'a, T: ?Sized> Borrow<T> for ReducedGuardExclusive<'a, T> {
 	}
 }
 
-/// TODO: Safety documentation.
+// TODO: Safety documentation.
 unsafe impl<
 		T: Send,
 		S: Send + FnMut() -> T,

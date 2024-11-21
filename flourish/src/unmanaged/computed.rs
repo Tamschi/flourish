@@ -58,7 +58,7 @@ impl<'a, T: ?Sized> Borrow<T> for ComputedGuardExclusive<'a, T> {
 	}
 }
 
-/// TODO: Safety documentation.
+// TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef + Sync> Sync
 	for Computed<T, F, SR>
 {

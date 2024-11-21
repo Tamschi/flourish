@@ -53,7 +53,7 @@ impl<T: ?Sized> Borrow<T> for ComputedUncachedGuardExclusive<T> {
 	}
 }
 
-/// TODO: Safety documentation.
+// TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef + Sync> Sync
 	for ComputedUncached<T, F, SR>
 {

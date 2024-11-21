@@ -50,7 +50,7 @@ where
 	}
 }
 
-/// TODO: Safety.
+// TODO: Safety documentation.
 unsafe impl<
 		T: ?Sized + Send,
 		HandlerFnPin: Send

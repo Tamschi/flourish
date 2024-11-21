@@ -59,7 +59,7 @@ impl<'a, T: ?Sized> Borrow<T> for FoldedGuardExclusive<'a, T> {
 	}
 }
 
-/// TODO: Safety documentation.
+// TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef + Sync> Sync
 	for Folded<T, F, SR>
 {

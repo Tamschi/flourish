@@ -53,7 +53,7 @@ impl<T: ?Sized> Borrow<T> for ComputedUncachedMutGuardExclusive<T> {
 	}
 }
 
-/// TODO: Safety documentation.
+// TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef + Sync> Sync
 	for ComputedUncachedMut<T, F, SR>
 {
