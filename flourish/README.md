@@ -130,7 +130,6 @@ use flourish::{shadow_clone, GlobalSignalsRuntime};
 
 // Choose a runtime:
 type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
 let a = Signal::cell("a");
 let b = Signal::cell("b");
@@ -155,6 +154,8 @@ let signal = Signal::computed({
   })
 }); // nothing
 
+// For demo purposes, the original `SignalArc` is kept here.
+// To consume it, write `.into_subscription()`, which is more efficient.
 let subscription = signal.to_subscription(); // ""
 
 // Note: `change` and `replace` may be deferred (but are safe to use in callbacks)!

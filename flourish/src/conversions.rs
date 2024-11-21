@@ -52,7 +52,7 @@
 //! [cell]: `UnmanagedSignalCell`
 //! [identity]: https://doc.rust-lang.org/stable/std/convert/trait.From.html#impl-From%3CT%3E-for-T
 //! [`.as_dyn_cell()`]: `Signal::as_dyn_cell`
-//! [`.to_dyn_cell()`]: `Signal::to_dyn_cell`c
+//! [`.to_dyn_cell()`]: `Signal::to_dyn_cell`
 //! [`.downgrade()`]: `Signal::downgrade`
 //! [idc1]: `SignalArc::into_dyn_cell`
 //! [idc2]: `SignalWeak::into_dyn_cell`
