@@ -68,26 +68,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ext-trait"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d772df1c1a777963712fb68e014235e80863d6a91a85c4e06ba2d16243a310e5"
-dependencies = [
- "ext-trait-proc_macros",
-]
-
-[[package]]
-name = "ext-trait-proc_macros"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ab7934152eaf26aa5aa9f7371408ad5af4c31357073c9e84c3b9d7f11ad639a"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "flourish"
 version = "0.0.0"
 dependencies = [
@@ -96,26 +76,6 @@ dependencies = [
  "isoprenoid",
  "pin-project",
  "tap",
-]
-
-[[package]]
-name = "flourish-extensions"
-version = "0.1.0"
-dependencies = [
- "ext-trait",
- "flourish",
- "flourish-extra",
- "num-traits",
-]
-
-[[package]]
-name = "flourish-extra"
-version = "0.0.0"
-dependencies = [
- "async-lock",
- "flourish",
- "num-traits",
- "pin-project",
 ]
 
 [[package]]
@@ -159,15 +119,6 @@ checksum = "07af8b9cdd281b7915f413fa73f29ebd5d55d0d3f0155584dade1ff18cea1b17"
 dependencies = [
  "autocfg",
  "scopeguard",
-]
-
-[[package]]
-name = "num-traits"
-version = "0.2.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
-dependencies = [
- "autocfg",
 ]
 
 [[package]]
@@ -216,7 +167,7 @@ checksum = "3c0f5fad0874fc7abcd4d750e76917eaebbecaa2c20bde22e1dbeeba8beb758c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.89",
+ "syn",
 ]
 
 [[package]]
@@ -263,17 +214,6 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
-
-[[package]]
-name = "syn"
-version = "1.0.109"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
-dependencies = [
- "proc-macro2",
- "quote",
- "unicode-ident",
-]
 
 [[package]]
 name = "syn"
