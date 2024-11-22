@@ -66,7 +66,7 @@ let _ = Signal::cell_cyclic_reactive_mut(|_weak| ((), move |_value, _status| Pro
 
 // Not evaluated unless subscribed.
 let _ = Signal::computed(|| ());
-let _ = Signal::debounced(|| ());
+let _ = Signal::distinct(|| ());
 let _ = Signal::computed_uncached(|| ()); // `Fn` closure. The others take `FnMut`s.
 let _ = Signal::computed_uncached_mut(|| ());
 let _ = Signal::folded((), |_value| Propagation::Propagate);
@@ -102,7 +102,7 @@ signals_helper! {
   // The closure type is erased!
   // Not evaluated unless subscribed.
   let _source = computed!(|| ());
-  let _source = debounced!(|| ());
+  let _source = distinct!(|| ());
   let _source = computed_uncached!(|| ());
   let _source = computed_uncached_mut!(|| ());
   let _source = folded!((), |_value| Propagation::Propagate);

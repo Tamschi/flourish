@@ -517,7 +517,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 				.is_empty()
 			{
 				// It's not necessary to check if the dependency is actually new here,
-				// as `subscribe_to_with` debounces automatically.
+				// as `subscribe_to_with` filters that automatically.
 
 				// The subscription happens before dependency wiring.
 				// This is important to avoid infinite recursion!

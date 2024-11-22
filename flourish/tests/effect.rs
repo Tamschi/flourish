@@ -34,7 +34,7 @@ fn heap() {
 }
 
 #[test]
-fn effect_drop_is_debounced() {
+fn effect_drop_is_distinct() {
 	let constructions = &Validator::new();
 	let destructions = &Validator::new();
 

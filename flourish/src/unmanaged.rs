@@ -193,8 +193,8 @@ macro_rules! computed_with_runtime {
 #[doc(hidden)]
 pub use crate::computed_with_runtime;
 
-/// Unmanaged version of [`Signal::debounced_with_runtime`](`crate::Signal::debounced_with_runtime`).
-pub fn debounced<
+/// Unmanaged version of [`Signal::distinct_with_runtime`](`crate::Signal::distinct_with_runtime`).
+pub fn distinct<
 	'a,
 	T: 'a + Send + PartialEq,
 	F: 'a + Send + FnMut() -> T,
@@ -218,22 +218,22 @@ pub fn debounced<
 }
 #[macro_export]
 #[doc(hidden)]
-macro_rules! debounced {
+macro_rules! distinct {
     ($fn_pin:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::debounced;
+pub use crate::distinct;
 #[macro_export]
 #[doc(hidden)]
-macro_rules! debounced_with_runtime {
+macro_rules! distinct_with_runtime {
     ($source:expr, $runtime:expr$(,)?) => {{
 		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
 	}};
 }
 #[doc(hidden)]
-pub use crate::debounced_with_runtime;
+pub use crate::distinct_with_runtime;
 
 /// Unmanaged version of [`Signal::computed_uncached_with_runtime`](`crate::Signal::computed_uncached_with_runtime`).
 pub fn computed_uncached<
@@ -432,12 +432,12 @@ macro_rules! signals_helper {
 		let $name = ::core::pin::pin!($crate::unmanaged::computed($fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::UnmanagedSignal<_, _>>;
 	};
-	{let $name:ident = debounced!($fn_pin:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::unmanaged::debounced($fn_pin, $crate::GlobalSignalsRuntime));
+	{let $name:ident = distinct!($fn_pin:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::unmanaged::distinct($fn_pin, $crate::GlobalSignalsRuntime));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::UnmanagedSignal<_, _>>;
 	};
-	{let $name:ident = debounced_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
-		let $name = ::core::pin::pin!($crate::unmanaged::debounced($fn_pin, $runtime));
+	{let $name:ident = distinct_with_runtime!($fn_pin:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::unmanaged::distinct($fn_pin, $runtime));
 		let $name = ::core::pin::Pin::into_ref($name) as ::core::pin::Pin<&dyn $crate::unmanaged::UnmanagedSignal<_, _>>;
 	};
 	{let $name:ident = computed_uncached!($fn_pin:expr$(,)?);} => {
@@ -506,7 +506,7 @@ macro_rules! signals_helper {
 		// The compiler still squiggles the entire macro, unfortunately.
 		::core::compile_error!(::core::concat!(
 			"Unrecognised macro name or wrong argument count (for) `", ::core::stringify!($macro), "`. The following macros are supported:\n",
-			"inert_cell[_with_runtime]!(1/2), reactive_cell[_mut][_with_runtime]!(2/3), cached!(1), debounced[_with_runtime]!(1/2), ",
+			"inert_cell[_with_runtime]!(1/2), reactive_cell[_mut][_with_runtime]!(2/3), cached!(1), distinct[_with_runtime]!(1/2), ",
 			"computed[_uncached[_mut]][_with_runtime]!(1/2), folded[_with_runtime]!(2/3), reduced[_with_runtime]!(2/3), ",
 			"subscription[_with_runtime]!(1/2), subscription_from_source!(1), effect[_with_runtime]!(2/3)"
 		));
