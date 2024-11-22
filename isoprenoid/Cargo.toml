@@ -1,6 +1,6 @@
 [package]
 name = "isoprenoid"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2021"
 rust-version = "1.70"
@@ -14,7 +14,7 @@ keywords = ["async", "sdk", "incremental", "runtime", "signals"]
 categories = ["asynchronous", "caching", "concurrency", "gui", "memory-management"]
 
 [package.metadata.docs.rs]
-features = "_doc"
+features = [ "_doc" ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
