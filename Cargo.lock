@@ -72,7 +72,7 @@ dependencies = [
 
 [[package]]
 name = "flourish"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-lock",
  "futures-lite",
@@ -99,7 +99,7 @@ dependencies = [
 
 [[package]]
 name = "isoprenoid"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-lock",
  "event-listener",
