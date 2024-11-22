@@ -85,3 +85,15 @@ jobs:
           use-tool-cache: true
       - name: Checked for unauthorized crate sources
         run: cargo deny check sources
+
+  minimal-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+      - run: cargo update -Z minimal-versions
+      - name: Checked for incompatible minimal versions
+        run: cargo check --features _test
