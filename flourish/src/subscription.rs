@@ -337,7 +337,25 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// `reduce_fn_pin` updates the current value with the next and returns a [`Propagation`].
 	/// Dependencies are detected across both closures.
 	///
-	/// TODO: Example
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation};
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+	///
+	/// # let input = Signal::cell(1);
+	/// let lowest_settled = Subscription::reduced(
+	/// 	|| input.get(),
+	/// 	|value, next| if next < *value {
+	/// 		*value = next;
+	/// 		Propagation::Propagate
+	/// 	} else {
+	/// 		Propagation::Halt
+	/// 	},
+	/// );
+	/// # }
+	/// ```
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced<'a>(
@@ -355,7 +373,23 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// `reduce_fn_pin` updates the current value with the next and returns a [`Propagation`].
 	/// Dependencies are detected across both closures.
 	///
-	/// TODO: Example
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal, Subscription};
+	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// let lowest_settled = Subscription::reduced_with_runtime(
+	/// 	|| input.get(),
+	/// 	|value, next| if next < *value {
+	/// 		*value = next;
+	/// 		Propagation::Propagate
+	/// 	} else {
+	/// 		Propagation::Halt
+	/// 	},
+	/// 	GlobalSignalsRuntime,
+	/// );
+	/// # }
+	/// ```
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced_with_runtime<'a>(
@@ -373,10 +407,46 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// When awaited, subscribes to the given expressions but only returns [`Poll::Ready`](`core::task::Poll::Ready`)
 	/// once `predicate_fn_pin` returns `true`.
 	///
-	/// TODO: Example
-	///
 	/// Note that dependencies of `predicate_fn_pin` are tracked separately and
 	/// do not cause `select_fn_pin` to re-run.
+	///
+	/// How to erase the closure types:
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use std::{future::Future, pin::{pin, Pin}};
+	/// # use flourish::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+	/// type SubscriptionDyn<'a, T> = flourish::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	///
+	/// # #[derive(Default, Clone, Copy)] struct Value;
+	/// # let input = Signal::cell(Value);
+	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<_>>> = pin!(async {
+	/// 	Subscription::skipped_while(|| input.get(), |_| true).await.into_dyn()
+	/// });
+	/// # }
+	/// ```
+	///
+	/// It's fine to [`unsubscribe`](`Subscription::unsubscribe`):
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use std::{future::Future, pin::{pin, Pin}};
+	/// # use flourish::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+	/// type SignalArcDyn<'a, T> = flourish::SignalArcDyn<'a, T, GlobalSignalsRuntime>;
+	///
+	/// # #[derive(Default, Clone, Copy)] struct Value;
+	/// # let input = Signal::cell(Value);
+	/// let f: Pin<&dyn Future<Output = SignalArcDyn<_>>> = pin!(async {
+	/// 	Subscription::skipped_while(|| input.get(), |_| true).await.unsubscribe().into_dyn()
+	/// });
+	/// # }
+	/// ```
 	pub fn skipped_while<'f, 'a: 'f>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
@@ -391,10 +461,42 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// When awaited, subscribes to the given expressions but only returns [`Poll::Ready`](`core::task::Poll::Ready`)
 	/// once `predicate_fn_pin` returns `true`.
 	///
-	/// TODO: Example
-	///
 	/// Note that dependencies of `predicate_fn_pin` are tracked separately and
 	/// do not cause `select_fn_pin` to re-run.
+	///
+	/// How to erase the closure types:
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use std::{future::Future, pin::{pin, Pin}};
+	/// # use flourish::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #[derive(Default, Clone, Copy)] struct Value;
+	/// # let input = Signal::cell(Value);
+	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<_, _>>> = pin!(async {
+	/// 	Subscription::skipped_while_with_runtime(|| input.get(), |_| true, GlobalSignalsRuntime)
+	/// 		.await.into_dyn()
+	/// });
+	/// # }
+	/// ```
+	///
+	/// It's fine to [`unsubscribe`](`Subscription::unsubscribe`):
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use std::{future::Future, pin::{pin, Pin}};
+	/// # use flourish::{GlobalSignalsRuntime, Subscription, SignalArcDyn};
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #[derive(Default, Clone, Copy)] struct Value;
+	/// # let input = Signal::cell(Value);
+	/// let f: Pin<&dyn Future<Output = SignalArcDyn<_, _>>> = pin!(async {
+	/// 	Subscription::skipped_while_with_runtime(|| input.get(), |_| true, GlobalSignalsRuntime)
+	/// 		.await.unsubscribe().into_dyn()
+	/// });
+	/// # }
+	/// ```
 	pub fn skipped_while_with_runtime<'f, 'a: 'f>(
 		select_fn_pin: impl 'a + Send + FnMut() -> T,
 		mut predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
@@ -425,9 +527,30 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	}
 
 	/// When awaited, subscribes to its inputs (from both closures) and resolves to a
-	/// [`Subscription`] that yields only values for which `predicate_fn_pin` returns `true`.
+	/// [`Subscription`] that settles only to values for which `predicate_fn_pin` returns `true`.
 	///
-	/// TODO: Example
+	/// Dependencies are tracked together for both closures.
+	///
+	/// How to erase the closure types:
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use std::{future::Future, pin::{pin, Pin}};
+	/// # use flourish::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+	/// type SubscriptionDyn<'a, T> = flourish::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	///
+	/// # #[derive(Default, Clone, Copy)] struct Value;
+	/// # let input = Signal::cell(Value);
+	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<_>>> = pin!(async {
+	/// 	Subscription::filtered(|| input.get(), |_| false).await.into_dyn()
+	/// });
+	/// # }
+	/// ```
+	///
+	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
 	pub fn filtered<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
@@ -440,9 +563,28 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	}
 
 	/// When awaited, subscribes to its inputs (from both closures) and resolves to a
-	/// [`Subscription`] that yields only values for which `predicate_fn_pin` returns `true`.
+	/// [`Subscription`] that settles only to values for which `predicate_fn_pin` returns `true`.
 	///
-	/// TODO: Example
+	/// Dependencies are tracked together for both closures.
+	///
+	/// How to erase the closure types:
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use std::{future::Future, pin::{pin, Pin}};
+	/// # use flourish::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
+	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #[derive(Default, Clone, Copy)] struct Value;
+	/// # let input = Signal::cell(Value);
+	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<_, _>>> = pin!(async {
+	/// 	Subscription::filtered_with_runtime(|| input.get(), |_| false, GlobalSignalsRuntime)
+	/// 		.await.into_dyn()
+	/// });
+	/// # }
+	/// ```
+	///
+	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
 	pub fn filtered_with_runtime<'a>(
 		mut fn_pin: impl 'a + Send + FnMut() -> T,
 		mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
@@ -485,9 +627,26 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	}
 
 	/// When awaited, subscribes to its inputs and resolves to a [`Subscription`] that
-	/// yields only the payloads of [`Some`] variants returned by `fn_pin`.
+	/// settles only to payloads of [`Some`] variants returned by `fn_pin`.
 	///
-	/// TODO: Example
+	/// How to erase the closure type:
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use std::{future::Future, pin::{pin, Pin}};
+	/// # use flourish::GlobalSignalsRuntime;
+	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+	/// type SubscriptionDyn<'a, T> = flourish::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	///
+	/// # #[derive(Clone, Copy)] struct Value;
+	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<Value>>> = pin!(async {
+	/// 	Subscription::filter_mapped(|| None).await.into_dyn()
+	/// });
+	/// # }
+	/// ```
+	///
+	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
 	pub fn filter_mapped<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
@@ -499,9 +658,23 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	}
 
 	/// When awaited, subscribes to its inputs and resolves to a [`Subscription`] that
-	/// yields only the payloads of [`Some`] variants returned by `fn_pin`.
+	/// settles only to payloads of [`Some`] variants returned by `fn_pin`.
 	///
-	/// TODO: Example
+	/// How to erase the closure types:
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use std::{future::Future, pin::{pin, Pin}};
+	/// # use flourish::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
+	/// # #[derive(Clone, Copy)] struct Value;
+	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<Value, _>>> = pin!(async {
+	/// 	Subscription::filter_mapped_with_runtime(|| None, GlobalSignalsRuntime).await.into_dyn()
+	/// });
+	/// # }
+	/// ```
+	///
+	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
 	pub fn filter_mapped_with_runtime<'a>(
 		mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
 		runtime: SR,

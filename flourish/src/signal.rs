@@ -353,7 +353,24 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// `reduce_fn_pin` updates the current value with the next and returns a [`Propagation`].
 	/// Dependencies are detected across both closures.
 	///
-	/// TODO: Example
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	///
+	/// # let input = Signal::cell(1);
+	/// let highest_settled = Signal::reduced(
+	/// 	|| input.get(),
+	/// 	|value, next| if next > *value {
+	/// 		*value = next;
+	/// 		Propagation::Propagate
+	/// 	} else {
+	/// 		Propagation::Halt
+	/// 	},
+	/// );
+	/// # }
+	/// ```
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced<'a>(
@@ -371,7 +388,23 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// `reduce_fn_pin` updates the current value with the next and returns a [`Propagation`].
 	/// Dependencies are detected across both closures.
 	///
-	/// TODO: Example
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// let highest_settled = Signal::reduced_with_runtime(
+	/// 	|| input.get(),
+	/// 	|value, next| if next > *value {
+	/// 		*value = next;
+	/// 		Propagation::Propagate
+	/// 	} else {
+	/// 		Propagation::Halt
+	/// 	},
+	/// 	GlobalSignalsRuntime,
+	/// );
+	/// # }
+	/// ```
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced_with_runtime<'a>(
