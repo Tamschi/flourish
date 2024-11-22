@@ -1,0 +1,28 @@
+# labels.json adapted from <https://raw.githubusercontent.com/seantrane/github-label-presets/master/labels.json>.
+# See also <https://seantrane.com/posts/logical-colorful-github-labels-18230/>.
+
+name: Update Labels
+
+permissions:
+  contents: read
+  issues: write
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  deny-warnings:
+    name: Update Labels
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/cache@v3
+      with:
+        path: ~/.npm # I'm not entirely sure this is correct.
+        key: ${{ runner.os }}-npm
+    - run: npx github-label-sync
+        --access-token ${{ secrets.GITHUB_TOKEN }}
+        --labels labels.json
+        --allow-added-labels
+        ${{ github.repository }}

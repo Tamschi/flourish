@@ -1,0 +1,46 @@
+# Lifted mostly from Bevy v0.6.0 under MIT OR Apache-2.0.
+# See <https://github.com/bevyengine/bevy/blob/458cb7a9e93dab3127bb99ce7bf8cfc3af18851d/deny.toml>.
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+vulnerability = "deny"
+unmaintained = "deny"
+yanked = "deny"
+notice = "deny"
+ignore = [
+	# Format: "RUSTSEC-YYYY-NNNN", # why - what - <link to issue>
+]
+
+[licenses]
+unlicensed = "deny"
+copyleft = "deny"
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Zlib",
+]
+default = "deny"
+
+# [[licenses.clarify]]
+# name = "a-crate-name"
+# expression = "e.g. MIT"
+# license-files = [] # Fill in as necessary
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+highlight = "all"
+# Certain crates/versions that will be skipped when doing duplicate detection.
+skip = [
+	# Format: { name = "a-crate-name", version = "0.1" }, # from another-crate v0.26.0
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = ["Tamschi"]

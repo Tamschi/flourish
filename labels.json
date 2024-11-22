@@ -1,0 +1,202 @@
+[
+	{
+		"name": "breaking",
+		"color": "d73a4a",
+		"description": "Introduces or requests a breaking change."
+	},
+	{
+		"name": "good first issue",
+		"color": "7057ff",
+		"description": "Good for newcomers"
+	},
+	{
+		"name": "help wanted",
+		"color": "008672",
+		"description": "Extra attention is needed"
+	},
+	{
+		"name": "effort: 1",
+		"color": "91ca55",
+		"description": "Relative effort required. There's no specific unit of measurement."
+	},
+	{
+		"name": "effort: 2",
+		"color": "c2e2a2",
+		"description": "Relative effort required. There's no specific unit of measurement."
+	},
+	{
+		"name": "effort: 3",
+		"color": "e9f4dc",
+		"description": "Relative effort required. There's no specific unit of measurement."
+	},
+	{
+		"name": "effort: 5",
+		"color": "fef6d7",
+		"description": "Relative effort required. There's no specific unit of measurement."
+	},
+	{
+		"name": "effort: 8",
+		"color": "fef2c0",
+		"description": "Relative effort required. There's no specific unit of measurement."
+	},
+	{
+		"name": "effort: 13",
+		"color": "fbca04",
+		"description": "Relative effort required. There's no specific unit of measurement."
+	},
+	{
+		"name": "priority: first",
+		"color": "d73a4a",
+		"description": "I'll try to take care of this soon-ish if nobody else does."
+	},
+	{
+		"name": "priority: next",
+		"color": "ffb8c6",
+		"description": "I'll probably get to it, eventually."
+	},
+	{
+		"name": "priority: someday",
+		"color": "000000",
+		"description": "If you need this, please let me know!"
+	},
+	{
+		"name": "state: approved",
+		"color": "91ca55",
+		"description": "Approved to proceed."
+	},
+	{
+		"name": "state: blocked",
+		"color": "ffffff",
+		"description": "Something is blocking action (aside from pure proceedings or missing information).",
+		"aliases": [
+			"wontfix"
+		]
+	},
+	{
+		"name": "state: pending",
+		"color": "fbca04",
+		"description": "Waiting on other proceedings (aside from information)"
+	},
+	{
+		"name": "state: inactive",
+		"color": "000000",
+		"description": "No action needed or possible. The issue is either fixed or addressed better by other issues.",
+		"aliases": [
+			"duplicate"
+		]
+	},
+	{
+		"name": "state: question",
+		"color": "d876e3",
+		"description": "Further information is requested",
+		"aliases": [
+			"question"
+		]
+	},
+	{
+		"name": "state: denied",
+		"color": "e4e669",
+		"description": "It could just be out of scope, but either way it won't be implemented here.",
+		"aliases": [
+			"invalid"
+		]
+	},
+	{
+		"name": "type: bug",
+		"color": "d73a4a",
+		"description": "Something isn't working as expected",
+		"aliases": [
+			"bug"
+		]
+	},
+	{
+		"name": "type: upkeep",
+		"color": "0366d6",
+		"description": "Converting measurements, reorganizing folder structure, and other necessary tasks.",
+		"aliases": [
+			"dependencies"
+		]
+	},
+	{
+		"name": "type: documentation",
+		"color": "fef2c0",
+		"description": "Related to documentation and information.",
+		"aliases": [
+			"documentation"
+		]
+	},
+	{
+		"name": "type: feature",
+		"color": "5ebeff",
+		"description": "Brand new functionality, features, pages, workflows, endpoints, etc.",
+		"aliases": [
+			"enhancement"
+		]
+	},
+	{
+		"name": "type: fix",
+		"color": "91ca55",
+		"description": "Iterations on existing features or infrastructure"
+	},
+	{
+		"name": "type: security",
+		"color": "d73a4a",
+		"description": "Something is vulnerable or not secure"
+	},
+	{
+		"name": "type: testing",
+		"color": "fbca04",
+		"description": "Related to testing"
+	},
+	{
+		"name": "work: novel",
+		"color": "fbca04",
+		"description": "There's a problem, and both goal and solution are unclear."
+	},
+	{
+		"name": "work: emergent",
+		"color": "d4c5f9",
+		"description": "The goal isn't known, but a plan exists."
+	},
+	{
+		"name": "work: complicated",
+		"color": "ffb8c6",
+		"description": "A specific goal already exists, but the path there isn't certain."
+	},
+	{
+		"name": "work: clear",
+		"color": "91ca55",
+		"description": "A known solution is (to be) implemented."
+	},
+	{
+		"name": "domain: Rust",
+		"color": "000000",
+		"description": "Involves Rust code.",
+		"aliases": [
+			"rust"
+		]
+	},
+	{
+		"name": "domain: GitHub Actions",
+		"color": "000000",
+		"description": "Involves GitHub Actions.",
+		"aliases": [
+			"github_actions"
+		]
+	},
+	{
+		"name": "Hacktoberfest",
+		"color": "91A88C",
+		"description": "A good-for-Hacktoberfest issue. This label is only maintained in October."
+	},
+	{
+		"name": "hacktoberfest-accepted",
+		"color": "A88771",
+		"description": "Thank you for your contribution!"
+	},
+	{
+		"name": "spam",
+		"color": "F74700",
+		"description": "Measure of last resort for Hacktoberfest purposes. Don't use this otherwise."
+	}
+]

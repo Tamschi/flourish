@@ -1,0 +1,87 @@
+# Lifted mostly verbatim from Bevy v0.6.0 under MIT OR Apache-2.0.
+# See <https://github.com/bevyengine/bevy/blob/458cb7a9e93dab3127bb99ce7bf8cfc3af18851d/.github/workflows/dependencies.yml>.
+
+name: Dependencies
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+      - 'deny.toml'
+  push:
+    paths:
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+      - 'deny.toml'
+      - '.github/workflows/dependencies.yml'
+    branches-ignore:
+      - 'dependabot/**'
+  # This used to also be scheduled, but apparently GitHub also turns it off otherwise when deactivating that due to repository inactivity.
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-deny
+          use-tool-cache: true
+      - name: Check for security advisories and unmaintained crates
+        run: cargo deny check advisories
+
+  check-bans:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-deny
+          use-tool-cache: true
+      - name: Check for banned and duplicated dependencies
+        run: cargo deny check bans
+
+  check-licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-deny
+          use-tool-cache: true
+      - name: Check for unauthorized licenses
+        run: cargo deny check licenses
+
+  check-sources:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-deny
+          use-tool-cache: true
+      - name: Checked for unauthorized crate sources
+        run: cargo deny check sources
