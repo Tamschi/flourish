@@ -203,7 +203,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 ///
 /// # Omissions
 ///
-/// The "uncached" and "debounced" versions of [`computed`](`computed()`) are
+/// The "uncached" and "distinct" versions of [`computed`](`computed()`) are
 /// intentionally not wrapped here, as their behaviour may be unexpected at first glance.
 ///
 /// You can still easily construct them as [`SignalArc`] and subscribe afterwards:
@@ -221,7 +221,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 ///
 /// // The closure re-runs on each refresh, even if the inputs are equal!
 /// // However, dependent signals are only invalidated if the result changed.
-/// let sub_debounced = Signal::debounced(|| ()).into_subscription();
+/// let sub_distinct = Signal::distinct(|| ()).into_subscription();
 /// # }
 /// ```
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {

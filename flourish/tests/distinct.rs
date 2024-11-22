@@ -9,18 +9,18 @@ mod _validator;
 use _validator::Validator;
 
 #[test]
-fn debounce_test() {
+fn distinct() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
 	let (signal, cell) = Signal::cell(0).into_dyn_read_only_and_self();
-	let debounced = Signal::debounced(move || {
+	let distinct = Signal::distinct(move || {
 		x.push("d");
 		signal.get()
 	});
 	let _sub = Subscription::computed(move || {
 		x.push("s");
-		v.push(debounced.get())
+		v.push(distinct.get())
 	});
 	v.expect([0]);
 	x.expect(["s", "d"]);

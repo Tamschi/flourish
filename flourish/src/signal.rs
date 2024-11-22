@@ -21,7 +21,7 @@ use crate::{
 	signal_arc::SignalWeakDynCell,
 	traits::{UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{
-		computed, computed_uncached, computed_uncached_mut, debounced, folded, reduced, InertCell,
+		computed, computed_uncached, computed_uncached_mut, distinct, folded, reduced, InertCell,
 		ReactiveCell, ReactiveCellMut,
 	},
 	Guard, SignalArc, SignalArcDyn, SignalArcDynCell, SignalWeak, Subscription,
@@ -134,22 +134,22 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
-	/// Signal::debounced(|| input.get() + 1);
+	/// Signal::distinct(|| input.get() + 1);
 	/// # }
 	/// ```
 	///
 	/// Note that iff there is no subscriber,
 	/// this signal and its dependents will still become stale unconditionally.
 	///
-	/// Wraps [`debounced`](`debounced()`).
-	pub fn debounced<'a>(
+	/// Wraps [`distinct`](`distinct()`).
+	pub fn distinct<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized + PartialEq,
 		SR: 'a + Default,
 	{
-		Self::debounced_with_runtime(fn_pin, SR::default())
+		Self::distinct_with_runtime(fn_pin, SR::default())
 	}
 
 	/// A simple cached computation.
@@ -161,15 +161,15 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use flourish::{GlobalSignalsRuntime, Signal};
 	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
-	/// Signal::debounced_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
+	/// Signal::distinct_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
 	/// ```
 	///
 	/// Note that iff there is no subscriber,
 	/// this signal and its dependents will still become stale unconditionally.
 	///
-	/// Wraps [`debounced`](`debounced()`).
-	pub fn debounced_with_runtime<'a>(
+	/// Wraps [`distinct`](`distinct()`).
+	pub fn distinct_with_runtime<'a>(
 		fn_pin: impl 'a + Send + FnMut() -> T,
 		runtime: SR,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
@@ -177,7 +177,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		T: 'a + Sized + PartialEq,
 		SR: 'a,
 	{
-		SignalArc::new(debounced(fn_pin, runtime))
+		SignalArc::new(distinct(fn_pin, runtime))
 	}
 
 	/// A simple **uncached** computation.
