@@ -120,11 +120,11 @@ let (_source, _source_cell) = inert_cell.as_source_and_cell();
 let (_source, _source_cell) = reactive_cell.as_source_and_cell();
 ```
 
-Additionally, inside `flourish::raw`, you can find constructor functions for unpinned unmanaged signals that enable composition with data-inlining.
+Additionally, inside `flourish::unmanaged`, you can find constructor functions for unpinned unmanaged signals that enable composition with data-inlining.
 
 ## Linking signals
 
-`flourish` detects and updates dependencies automatically:
+*flourish* detects and updates dependencies automatically:
 
 ```rust
 use flourish::{shadow_clone, GlobalSignalsRuntime};
@@ -160,7 +160,7 @@ let signal = Signal::computed({
 let subscription = signal.to_subscription(); // ""
 
 // Note: `change` and `replace` may be deferred (but are safe to use in callbacks)!
-//        Use the `…_blocking` and `…_async` variants as needed.
+//       Use the `…_blocking` and `…_async` variants as needed.
 a.replace("a"); b.replace("b"); // nothing
 index.change(1); // "a" ("change" methods don't replace or propagate if the value is equal)
 a.change("aa"); // "aa"
@@ -175,7 +175,7 @@ index.change(3); // nothing, even though `signal` still exists
 drop(signal);
 ```
 
-`Signal`s are fully lazy, so they generally only run their closures while subscribed or to refresh their value if dirty.
+Signals are fully lazy, so they generally only run their closures while subscribed or to refresh their value if dirty.
 
 The default `GlobalSignalsRuntime` notifies signals iteratively from earlier to later when possible. Only one such notification cascade is processed at a time with this runtime.
 

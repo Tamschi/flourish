@@ -1,5 +1,13 @@
 # *flourish* Changelog
 
+## next
+
+TODO: Date
+
+- Revisions:
+  - README fix: `flourish::raw` has been `flourish::unmanaged` for a while.
+  - README formatting fixes.
+
 ## 0.1.1
 
 2024-11-22
