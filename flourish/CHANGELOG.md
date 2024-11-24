@@ -7,6 +7,7 @@ TODO: Date
 - Revisions:
   - README fix: `flourish::raw` has been `flourish::unmanaged` for a while.
   - README formatting fixes.
+  - Added test hello_flourish.
 
 ## 0.1.1
 
