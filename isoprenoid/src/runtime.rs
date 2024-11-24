@@ -204,7 +204,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// Submits `f` to run exclusively for `id` *without* recording dependencies.
 	///
 	/// The runtime **should** run `f` eventually, but **may** cancel it in response to
-	/// a [`.stop(id)`](`SignalsRuntimeRef::stop`) call with the same `id``.
+	/// a [`.stop(id)`](`SignalsRuntimeRef::stop`) call with the same `id`.
 	///
 	/// # Panics
 	///
