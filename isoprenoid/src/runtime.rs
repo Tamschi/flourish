@@ -528,6 +528,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Clone for CallbackTable<T, CTT
 }
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialEq for CallbackTable<T, CTT> {
+	#[allow(unpredictable_function_pointer_comparisons)] // Used only for interning.
 	fn eq(&self, other: &Self) -> bool {
 		self.update == other.update && self.on_subscribed_change == other.on_subscribed_change
 	}
@@ -536,6 +537,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialEq for CallbackTable<T,
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Eq for CallbackTable<T, CTT> {}
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialOrd for CallbackTable<T, CTT> {
+	#[allow(unpredictable_function_pointer_comparisons)] // Used only for interning.
 	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
 		match self.update.partial_cmp(&other.update) {
 			Some(core::cmp::Ordering::Equal) => {}
@@ -547,6 +549,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialOrd for CallbackTable<T
 }
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Ord for CallbackTable<T, CTT> {
+	#[allow(unpredictable_function_pointer_comparisons)] // Used only for interning.
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
 		match self.update.cmp(&other.update) {
 			core::cmp::Ordering::Equal => {}
