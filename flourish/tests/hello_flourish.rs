@@ -124,6 +124,6 @@ fn test() {
 	let _freezable_dyn: Pin<&mut dyn Future<Output = SubscriptionDyn<_>>> = pin!(async {
 		Subscription::filter_mapped(|| thaw.get().then(|| a.get()))
 			.await
-			.into() // `Into` is available for side effect free conversions and combinations thereof.
+			.into_dyn() // `Into` is available for side effect free conversions and combinations thereof.
 	});
 }

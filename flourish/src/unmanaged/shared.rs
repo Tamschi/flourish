@@ -138,3 +138,12 @@ impl<T: Send + Sync + ?Sized, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for 
 		self.runtime.clone()
 	}
 }
+
+impl<T: Send + Sync, SR: SignalsRuntimeRef> From<T> for Shared<T, SR>
+where
+	SR: Default,
+{
+	fn from(value: T) -> Self {
+		Self::with_runtime(value, SR::default())
+	}
+}

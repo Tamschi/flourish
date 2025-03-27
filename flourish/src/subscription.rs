@@ -856,3 +856,13 @@ unsafe fn assume_init_subscription<
 			.read()
 	}
 }
+
+impl<T: Send, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> From<T> for Subscription<T, S, SR>
+where
+	SR: Default,
+	T: Into<S>,
+{
+	fn from(value: T) -> Self {
+		Self::new(value.into())
+	}
+}

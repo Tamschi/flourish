@@ -4,6 +4,12 @@
 
 TODO: Date
 
+- Breaking:
+  - Removed `Into` conversion from unmanaged signals to `SignalArc`.  
+    (Use `SignalArc::new` instead.)
+  - Added conversions from `T` for owned signals and handles, either without closures.  
+    (This makes `.into()` ambiguous in some additional cases. Use specific `.into_…()` methods where necessary.)
+
 - Features:
   - Added `Signal::shared` and `Signal::shared_with_runtime`, which create lightweight untracked wrappers around `Sync` values.
 

@@ -271,3 +271,13 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 		(self.clone().into_dyn(), self.into_dyn_cell())
 	}
 }
+
+impl<T: Send, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> From<T> for SignalArc<T, S, SR>
+where
+	SR: Default,
+	T: Into<S>,
+{
+	fn from(value: T) -> Self {
+		Self::new(value.into())
+	}
+}

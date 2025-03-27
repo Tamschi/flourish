@@ -546,3 +546,12 @@ mod private {
 		}
 	}
 }
+
+impl<T: Send, SR: SignalsRuntimeRef> From<T> for InertCell<T, SR>
+where
+	SR: Default,
+{
+	fn from(value: T) -> Self {
+		Self::with_runtime(value, SR::default())
+	}
+}

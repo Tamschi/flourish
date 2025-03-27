@@ -66,6 +66,21 @@
 //! - [`.upgrade()`] (with [`Result`]`<`[`SignalArc`]`, `[`SignalWeak`]`>` as output)
 //! - **combinations of the above with unsizing / type-erasure**
 //!
+//! ## [`From`]`<T>`
+//!
+//! Owned signals and handles, either without closures, can be directly converted from
+//! their wrapped values, *iff* `SR: `[`Default`].
+//!
+//! For type-erased [`Signal`]s, this always uses the path of lowest runtime cost,
+//! which means that for non-cell signals, `T: `[`Sync`] is required:
+//!
+//! | `T` into                | via                | `where SR: `[`Default`] and |
+//! |-------------------------|--------------------|-----------------------------|
+//! | [`SignalArcDyn`]        | [`Signal::shared`] | `T: `[`Sync`]               |
+//! | [`SubscriptionDyn`]     | [`Signal::shared`] | `T: `[`Sync`]               |
+//! | [`SignalArcDynCell`]    | [`Signal::cell`]   | (no additional)             |
+//! | [`SubscriptionDynCell`] | [`Signal::cell`]   | (no additional)             |
+//!
 //! [cell]: `UnmanagedSignalCell`
 //! [identity]: https://doc.rust-lang.org/stable/std/convert/trait.From.html#impl-From%3CT%3E-for-T
 //! [`.as_dyn_cell()`]: `Signal::as_dyn_cell`
@@ -203,14 +218,6 @@ impl<
 	}
 }
 
-impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> From<S>
-	for SignalArc<T, S, SR>
-{
-	fn from(value: S) -> Self {
-		Self::new(value)
-	}
-}
-
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	From<&Signal<T, S, SR>> for SignalArc<T, S, SR>
 {
@@ -319,5 +326,43 @@ impl<
 			Some(strong) => Ok(strong.into_dyn_cell()),
 			None => Err(value),
 		}
+	}
+}
+
+impl<'a, T: 'a + Send, SR: 'a + SignalsRuntimeRef> From<T> for SignalArcDyn<'a, T, SR>
+where
+	T: Sync,
+	SR: Default,
+{
+	fn from(value: T) -> Self {
+		Signal::shared(value).into_dyn()
+	}
+}
+
+impl<'a, T: 'a + Send, SR: 'a + SignalsRuntimeRef> From<T> for SubscriptionDyn<'a, T, SR>
+where
+	T: Sync,
+	SR: Default,
+{
+	fn from(value: T) -> Self {
+		Signal::shared(value).into_subscription().into_dyn()
+	}
+}
+
+impl<'a, T: 'a + Send, SR: 'a + SignalsRuntimeRef> From<T> for SignalArcDynCell<'a, T, SR>
+where
+	SR: Default,
+{
+	fn from(value: T) -> Self {
+		Signal::cell(value).into_dyn_cell()
+	}
+}
+
+impl<'a, T: 'a + Send, SR: 'a + SignalsRuntimeRef> From<T> for SubscriptionDynCell<'a, T, SR>
+where
+	SR: Default,
+{
+	fn from(value: T) -> Self {
+		Signal::cell(value).into_subscription().into_dyn_cell()
 	}
 }
