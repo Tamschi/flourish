@@ -57,6 +57,7 @@ type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
 type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
 // `Signal` is a ref-only type like `Path`, so its constructors return a `SignalArc`.
+let _ = Signal::shared(()); // Untracked `T: Sync`-wrapper.
 let _ = Signal::cell(());
 let _ = Signal::cell_cyclic(|_weak| ());
 let _ = Signal::cell_reactive((), |_value, _status| Propagation::Halt);
@@ -96,6 +97,7 @@ You can also put signals on the stack:
 use flourish::{signals_helper, prelude::*, Propagation};
 
 signals_helper! {
+  let shared = shared!(()); // Untracked `T: Sync`-wrapper.
   let inert_cell = inert_cell!(());
   let reactive_cell = reactive_cell!((), |_value, _status| Propagation::Halt);
 
@@ -214,7 +216,9 @@ You can use existing `isoprenoid` runtime instances with the included types and 
 ```rust
 use flourish::{signals_helper, GlobalSignalsRuntime, Propagation, Signal, Subscription};
 
+let _ = Signal::shared_with_runtime((), GlobalSignalsRuntime);
 let _ = Signal::cell_with_runtime((), GlobalSignalsRuntime);
+let _ = Signal::cell_reactive_with_runtime((), |_, _| Propagation::Halt, GlobalSignalsRuntime);
 
 let _ = Signal::computed_with_runtime(|| (), GlobalSignalsRuntime);
 let _ = Signal::computed_uncached_with_runtime(|| (), GlobalSignalsRuntime);
@@ -226,6 +230,7 @@ let _ = Subscription::computed_with_runtime(|| (), GlobalSignalsRuntime);
 
 signals_helper! {
   let _inert_cell = inert_cell_with_runtime!((), GlobalSignalsRuntime);
+  let _reactive_cell = reactive_cell_with_runtime!((), |_, _| Propagation::Halt, GlobalSignalsRuntime);
 
   let _source = computed_with_runtime!(|| (), GlobalSignalsRuntime);
   let _source = computed_uncached_with_runtime!(|| (), GlobalSignalsRuntime);

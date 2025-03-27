@@ -4,6 +4,9 @@
 
 TODO: Date
 
+- Features:
+  - Added `Signal::shared` and `Signal::shared_with_runtime`, which create lightweight untracked wrappers around `Sync` values.
+
 - Revisions:
   - README fix: `flourish::raw` has been `flourish::unmanaged` for a while.
   - README formatting fixes.

@@ -22,7 +22,7 @@ use crate::{
 	traits::{UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{
 		computed, computed_uncached, computed_uncached_mut, distinct, folded, reduced, InertCell,
-		ReactiveCell, ReactiveCellMut,
+		ReactiveCell, ReactiveCellMut, Shared,
 	},
 	Guard, SignalArc, SignalArcDyn, SignalArcDynCell, SignalWeak, Subscription,
 };
@@ -418,6 +418,63 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	{
 		SignalArc::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
+
+	/// A lightweight thread-safe value that's signal-compatible.
+	///
+	/// It doesn't have a signal-identity and isn't recorded as dependency.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type SignalDyn<'a, T> = flourish::SignalDyn<'a, T, GlobalSignalsRuntime>;
+	///
+	/// # #[derive(Default, Clone)] struct Container;
+	/// # impl Container { fn sort(&mut self) {} }
+	/// # let input = Signal::cell(Container);
+	/// let shared = Signal::shared(0);
+	///
+	/// fn accepts_signal<T: Send>(signal: &SignalDyn<'_, T>) {}
+	/// accepts_signal(&*shared);
+	/// # }
+	/// ```
+	pub fn shared<'a>(value: T) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	where
+		T: 'a + Sized + Sync,
+		SR: 'a + Default,
+	{
+		Self::shared_with_runtime(value, SR::default())
+	}
+
+	/// A lightweight thread-safe value that's signal-compatible.
+	///
+	/// It doesn't have a signal-identity and isn't recorded as dependency.
+	///
+	/// ```
+	/// # {
+	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// let shared = Signal::shared_with_runtime(0, GlobalSignalsRuntime);
+	///
+	/// fn accepts_signal<T: Send, SR: flourish::SignalsRuntimeRef>(
+	///   signal: &flourish::SignalDyn<'_, T, SR>,
+	/// ) {}
+	/// accepts_signal(&*shared);
+	/// # }
+	/// ```
+	pub fn shared_with_runtime<'a>(
+		value: T,
+		runtime: SR,
+	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	where
+		T: 'a + Sized + Sync,
+		SR: 'a + Default,
+	{
+		SignalArc {
+			strong: Strong::pin(Shared::with_runtime(value, runtime)),
+		}
+	}
 }
 
 /// Cell constructors.
@@ -434,7 +491,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
-	/// # let input = Signal::cell(Container);
 	/// let cell = Signal::cell(0);
 	///
 	/// cell.change(1);
