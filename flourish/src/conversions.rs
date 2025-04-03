@@ -1,4 +1,4 @@
-//! Conversions between this library's managed-signal-related types.
+//! Conversions between this library's signal-related types.
 //! (Documentation module.)
 //!
 //! (Note that these tables are wide and scroll horizontally.)
@@ -70,6 +70,8 @@
 //! - [`.downgrade()`] (with [`&`]‌[`Signal`] as input)
 //! - **combinations of the above**
 //!
+//! Unsizing and upcasting conversions also available for unmanaged signal references.
+//!
 //! ## [`TryFrom`]/[`TryInto`]
 //!
 //! [`TryFrom`] and [`TryInto`] are available for *side effect free* fallible conversions. These are:
@@ -121,6 +123,37 @@ use crate::{
 	Signal, SignalArc, SignalArcDyn, SignalDyn, SignalDynCell, SignalWeak, SignalWeakDyn,
 	SignalWeakDynCell, Subscription, SubscriptionDyn, SubscriptionDynCell,
 };
+
+/// Since 0.1.2.
+impl<'a, T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	From<&'a S> for &'a dyn UnmanagedSignal<T, SR>
+{
+	fn from(value: &'a S) -> Self {
+		value
+	}
+}
+
+/// Since 0.1.2.
+impl<
+		'a,
+		T: ?Sized + Send,
+		S: Sized + UnmanagedSignalCell<T, SR>,
+		SR: ?Sized + SignalsRuntimeRef,
+	> From<&'a S> for &'a dyn UnmanagedSignalCell<T, SR>
+{
+	fn from(value: &'a S) -> Self {
+		value
+	}
+}
+
+/// Since 0.1.2.
+impl<'a, T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> From<&'a dyn UnmanagedSignalCell<T, SR>>
+	for &'a dyn UnmanagedSignal<T, SR>
+{
+	fn from(value: &'a dyn UnmanagedSignalCell<T, SR>) -> Self {
+		value
+	}
+}
 
 impl<
 		'r,

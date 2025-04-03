@@ -16,6 +16,7 @@ TODO: Date
     - `SignalWeakDynCell::into_read_only_and_self(self) -> (SignalWeakDyn, Self)`
     - `SubscriptionDynCell::into_read_only(self) -> SubscriptionDyn`
     - Upcasting `From` and `TryFrom` implementations (for side-effect-free conversions).
+  - Added unsizing and upcasing `From` implementations between unmanaged signal references.
 
 - Revisions:
   - README fix: `flourish::raw` has been `flourish::unmanaged` for a while.
