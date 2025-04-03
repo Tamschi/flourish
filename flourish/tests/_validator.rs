@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{collections::VecDeque, fmt::Debug, sync::Mutex};
 
 pub struct Validator<T>(Mutex<VecDeque<T>>);

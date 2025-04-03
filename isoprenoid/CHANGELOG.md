@@ -1,5 +1,12 @@
 # `isoprenoid` Changelog
 
+## next
+
+TODO: Date
+
+- Revisions:
+  - Documentation typo fix.
+
 ## 0.1.1
 
 2024-11-22

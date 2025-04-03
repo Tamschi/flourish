@@ -232,6 +232,23 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalArcDynCell<'a, T, SR> {
+	/// Obscures the cell API, allowing only reads and subscriptions.
+	///
+	/// Since 0.1.2.
+	pub fn into_read_only(self) -> SignalArcDyn<'a, T, SR> {
+		//FIXME: This is *probably* inefficient.
+		self.as_read_only().to_owned()
+	}
+
+	/// Equivalent to a getter/setter splitter.
+	///
+	/// Since 0.1.2.
+	pub fn into_read_only_and_self(self) -> (SignalArcDyn<'a, T, SR>, Self) {
+		(self.clone().into_read_only(), self)
+	}
+}
+
 impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalWeak<T, S, SR>
 {
@@ -269,5 +286,28 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 		S: 'a,
 	{
 		(self.clone().into_dyn(), self.into_dyn_cell())
+	}
+}
+
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalWeakDynCell<'a, T, SR> {
+	/// Obscures the cell API, allowing only reads and subscriptions.
+	///
+	/// Since 0.1.2.
+	pub fn into_read_only(self) -> SignalWeakDyn<'a, T, SR> {
+		unsafe {
+			//SAFETY: Prevents dropping of the original `Weak`,
+			//        so that the net count doesn't change.
+			let this = ManuallyDrop::new(self);
+			SignalWeak {
+				weak: this.weak.unsafe_copy().into_read_only(),
+			}
+		}
+	}
+
+	/// Equivalent to a getter/setter splitter.
+	///
+	/// Since 0.1.2.
+	pub fn into_read_only_and_self(self) -> (SignalWeakDyn<'a, T, SR>, Self) {
+		(self.clone().into_read_only(), self)
 	}
 }

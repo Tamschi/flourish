@@ -24,6 +24,9 @@ pub(crate) use computed_uncached::ComputedUncached;
 mod computed_uncached_mut;
 pub(crate) use computed_uncached_mut::ComputedUncachedMut;
 
+mod shared;
+pub(crate) use shared::Shared;
+
 mod inert_cell;
 pub(crate) use inert_cell::InertCell;
 
@@ -48,6 +51,34 @@ pub(crate) mod raw_effect;
 pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 
 //TODO: Can the individual macro placeholders in this module still communicate their eventual return type?
+
+/// Unmanaged version of [`Signal::shared_with_runtime`](`crate::Signal::shared_with_runtime`).
+///
+/// Since 0.1.2.
+pub fn shared<T: Send + Sync, SR: SignalsRuntimeRef>(
+	value: T,
+	runtime: SR,
+) -> impl UnmanagedSignal<T, SR> {
+	Shared::with_runtime(value, runtime)
+}
+#[macro_export]
+#[doc(hidden)]
+macro_rules! shared {
+    ($source:expr$(,)?) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+	}};
+}
+#[doc(hidden)]
+pub use crate::shared;
+#[macro_export]
+#[doc(hidden)]
+macro_rules! shared_with_runtime {
+    ($source:expr, $runtime:expr$(,)?) => {{
+		::core::compile_error!("Using this macro directly would require `super let`. For now, please wrap the binding(s) in `signals_helper! { … }`.");
+	}};
+}
+#[doc(hidden)]
+pub use crate::shared_with_runtime;
 
 /// Unmanaged version of [`Signal::cell_with_runtime`](`crate::Signal::cell_with_runtime`).
 pub fn inert_cell<T: Send, SR: SignalsRuntimeRef>(
@@ -396,6 +427,14 @@ pub use crate::effect_with_runtime;
 /// The last two branches improve error messages and enable repetitions, respectively.
 #[macro_export]
 macro_rules! signals_helper {
+	{let $name:ident = shared!($value:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::unmanaged::shared($value, $crate::GlobalSignalsRuntime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
+	{let $name:ident = shared_with_runtime!($value:expr, $runtime:expr$(,)?);} => {
+		let $name = ::core::pin::pin!($crate::unmanaged::shared($value, $runtime));
+		let $name = ::core::pin::Pin::into_ref($name);
+	};
 	{let $name:ident = inert_cell!($initial_value:expr$(,)?);} => {
 		let $name = ::core::pin::pin!($crate::unmanaged::inert_cell($initial_value, $crate::GlobalSignalsRuntime));
 		let $name = ::core::pin::Pin::into_ref($name);

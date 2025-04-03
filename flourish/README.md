@@ -57,6 +57,7 @@ type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
 type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 
 // `Signal` is a ref-only type like `Path`, so its constructors return a `SignalArc`.
+let _ = Signal::shared(()); // Untracked `T: Sync`-wrapper.
 let _ = Signal::cell(());
 let _ = Signal::cell_cyclic(|_weak| ());
 let _ = Signal::cell_reactive((), |_value, _status| Propagation::Halt);
@@ -96,6 +97,7 @@ You can also put signals on the stack:
 use flourish::{signals_helper, prelude::*, Propagation};
 
 signals_helper! {
+  let shared = shared!(()); // Untracked `T: Sync`-wrapper.
   let inert_cell = inert_cell!(());
   let reactive_cell = reactive_cell!((), |_value, _status| Propagation::Halt);
 
@@ -120,11 +122,11 @@ let (_source, _source_cell) = inert_cell.as_source_and_cell();
 let (_source, _source_cell) = reactive_cell.as_source_and_cell();
 ```
 
-Additionally, inside `flourish::raw`, you can find constructor functions for unpinned unmanaged signals that enable composition with data-inlining.
+Additionally, inside `flourish::unmanaged`, you can find constructor functions for unpinned unmanaged signals that enable composition with data-inlining.
 
 ## Linking signals
 
-`flourish` detects and updates dependencies automatically:
+*flourish* detects and updates dependencies automatically:
 
 ```rust
 use flourish::{shadow_clone, GlobalSignalsRuntime};
@@ -160,7 +162,7 @@ let signal = Signal::computed({
 let subscription = signal.to_subscription(); // ""
 
 // Note: `change` and `replace` may be deferred (but are safe to use in callbacks)!
-//        Use the `…_blocking` and `…_async` variants as needed.
+//       Use the `…_blocking` and `…_async` variants as needed.
 a.replace("a"); b.replace("b"); // nothing
 index.change(1); // "a" ("change" methods don't replace or propagate if the value is equal)
 a.change("aa"); // "aa"
@@ -175,7 +177,7 @@ index.change(3); // nothing, even though `signal` still exists
 drop(signal);
 ```
 
-`Signal`s are fully lazy, so they generally only run their closures while subscribed or to refresh their value if dirty.
+Signals are fully lazy, so they generally only run their closures while subscribed or to refresh their value if dirty.
 
 The default `GlobalSignalsRuntime` notifies signals iteratively from earlier to later when possible. Only one such notification cascade is processed at a time with this runtime.
 
@@ -207,6 +209,21 @@ signal = Signal::computed(|| ()).into(); // via `Into`
 
 There are additional conversion methods available. See the `conversions` module for details.
 
+## Upcasting
+
+Upcasting conversions from `…DynCell` to read-only `…Dyn` handles and references are available.
+
+In particular, references and pointers to `SignalDynCell` can be coerced directly into those to `SignalDyn`:
+
+```rust
+use flourish::{GlobalSignalsRuntime, Signal, SignalArc, SignalDyn, SignalDynCell};
+
+let cell: SignalArc<_, _, _> = Signal::<_, _, GlobalSignalsRuntime>::cell(());
+
+let dyn_cell_ref: &SignalDynCell<_, _> = cell.as_dyn_cell();
+let dyn_ref: &SignalDyn<_, _> = dyn_cell_ref;
+```
+
 ## Using an instantiated runtime
 
 You can use existing `isoprenoid` runtime instances with the included types and macros (but ideally, still alias these items for your own use):
@@ -214,7 +231,9 @@ You can use existing `isoprenoid` runtime instances with the included types and 
 ```rust
 use flourish::{signals_helper, GlobalSignalsRuntime, Propagation, Signal, Subscription};
 
+let _ = Signal::shared_with_runtime((), GlobalSignalsRuntime);
 let _ = Signal::cell_with_runtime((), GlobalSignalsRuntime);
+let _ = Signal::cell_reactive_with_runtime((), |_, _| Propagation::Halt, GlobalSignalsRuntime);
 
 let _ = Signal::computed_with_runtime(|| (), GlobalSignalsRuntime);
 let _ = Signal::computed_uncached_with_runtime(|| (), GlobalSignalsRuntime);
@@ -226,6 +245,7 @@ let _ = Subscription::computed_with_runtime(|| (), GlobalSignalsRuntime);
 
 signals_helper! {
   let _inert_cell = inert_cell_with_runtime!((), GlobalSignalsRuntime);
+  let _reactive_cell = reactive_cell_with_runtime!((), |_, _| Propagation::Halt, GlobalSignalsRuntime);
 
   let _source = computed_with_runtime!(|| (), GlobalSignalsRuntime);
   let _source = computed_uncached_with_runtime!(|| (), GlobalSignalsRuntime);
@@ -250,9 +270,8 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |Feature|What it would enable|
 |-|-|
 |[`coerce_unsized`](https://github.com/rust-lang/rust/issues/18598)|More type-erasure coercions for various `Signal` handle types (probably). For now, please use the respective conversion methods or `From`/`Into` conversions instead.|
-|[`trait_upcasting`](https://github.com/rust-lang/rust/issues/65991)|Conversions from `…DynCell` to `…Dyn`.|
 |Fix for [Unexpected higher-ranked lifetime error in GAT usage](https://github.com/rust-lang/rust/issues/100013)|(Cleanly) avoid boxing the inner closure in many "`_eager`" methods.|
-|Object-safety for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
+|Dyn-compatibility for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
 |[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of signal cell implementations.|
 |[`impl_trait_in_assoc_type`](https://github.com/rust-lang/rust/issues/63063)|Eliminate several surfaced internal types, resulting in better docs.|
 |[Precise capturing in RPITIT](https://github.com/rust-lang/rust/pull/126746)|This would clean up the API quite a lot, by removing some GATs.|

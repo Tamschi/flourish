@@ -1,4 +1,4 @@
-//! Conversions between this library's managed-signal-related types.
+//! Conversions between this library's signal-related types.
 //! (Documentation module.)
 //!
 //! (Note that these tables are wide and scroll horizontally.)
@@ -33,17 +33,27 @@
 //!
 //! - In place of [`.as_dyn()`], you can coerce the reference.
 //!
-//! ## [`UnmanagedSignalCell`] to [`UnmanagedSignal`]
+//! ## with [`UnmanagedSignalCell`] (static dispatch read-write) to with [`UnmanagedSignal`] (read-only)
 //!
-//! | from (read-write) ↓ \ into (read-only) → | [`&`]‌[`Signal`] ([signal])             | [`&`]‌[`SignalDyn`]               | [`SignalArc`] ([signal])                       | [`SignalArcDyn`]                        | [`SignalWeak`] ([signal])                   | [`SignalWeakDyn`]                  | [`Subscription`] ([signal])                                          | [`SubscriptionDyn`]                                            |
-//! |------------------------------------------|----------------------------------------|----------------------------------|------------------------------------------------|-----------------------------------------|---------------------------------------------|------------------------------------|----------------------------------------------------------------------|----------------------------------------------------------------|
-//! | [`&`]‌[`Signal`] ([cell])                 | [`.as_read_only()`]                    | [`.as_dyn()`]                    | [`.to_read_only()`]                            | [`.to_dyn()`]                           | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[.into_dyn()][id2] | [`.to_subscription()`]‌[`.into_read_only()`][iro3]                    | [`.to_subscription()`]‌[`.into_dyn`][id3]                       |
-//! | [`SignalArc`] ([cell])                   | [`.as_read_only()`]                    | [`.as_dyn()`]                    | [`.into_read_only()`][iro1]                    | [`.into_dyn()`][id1]                    | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[.into_dyn()][id2] | [`.into_subscription()`]‌[`.into_read_only()`][iro3]                  | [`.into_subscription()`]‌[`.into_dyn`][id3]                     |
-//! | [`SignalWeak`] ([cell])                  | [`.upgrade()`]‌[`?`]‌[`.as_read_only()`] | [`.upgrade()`]‌[`?`]‌[`.as_dyn()`] | [`.upgrade()`]‌[`?`]‌[`.into_read_only()`][iro1] | [`.upgrade()`]‌[`?`]‌[`.into_dyn()`][id1] | [`.into_read_only()`][iro2]                 | [.into_dyn()][id2]                 | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[.into_read_only()][iro3] | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[.into_dyn()][id3]  |
-//! | [`Subscription`] ([cell])                | [`.as_read_only()`]                    | [`.as_dyn()`]                    | [`.unsubscribe()`]‌[`.into_read_only()`][iro1]  | [`.unsubscribe()`]‌[`.into_dyn()`][id1]  | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[.into_dyn()][id2] | [`.into_read_only()`][iro3]                                          | [.into_dyn()][id3]                                             |
+//! | from ↓ \ into →           | [`&`]‌[`Signal`] ([signal])                   | [`&`]‌[`SignalDyn`]               | [`SignalArc`] ([signal])                       | [`SignalArcDyn`]                        | [`SignalWeak`] ([signal])                   | [`SignalWeakDyn`]                  | [`Subscription`] ([signal])                                          | [`SubscriptionDyn`]                                           |
+//! |---------------------------|----------------------------------------------|----------------------------------|------------------------------------------------|-----------------------------------------|---------------------------------------------|------------------------------------|----------------------------------------------------------------------|---------------------------------------------------------------|
+//! | [`&`]‌[`Signal`] ([cell])  | [`.as_read_only()`][aro1]                    | [`.as_dyn()`]                    | [`.to_read_only()`][tro1]                      | [`.to_dyn()`]                           | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[.into_dyn()][id2] | [`.to_subscription()`]‌[`.into_read_only()`][iro3]                    | [`.to_subscription()`]‌[`.into_dyn`][id3]                      |
+//! | [`SignalArc`] ([cell])    | [`.as_read_only()`][aro1]                    | [`.as_dyn()`]                    | [`.into_read_only()`][iro1]                    | [`.into_dyn()`][id1]                    | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[.into_dyn()][id2] | [`.into_subscription()`]‌[`.into_read_only()`][iro3]                  | [`.into_subscription()`]‌[`.into_dyn`][id3]                    |
+//! | [`SignalWeak`] ([cell])   | [`.upgrade()`]‌[`?`]‌[`.as_read_only()`][aro1] | [`.upgrade()`]‌[`?`]‌[`.as_dyn()`] | [`.upgrade()`]‌[`?`]‌[`.into_read_only()`][iro1] | [`.upgrade()`]‌[`?`]‌[`.into_dyn()`][id1] | [`.into_read_only()`][iro2]                 | [.into_dyn()][id2]                 | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[.into_read_only()][iro3] | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[.into_dyn()][id3] |
+//! | [`Subscription`] ([cell]) | [`.as_read_only()`][aro1]                    | [`.as_dyn()`]                    | [`.unsubscribe()`]‌[`.into_read_only()`][iro1]  | [`.unsubscribe()`]‌[`.into_dyn()`][id1]  | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[.into_dyn()][id2] | [`.into_read_only()`][iro3]                                          | [.into_dyn()][id3]                                            |
 //!
-//! - In place of [`.as_read_only()`] and [`.as_dyn()`], you can coerce the reference.
-//! - `dyn` upcasting conversions can be added as non-breaking change after [`trait_upcasting`](https://github.com/rust-lang/rust/issues/65991) is restabilised.
+//! - In place of [`.as_read_only()`][aro1] and [`.as_dyn()`], you can coerce the reference.
+//!
+//! ## with `dyn `[`UnmanagedSignalCell`] (read-write) to with `dyn `[`UnmanagedSignal`] (read-only)
+//!
+//! | from ↓ \ into →         | [`&`]‌[`SignalDyn`]                           | [`SignalArcDyn`]                               | [`SignalWeakDyn`]                           | [`SubscriptionDyn`]                                                  |
+//! |-------------------------|----------------------------------------------|------------------------------------------------|---------------------------------------------|----------------------------------------------------------------------|
+//! | [`&`]‌[`SignalDynCell`]  | [`.as_read_only()`][aro2]                    | [`.to_read_only()`][tro2]                      | [`.downgrade()`]‌[`.into_read_only()`][iro5] | [`.to_subscription()`]‌[`.into_read_only()`][iro6]                    |
+//! | [`SignalArcDynCell`]    | [`.as_read_only()`][aro2]                    | [`.into_read_only()`][iro4]                    | [`.downgrade()`]‌[`.into_read_only()`][iro5] | [`.into_subscription()`]‌[`.into_read_only()`][iro6]                  |
+//! | [`SignalWeakDynCell`]   | [`.upgrade()`]‌[`?`]‌[`.as_read_only()`][aro2] | [`.upgrade()`]‌[`?`]‌[`.into_read_only()`][iro4] | [`.into_read_only()`][iro5]                 | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[.into_read_only()][iro6] |
+//! | [`SubscriptionDynCell`] | [`.as_read_only()`][aro2]                    | [`.unsubscribe()`]‌[`.into_read_only()`][iro4]  | [`.downgrade()`]‌[`.into_read_only()`][iro5] | [`.into_read_only()`][iro6]                                          |
+//!
+//! - In place of [`.as_read_only()`][aro2], you can coerce the reference.
 //!
 //! ## [`Effect`]
 //!
@@ -55,16 +65,19 @@
 //!
 //! - [identity]
 //! - unsizing / type-erasure
+//! - upcasting (cells to read-only signals)
 //! - [`ToOwned`]
 //! - [`.downgrade()`] (with [`&`]‌[`Signal`] as input)
 //! - **combinations of the above**
+//!
+//! Unsizing and upcasting conversions also available for unmanaged signal references.
 //!
 //! ## [`TryFrom`]/[`TryInto`]
 //!
 //! [`TryFrom`] and [`TryInto`] are available for *side effect free* fallible conversions. These are:
 //!
 //! - [`.upgrade()`] (with [`Result`]`<`[`SignalArc`]`, `[`SignalWeak`]`>` as output)
-//! - **combinations of the above with unsizing / type-erasure**
+//! - **combinations of the above with unsizing / type-erasure and/or upcasting**
 //!
 //! [cell]: `UnmanagedSignalCell`
 //! [identity]: https://doc.rust-lang.org/stable/std/convert/trait.From.html#impl-From%3CT%3E-for-T
@@ -87,11 +100,17 @@
 //! [id2]: `SignalWeak::into_dyn`
 //! [id3]: `Subscription::into_dyn`
 //!
-//! [`.as_read_only()`]: `Signal::as_read_only`
-//! [`.to_read_only()`]: `Signal::to_read_only`
+//! [aro1]: `Signal::as_read_only`
+//! [tro1]: `Signal::to_read_only`
 //! [iro1]: `SignalArc::into_read_only`
 //! [iro2]: `SignalWeak::into_read_only`
 //! [iro3]: `Subscription::into_read_only`
+//!
+//! [aro2]: ../struct.Signal.html#method.as_read_only-1
+//! [tro2]: ../struct.Signal.html#method.to_read_only-1
+//! [iro4]: ../struct.SignalArc.html#method.into_read_only-1`
+//! [iro5]: ../struct.SignalWeak.html#method.into_read_only-1`
+//! [iro6]: ../struct.Subscription.html#method.into_read_only-1`
 
 #![allow(unused_imports)] // Used by documentation.
 
@@ -104,6 +123,37 @@ use crate::{
 	Signal, SignalArc, SignalArcDyn, SignalDyn, SignalDynCell, SignalWeak, SignalWeakDyn,
 	SignalWeakDynCell, Subscription, SubscriptionDyn, SubscriptionDynCell,
 };
+
+/// Since 0.1.2.
+impl<'a, T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+	From<&'a S> for &'a dyn UnmanagedSignal<T, SR>
+{
+	fn from(value: &'a S) -> Self {
+		value
+	}
+}
+
+/// Since 0.1.2.
+impl<
+		'a,
+		T: ?Sized + Send,
+		S: Sized + UnmanagedSignalCell<T, SR>,
+		SR: ?Sized + SignalsRuntimeRef,
+	> From<&'a S> for &'a dyn UnmanagedSignalCell<T, SR>
+{
+	fn from(value: &'a S) -> Self {
+		value
+	}
+}
+
+/// Since 0.1.2.
+impl<'a, T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> From<&'a dyn UnmanagedSignalCell<T, SR>>
+	for &'a dyn UnmanagedSignal<T, SR>
+{
+	fn from(value: &'a dyn UnmanagedSignalCell<T, SR>) -> Self {
+		value
+	}
+}
 
 impl<
 		'r,
@@ -127,6 +177,15 @@ impl<
 	> From<&'r Signal<T, S, SR>> for &'r SignalDynCell<'a, T, SR>
 {
 	fn from(value: &'r Signal<T, S, SR>) -> Self {
+		value
+	}
+}
+
+/// Since 0.1.2.
+impl<'r, 'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
+	From<&'r SignalDynCell<'a, T, SR>> for &'r SignalDyn<'a, T, SR>
+{
+	fn from(value: &'r SignalDynCell<'a, T, SR>) -> Self {
 		value
 	}
 }
@@ -155,6 +214,15 @@ impl<
 	}
 }
 
+/// Since 0.1.2.
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
+	From<SignalArcDynCell<'a, T, SR>> for SignalArcDyn<'a, T, SR>
+{
+	fn from(value: SignalArcDynCell<'a, T, SR>) -> Self {
+		value.into_read_only()
+	}
+}
+
 impl<
 		'a,
 		T: 'a + ?Sized + Send,
@@ -179,6 +247,15 @@ impl<
 	}
 }
 
+/// Since 0.1.2.
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
+	From<SignalWeakDynCell<'a, T, SR>> for SignalWeakDyn<'a, T, SR>
+{
+	fn from(value: SignalWeakDynCell<'a, T, SR>) -> Self {
+		value.into_read_only()
+	}
+}
+
 impl<
 		'a,
 		T: 'a + ?Sized + Send,
@@ -200,6 +277,15 @@ impl<
 {
 	fn from(value: Subscription<T, S, SR>) -> Self {
 		value.into_dyn_cell()
+	}
+}
+
+/// Since 0.1.2.
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
+	From<SubscriptionDynCell<'a, T, SR>> for SubscriptionDyn<'a, T, SR>
+{
+	fn from(value: SubscriptionDynCell<'a, T, SR>) -> Self {
+		value.into_read_only()
 	}
 }
 
@@ -243,6 +329,15 @@ impl<
 	}
 }
 
+/// Since 0.1.2.
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> From<&SignalDynCell<'a, T, SR>>
+	for SignalArcDyn<'a, T, SR>
+{
+	fn from(value: &SignalDynCell<'a, T, SR>) -> Self {
+		value.to_read_only()
+	}
+}
+
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	From<&Signal<T, S, SR>> for SignalWeak<T, S, SR>
 {
@@ -272,6 +367,15 @@ impl<
 {
 	fn from(value: &Signal<T, S, SR>) -> Self {
 		value.downgrade().into_dyn_cell()
+	}
+}
+
+/// Since 0.1.2.
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> From<&SignalDynCell<'a, T, SR>>
+	for SignalWeakDyn<'a, T, SR>
+{
+	fn from(value: &SignalDynCell<'a, T, SR>) -> Self {
+		value.downgrade().into_read_only()
 	}
 }
 
@@ -317,6 +421,20 @@ impl<
 	fn try_from(value: SignalWeak<T, S, SR>) -> Result<Self, Self::Error> {
 		match value.upgrade() {
 			Some(strong) => Ok(strong.into_dyn_cell()),
+			None => Err(value),
+		}
+	}
+}
+
+/// Since 0.1.2.
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
+	TryFrom<SignalWeakDynCell<'a, T, SR>> for SignalArcDyn<'a, T, SR>
+{
+	type Error = SignalWeakDynCell<'a, T, SR>;
+
+	fn try_from(value: SignalWeakDynCell<'a, T, SR>) -> Result<Self, Self::Error> {
+		match value.upgrade() {
+			Some(strong) => Ok(strong.into_read_only()),
 			None => Err(value),
 		}
 	}
