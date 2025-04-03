@@ -2,7 +2,7 @@
 
 ## next
 
-TODO: Date
+2025-04-03
 
 - Features:
   - Added functions `Signal::shared`, `Signal::shared_with_runtime` and `unmanaged::shared`, which create lightweight untracked wrappers around `Sync` values.
