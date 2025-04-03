@@ -439,6 +439,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// accepts_signal(&*shared);
 	/// # }
 	/// ```
+	///
+	/// Since 0.1.2.
 	pub fn shared<'a>(value: T) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized + Sync,
@@ -463,6 +465,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// accepts_signal(&*shared);
 	/// # }
 	/// ```
+	///
+	/// Since 0.1.2.
 	pub fn shared_with_runtime<'a>(
 		value: T,
 		runtime: SR,
@@ -1183,6 +1187,17 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
+	Strong<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>
+{
+	pub(crate) fn into_read_only(self) -> Strong<T, dyn 'a + UnmanagedSignal<T, SR>, SR> {
+		let this = ManuallyDrop::new(self);
+		Strong {
+			strong: this.strong,
+		}
+	}
+}
+
 impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
 	for Strong<T, S, SR>
 {
@@ -1240,6 +1255,15 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 	{
+		let this = ManuallyDrop::new(self);
+		Weak { weak: this.weak }
+	}
+}
+
+impl<'a, T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>
+	Weak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>
+{
+	pub(crate) fn into_read_only(self) -> Weak<T, dyn 'a + UnmanagedSignal<T, SR>, SR> {
 		let this = ManuallyDrop::new(self);
 		Weak { weak: this.weak }
 	}
@@ -1349,15 +1373,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		self
 	}
 
-	/// Reborrows with the [`UnmanagedSignalCell`] `S` replaced by an opaque [`UnmanagedSignal`] in the type signature.
-	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + UnmanagedSignal<T, SR>, SR>
-	where
-		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
-	{
-		self
-	}
-
-	/// Reborrows without the [`UnmanagedSignal`] `S` in the type signature.
+	/// Creates a new [`SignalArcDyn`] for this [`Signal`], without the [`UnmanagedSignal`] `S` in the type signature.
 	pub fn to_dyn<'a>(&self) -> SignalArcDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
@@ -1365,20 +1381,46 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		self.to_owned().into_dyn()
 	}
 
-	/// Reborrows without the [`UnmanagedSignalCell`] `S` in the type signature.
+	/// Creates a new [`SignalArcDynCell`] for this [`Signal`], without the [`UnmanagedSignalCell`] `S` in the type signature.
 	pub fn to_dyn_cell<'a>(&self) -> SignalArcDynCell<'a, T, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 	{
 		self.to_owned().into_dyn_cell()
 	}
+}
 
-	/// Reborrows with the [`UnmanagedSignalCell`] `S` replaced by an opqaue [`UnmanagedSignal`] in the type signature.
+impl<T: ?Sized + Send, S: UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
+	/// Reborrows with the [`UnmanagedSignalCell`] `S` replaced by an opaque [`UnmanagedSignal`] in the type signature.
+	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + UnmanagedSignal<T, SR>, SR>
+	where
+		S: 'a + UnmanagedSignalCell<T, SR>,
+	{
+		self
+	}
+
+	/// Creates a new [`SignalArc`] for this [`Signal`], with the [`UnmanagedSignalCell`] `S` replaced by an opaque [`UnmanagedSignal`] in the type signature.
 	pub fn to_read_only<'a>(&self) -> SignalArc<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 	{
 		self.to_owned()
+	}
+}
+
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalDynCell<'a, T, SR> {
+	/// Reborrows while upcasting the reference, discarding mutation access.
+	///
+	/// Since 0.1.2.
+	pub fn as_read_only(&self) -> &SignalDyn<'a, T, SR> {
+		self
+	}
+
+	/// Creates a new [`SignalArcDyn`] for this [`SignalDynCell`], discarding mutation access.
+	///
+	/// Since 0.1.2.
+	pub fn to_read_only(&self) -> SignalArcDyn<'a, T, SR> {
+		self.as_read_only().to_owned()
 	}
 }
 

@@ -3,7 +3,7 @@ name = "flourish"
 version = "0.1.1"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2021"
-rust-version = "1.76"
+rust-version = "1.86"
 description = "Convenient and full-featured signals for Rust."
 # documentation intentionally defaulted.
 readme = true

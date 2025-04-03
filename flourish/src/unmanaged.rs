@@ -53,6 +53,8 @@ pub(crate) use raw_effect::new_raw_unsubscribed_effect;
 //TODO: Can the individual macro placeholders in this module still communicate their eventual return type?
 
 /// Unmanaged version of [`Signal::shared_with_runtime`](`crate::Signal::shared_with_runtime`).
+///
+/// Since 0.1.2.
 pub fn shared<T: Send + Sync, SR: SignalsRuntimeRef>(
 	value: T,
 	runtime: SR,

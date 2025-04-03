@@ -119,8 +119,10 @@ fn test() {
 	let _freezable = std::pin::pin!(Subscription::filter_mapped(|| thaw.get().then(|| a.get())));
 
 	// You can type-erase that too:
-	use std::future::Future;
-	use std::pin::{pin, Pin};
+	use std::{
+		future::Future,
+		pin::{pin, Pin},
+	};
 	let _freezable_dyn: Pin<&mut dyn Future<Output = SubscriptionDyn<_>>> = pin!(async {
 		Subscription::filter_mapped(|| thaw.get().then(|| a.get()))
 			.await

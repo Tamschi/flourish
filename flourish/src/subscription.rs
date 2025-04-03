@@ -199,6 +199,24 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
+	SubscriptionDynCell<'a, T, SR>
+{
+	/// Obscures the cell API, allowing only reads and subscriptions.
+	///
+	/// Since 0.1.2.
+	pub fn into_read_only(self) -> SubscriptionDyn<'a, T, SR> {
+		unsafe {
+			//SAFETY: Prevents dropping of the original `Weak`,
+			//        so that the net count doesn't change.
+			let this = ManuallyDrop::new(self);
+			Subscription {
+				subscribed: ManuallyDrop::new(this.subscribed.unsafe_copy().into_read_only()),
+			}
+		}
+	}
+}
+
 /// Secondary constructors.
 ///
 /// # Omissions
