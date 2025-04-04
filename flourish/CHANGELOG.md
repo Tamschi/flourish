@@ -5,6 +5,7 @@
 TODO: Date
 
 - Revisions:
+  - Conversion table formatting fix.
   - Fixed changelog heading "0.1.2".
 
 ## 0.1.2
