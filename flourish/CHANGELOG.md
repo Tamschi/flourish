@@ -2,6 +2,13 @@
 
 ## next
 
+TODO: Date
+
+- Revisions:
+  - Fixed changelog heading "0.1.2".
+
+## 0.1.2
+
 2025-04-03
 
 - Features:
