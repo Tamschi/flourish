@@ -2,6 +2,9 @@
 
 name: Cargo Build & Test
 
+permissions:
+  contents: read
+
 on:
   push:
   pull_request:
@@ -35,6 +38,17 @@ jobs:
       - run: cargo update --verbose
       - run: cargo build --verbose
       - run: cargo test --verbose --features _test
+  minimal_versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+      - run: cargo update -Z minimal-versions
+      - name: Checked for incompatible minimal versions
+        run: cargo check --features _test
   msrv:
     runs-on: ubuntu-latest
     steps:
