@@ -945,4 +945,27 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 		self.process_pending(&lock, borrow);
 	}
+
+	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {
+		// Ensures that the context stack is not empty while `f` runs, blocking updates.
+		let lock = self.critical_mutex.lock();
+		let mut borrow = (*lock).borrow_mut();
+		if borrow.context_stack.is_empty() {
+			let t = try_eval(|| {
+				borrow.context_stack.push(None);
+				drop(borrow);
+				f()
+			})
+			.finally(|()| {
+				let mut borrow = (*lock).borrow_mut();
+				assert_eq!(borrow.context_stack.pop(), Some(None));
+			});
+			borrow = (*lock).borrow_mut();
+			self.process_pending(&lock, borrow);
+			t
+		} else {
+			drop(borrow);
+			f()
+		}
+	}
 }
