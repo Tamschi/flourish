@@ -54,7 +54,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// # Safety
 	///
 	/// The return value **must** be able to uniquely identify a signal towards this runtime.
-	///  
+	///
 	/// Symbols **may** be reused by signals even after [`stop`](`SignalsRuntimeRef::stop`) and
 	/// as such **must not** be reallocated by a given runtime.
 	fn next_id(&self) -> Self::Symbol;
@@ -297,6 +297,20 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// [`purge`](`SignalsRuntimeRef::purge`) implies [`stop`](`SignalsRuntimeRef::stop`).
 	fn purge(&self, id: Self::Symbol);
+
+	/// Hints to the signals runtime that contained operations (usually: on the current thread)
+	/// are related and that update propagation is likely to benefit from batching/deduplication.
+	///
+	/// Note that the runtime **may** ignore this completely.
+	///
+	/// # Logic
+	///
+	/// This function **may** act as "exclusivity context" for nested calls to [`update_blocking`](`SignalsRuntimeRef::update_blocking`),
+	/// casing them to deadlock or panic.
+	#[inline(always)]
+	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {
+		f()
+	}
 }
 
 #[cfg(feature = "global_signals_runtime")]
@@ -472,6 +486,10 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 
 	fn purge(&self, id: Self::Symbol) {
 		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).purge(id.0)
+	}
+
+	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).hint_batched_updates(f)
 	}
 }
 

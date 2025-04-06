@@ -209,6 +209,21 @@ signal = Signal::computed(|| ()).into(); // via `Into`
 
 There are additional conversion methods available. See the `conversions` module for details.
 
+## Upcasting
+
+Upcasting conversions from `…DynCell` to read-only `…Dyn` handles and references are available.
+
+In particular, references and pointers to `SignalDynCell` can be coerced directly into those to `SignalDyn`:
+
+```rust
+use flourish::{GlobalSignalsRuntime, Signal, SignalArc, SignalDyn, SignalDynCell};
+
+let cell: SignalArc<_, _, _> = Signal::<_, _, GlobalSignalsRuntime>::cell(());
+
+let dyn_cell_ref: &SignalDynCell<_, _> = cell.as_dyn_cell();
+let dyn_ref: &SignalDyn<_, _> = dyn_cell_ref;
+```
+
 ## Using an instantiated runtime
 
 You can use existing `isoprenoid` runtime instances with the included types and macros (but ideally, still alias these items for your own use):
@@ -255,9 +270,8 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |Feature|What it would enable|
 |-|-|
 |[`coerce_unsized`](https://github.com/rust-lang/rust/issues/18598)|More type-erasure coercions for various `Signal` handle types (probably). For now, please use the respective conversion methods or `From`/`Into` conversions instead.|
-|[`trait_upcasting`](https://github.com/rust-lang/rust/issues/65991)|Conversions from `…DynCell` to `…Dyn`.|
 |Fix for [Unexpected higher-ranked lifetime error in GAT usage](https://github.com/rust-lang/rust/issues/100013)|(Cleanly) avoid boxing the inner closure in many "`_eager`" methods.|
-|Object-safety for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
+|Dyn-compatibility for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
 |[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of signal cell implementations.|
 |[`impl_trait_in_assoc_type`](https://github.com/rust-lang/rust/issues/63063)|Eliminate several surfaced internal types, resulting in better docs.|
 |[Precise capturing in RPITIT](https://github.com/rust-lang/rust/pull/126746)|This would clean up the API quite a lot, by removing some GATs.|

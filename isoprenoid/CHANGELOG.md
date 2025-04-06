@@ -4,6 +4,9 @@
 
 TODO: Date
 
+- Features:
+  - Added `SignalsRuntimeRef::hint_batched_updates` method with default implementation.
+
 - Revisions:
   - Documentation typo fix.
 
