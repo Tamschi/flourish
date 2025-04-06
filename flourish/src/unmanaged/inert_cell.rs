@@ -14,7 +14,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::{shadow_clone, traits::Guard};
+use crate::{shadow_clone, traits::Guard, MaybeReplaced, MaybeSet};
 
 use super::{UnmanagedSignal, UnmanagedSignalCell};
 
@@ -208,9 +208,19 @@ impl<T: Send + ?Sized, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for InertCe
 impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR>
 	for InertCell<T, SR>
 {
-	fn change(self: Pin<&Self>, new_value: T)
+	fn set(self: Pin<&Self>, new_value: T)
 	where
-		T: 'static + Sized + PartialEq,
+		T: 'static + Sized,
+	{
+		self.update(|value| {
+			*value = new_value;
+			Propagation::Propagate
+		});
+	}
+
+	fn set_distinct(self: Pin<&Self>, new_value: T)
+	where
+		T: 'static + Sized + Eq,
 	{
 		self.update(|value| {
 			if *value != new_value {
@@ -219,16 +229,6 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 			} else {
 				Propagation::Halt
 			}
-		});
-	}
-
-	fn replace(self: Pin<&Self>, new_value: T)
-	where
-		T: 'static + Sized,
-	{
-		self.update(|value| {
-			*value = new_value;
-			Propagation::Propagate
 		});
 	}
 
@@ -253,13 +253,49 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 			.update(|value, _| update(&mut value.0.write().unwrap()))
 	}
 
-	fn change_eager<'f>(
-		self: Pin<&Self>,
-		new_value: T,
-	) -> private::DetachedFuture<'f, Result<Result<T, T>, T>>
+	fn set_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::SetEager<'f>
 	where
 		Self: 'f + Sized,
-		T: 'f + Sized + PartialEq,
+		T: 'f + Sized,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f = self.update_eager({
+			let r = Arc::downgrade(&r);
+			move |value| {
+				let Some(r) = r.upgrade() else {
+					return (Propagation::Halt, ());
+				};
+				let mut r = r.try_lock().unwrap();
+				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+				*value = new_value;
+				*r = Some(Ok(()));
+				(Propagation::Propagate, ())
+			}
+		});
+
+		private::DetachedFuture(Box::pin(async move {
+			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
+			use futures_lite::FutureExt;
+			f.boxed().await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		}))
+	}
+
+	type SetEager<'f>
+		= private::DetachedFuture<'f, Result<(), T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn set_distinct_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::SetDistinctEager<'f>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + Eq,
 	{
 		let r = Arc::new(Mutex::new(Some(Err(new_value))));
 		let f = self.update_eager({
@@ -271,10 +307,11 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 				let mut r = r.try_lock().unwrap();
 				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 				if *value != new_value {
-					*r = Some(Ok(Ok(mem::replace(value, new_value))));
+					*value = new_value;
+					*r = Some(Ok(MaybeSet::Set));
 					(Propagation::Propagate, ())
 				} else {
-					*r = Some(Ok(Err(new_value)));
+					*r = Some(Ok(MaybeSet::Unchanged(new_value)));
 					(Propagation::Halt, ())
 				}
 			}
@@ -293,8 +330,8 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		}))
 	}
 
-	type ChangeEager<'f>
-		= private::DetachedFuture<'f, Result<Result<T, T>, T>>
+	type SetDistinctEager<'f>
+		= private::DetachedFuture<'f, Result<MaybeSet<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -340,6 +377,52 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		Self: 'f + Sized,
 		T: 'f + Sized;
 
+	fn replace_distinct_eager<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> private::DetachedFuture<'f, Result<MaybeReplaced<T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + Eq,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f = self.update_eager({
+			let r = Arc::downgrade(&r);
+			move |value| {
+				let Some(r) = r.upgrade() else {
+					return (Propagation::Halt, ());
+				};
+				let mut r = r.try_lock().unwrap();
+				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+				if *value != new_value {
+					*r = Some(Ok(MaybeReplaced::Replaced(mem::replace(value, new_value))));
+					(Propagation::Propagate, ())
+				} else {
+					*r = Some(Ok(MaybeReplaced::Unchanged(new_value)));
+					(Propagation::Halt, ())
+				}
+			}
+		});
+
+		private::DetachedFuture(Box::pin(async move {
+			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
+			use futures_lite::FutureExt;
+			f.boxed().await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		}))
+	}
+
+	type ReplaceDistinctEager<'f>
+		= private::DetachedFuture<'f, Result<MaybeReplaced<T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
 	fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		self: Pin<&Self>,
 		update: F,
@@ -378,12 +461,47 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 	where
 		Self: 'f + Sized;
 
-	fn change_eager_dyn<'f>(
+	fn set_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	) -> Box<dyn 'f + Send + Future<Output = Result<(), T>>>
 	where
-		T: 'f + Sized + PartialEq,
+		T: 'f + Sized,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f: Pin<Box<_>> = self
+			.update_eager_dyn({
+				let r = Arc::downgrade(&r);
+				Box::new(move |value: &mut T| {
+					let Some(r) = r.upgrade() else {
+						return Propagation::Halt;
+					};
+					let mut r = r.try_lock().unwrap();
+					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+					*value = new_value;
+					*r = Some(Ok(()));
+					Propagation::Propagate
+				})
+			})
+			.into();
+
+		Box::new(async move {
+			f.await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		})
+	}
+
+	fn set_distinct_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<MaybeSet<T>, T>>>
+	where
+		T: 'f + Sized + Eq,
 	{
 		let r = Arc::new(Mutex::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
@@ -396,10 +514,11 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 					let mut r = r.try_lock().unwrap();
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 					if *value != new_value {
-						*r = Some(Ok(Ok(mem::replace(value, new_value))));
+						*value = new_value;
+						*r = Some(Ok(MaybeSet::Set));
 						Propagation::Propagate
 					} else {
-						*r = Some(Ok(Err(new_value)));
+						*r = Some(Ok(MaybeSet::Unchanged(new_value)));
 						Propagation::Halt
 					}
 				})
@@ -436,6 +555,45 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 					*r = Some(Ok(mem::replace(value, new_value)));
 					Propagation::Propagate
+				})
+			})
+			.into();
+
+		Box::new(async move {
+			f.await.ok();
+			Arc::try_unwrap(r)
+				.map_err(|_| ())
+				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.into_inner()
+				.expect("unreachable")
+				.expect("unreachable")
+		})
+	}
+
+	fn replace_distinct_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>>
+	where
+		T: 'f + Sized + Eq,
+	{
+		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let f: Pin<Box<_>> = self
+			.update_eager_dyn({
+				let r = Arc::downgrade(&r);
+				Box::new(move |value: &mut T| {
+					let Some(r) = r.upgrade() else {
+						return Propagation::Halt;
+					};
+					let mut r = r.try_lock().unwrap();
+					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+					if *value != new_value {
+						*r = Some(Ok(MaybeReplaced::Replaced(mem::replace(value, new_value))));
+						Propagation::Propagate
+					} else {
+						*r = Some(Ok(MaybeReplaced::Unchanged(new_value)));
+						Propagation::Halt
+					}
 				})
 			})
 			.into();
@@ -492,15 +650,23 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		})
 	}
 
-	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	fn set_blocking(&self, new_value: T)
 	where
-		T: Sized + PartialEq,
+		T: Sized,
+	{
+		self.update_blocking(|value| (Propagation::Propagate, *value = new_value))
+	}
+
+	fn set_distinct_blocking(&self, new_value: T) -> MaybeSet<T>
+	where
+		T: Sized + Eq,
 	{
 		self.update_blocking(|value| {
 			if *value != new_value {
-				(Propagation::Propagate, Ok(mem::replace(value, new_value)))
+				*value = new_value;
+				(Propagation::Propagate, MaybeSet::Set)
 			} else {
-				(Propagation::Halt, Err(new_value))
+				(Propagation::Halt, MaybeSet::Unchanged(new_value))
 			}
 		})
 	}
@@ -510,6 +676,22 @@ impl<T: Send + ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		T: Sized,
 	{
 		self.update_blocking(|value| (Propagation::Propagate, mem::replace(value, new_value)))
+	}
+
+	fn replace_distinct_blocking(&self, new_value: T) -> MaybeReplaced<T>
+	where
+		T: Sized + Eq,
+	{
+		self.update_blocking(|value| {
+			if *value != new_value {
+				(
+					Propagation::Propagate,
+					MaybeReplaced::Replaced(mem::replace(value, new_value)),
+				)
+			} else {
+				(Propagation::Halt, MaybeReplaced::Unchanged(new_value))
+			}
+		})
 	}
 
 	fn update_blocking<U>(&self, update: impl FnOnce(&mut T) -> (Propagation, U)) -> U {

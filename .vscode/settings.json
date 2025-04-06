@@ -1,13 +1,16 @@
 {
     "cSpell.words": [
         "combinators",
+        "conv",
         "isoprenoid",
         "pinnable",
         "Reborrows",
+        "refcounting",
         "restabilised",
         "RPITIT",
         "scopeguard",
-        "sptr"
+        "sptr",
+        "uninit"
     ],
     "rust-analyzer.cargo.features": [
         "_test"

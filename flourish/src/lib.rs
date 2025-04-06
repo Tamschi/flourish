@@ -62,6 +62,81 @@ pub mod __ {
 	};
 }
 
+/// Result of a conditional `set…` operation on a signal cell.
+///
+/// Similar to `Result<(), T>`, but not `#[must_use]`.
+pub enum MaybeSet<T> {
+	/// The cell's value was set to the new value.
+	Set,
+	/// The cell's value remained in place.
+	///
+	/// Contains the new value that remains unused.
+	Unchanged(T),
+}
+
+impl<T> MaybeSet<T> {
+	/// Whether the cell value was set.
+	pub fn is_set(&self) -> bool {
+		matches!(self, Self::Set)
+	}
+
+	/// Whether the cell value was not changed.
+	pub fn is_unchanged(&self) -> bool {
+		matches!(self, Self::Unchanged(_))
+	}
+
+	/// Converts `self` into an equivalent [`Result`].
+	pub fn into_result(self) -> Result<(), T> {
+		match self {
+			Self::Set => Ok(()),
+			Self::Unchanged(new_value) => Err(new_value),
+		}
+	}
+}
+
+/// Result of a conditional `replace…` operation on a signal cell.
+///
+/// Similar to `Result<T, T>`, but neither variant represents failure.
+#[must_use = "if you don't need the old value, you can just assign the new value directly"]
+pub enum MaybeReplaced<T> {
+	/// The cell/s value was replaced.
+	///
+	/// Contains the old value moved out of the cell.
+	Replaced(T),
+	/// The cell's value remained in place.
+	///
+	/// Contains the new value that remains unused.
+	Unchanged(T),
+}
+
+impl<T> MaybeReplaced<T> {
+	/// Whether the cell value was replaced.
+	pub fn is_replaced(&self) -> bool {
+		matches!(self, Self::Replaced(_))
+	}
+
+	/// Whether the cell value was not changed.
+	pub fn is_unchanged(&self) -> bool {
+		matches!(self, Self::Unchanged(_))
+	}
+
+	/// Unwraps `self`, removing the distinction between changed and unchanged values.
+	pub fn into_inner(self) -> T {
+		match self {
+			MaybeReplaced::Replaced(old_value) => old_value,
+			MaybeReplaced::Unchanged(new_value) => new_value,
+		}
+	}
+
+	/// Converts `self` into an equivalent [`Result`].
+	pub fn into_result(self) -> Result<T, T> {
+		match self {
+			Self::Replaced(old_value) => Ok(old_value),
+			Self::Unchanged(new_value) => Err(new_value),
+		}
+	}
+}
+
 /// Shadows each identifier in place with its [`Clone::clone`].
 ///
 /// This is useful to duplicate smart pointers:

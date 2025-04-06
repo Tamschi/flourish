@@ -47,14 +47,14 @@ fn heap() {
 
 	// There are two subscriptions, so each "hit" advances twice.
 
-	b_cell.replace_blocking(());
+	b_cell.set_blocking(());
 	v.expect(['a', 'b']);
 
-	b_cell.replace_blocking(());
-	c_cell.replace_blocking(());
+	b_cell.set_blocking(());
+	c_cell.set_blocking(());
 	v.expect([]);
 
-	a_cell.replace_blocking(());
+	a_cell.set_blocking(());
 	v.expect(['a', 'b']);
 }
 
@@ -94,13 +94,13 @@ fn stack() {
 
 	// There are two subscriptions, so each "hit" advances twice.
 
-	b_cell.replace_blocking(());
+	b_cell.set_blocking(());
 	v.expect(['a', 'b']);
 
-	b_cell.replace_blocking(());
-	c_cell.replace_blocking(());
+	b_cell.set_blocking(());
+	c_cell.set_blocking(());
 	v.expect([]);
 
-	a_cell.replace_blocking(());
+	a_cell.set_blocking(());
 	v.expect(['a', 'b']);
 }

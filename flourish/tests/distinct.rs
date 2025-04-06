@@ -27,7 +27,7 @@ fn distinct() {
 
 	let mut previous = 0;
 	for n in [1, 2, 3, 3, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7, 8, 9, 9] {
-		cell.replace_blocking(n);
+		cell.set_blocking(n);
 		if n == previous {
 			x.expect(["d"]);
 		} else {

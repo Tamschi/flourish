@@ -798,7 +798,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			let has_stale = stale.is_some();
 
 			if !(borrow.context_stack.is_empty() && !has_stale) {
-				panic!("Called `update_blocking` (via `change_blocking` or `replace_blocking`?) while propagating another update. This would deadlock with a better queue.");
+				panic!("Called `update_blocking` (via `set_distinct_blocking` or `set_blocking`?) while propagating another update. This would deadlock with a better queue.");
 			}
 
 			let (propagation, t) = f();

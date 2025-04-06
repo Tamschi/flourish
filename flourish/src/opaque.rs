@@ -9,7 +9,10 @@ use std::{
 
 use isoprenoid::runtime::SignalsRuntimeRef;
 
-use crate::traits::{Guard, UnmanagedSignal, UnmanagedSignalCell};
+use crate::{
+	traits::{Guard, UnmanagedSignal, UnmanagedSignalCell},
+	MaybeReplaced, MaybeSet,
+};
 
 pub enum Opaque {}
 
@@ -91,16 +94,16 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 }
 
 impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for Opaque {
-	fn change(self: Pin<&Self>, _: T)
+	fn set(self: Pin<&Self>, _: T)
 	where
-		T: 'static + Sized + PartialEq,
+		T: 'static + Sized,
 	{
 		match *self {}
 	}
 
-	fn replace(self: Pin<&Self>, _: T)
+	fn set_distinct(self: Pin<&Self>, _: T)
 	where
-		T: 'static + Sized,
+		T: 'static + Sized + PartialEq,
 	{
 		match *self {}
 	}
@@ -124,16 +127,30 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	fn change_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueFuture<Result<Result<T, T>, T>>
+	fn set_eager<'f>(self: Pin<&Self>, _: T) -> Self::SetEager<'f>
 	where
 		Self: 'f + Sized,
-		T: 'f + Sized + PartialEq,
+		T: 'f + Sized,
 	{
 		match *self {}
 	}
 
-	type ChangeEager<'f>
-		= OpaqueFuture<Result<Result<T, T>, T>>
+	type SetEager<'f>
+		= OpaqueFuture<Result<(), T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn set_distinct_eager<'f>(self: Pin<&Self>, _: T) -> Self::SetDistinctEager<'f>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + Eq,
+	{
+		match *self {}
+	}
+
+	type SetDistinctEager<'f>
+		= OpaqueFuture<Result<MaybeSet<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -148,6 +165,23 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 
 	type ReplaceEager<'f>
 		= OpaqueFuture<Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn replace_distinct_eager<'f>(
+		self: Pin<&Self>,
+		_: T,
+	) -> OpaqueFuture<Result<MaybeReplaced<T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + PartialEq,
+	{
+		match *self {}
+	}
+
+	type ReplaceDistinctEager<'f>
+		= OpaqueFuture<Result<MaybeReplaced<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -171,12 +205,22 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 	where
 		Self: 'f + Sized;
 
-	fn change_eager_dyn<'f>(
+	fn set_eager_dyn<'f>(
 		self: Pin<&Self>,
 		_: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	) -> Box<dyn 'f + Send + Future<Output = Result<(), T>>>
 	where
-		T: 'f + Sized + PartialEq,
+		T: 'f + Sized,
+	{
+		match *self {}
+	}
+
+	fn set_distinct_eager_dyn<'f>(
+		self: Pin<&Self>,
+		_: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<MaybeSet<T>, T>>>
+	where
+		T: 'f + Sized + Eq,
 	{
 		match *self {}
 	}
@@ -187,6 +231,15 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
 		T: 'f + Sized,
+	{
+		match *self {}
+	}
+	fn replace_distinct_eager_dyn<'f>(
+		self: Pin<&Self>,
+		_: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
 	{
 		match *self {}
 	}
@@ -210,9 +263,16 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	fn change_blocking(&self, _: T) -> Result<T, T>
+	fn set_blocking(&self, _: T)
 	where
-		T: Sized + PartialEq,
+		T: Sized,
+	{
+		match *self {}
+	}
+
+	fn set_distinct_blocking(&self, _: T) -> MaybeSet<T>
+	where
+		T: Sized + Eq,
 	{
 		match *self {}
 	}
@@ -220,6 +280,13 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 	fn replace_blocking(&self, _: T) -> T
 	where
 		T: Sized,
+	{
+		match *self {}
+	}
+
+	fn replace_distinct_blocking(&self, _: T) -> MaybeReplaced<T>
+	where
+		T: Sized + PartialEq,
 	{
 		match *self {}
 	}

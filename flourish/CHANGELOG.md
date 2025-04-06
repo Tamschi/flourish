@@ -7,8 +7,7 @@ TODO: Date
 - Breaking:
   - Removed `Into` conversion from unmanaged signals to `SignalArc`.  
     (Use `SignalArc::new` instead.)
-  - Added conversions from `T` for owned signals and handles, either without closures.  
-    (This makes `.into()` ambiguous in some additional cases. Use specific `.into_…()` methods where necessary.)
+  - Revised cell API. There are new `set…` methods that **may** be implemented to drop the old value in place, and `change…` is now `replace_distinct…` and now requires `Eq` rather than just `PartialEq`.
 
 ## next
 

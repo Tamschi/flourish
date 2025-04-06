@@ -11,7 +11,7 @@ fn direct() {
 
 	assert_eq!(b.get(), 1);
 
-	a.replace_blocking(2);
+	a.set_blocking(2);
 	assert_eq!(b.get(), 2);
 }
 
@@ -23,6 +23,6 @@ fn indirect() {
 
 	assert_eq!(c.get(), 1);
 
-	a.replace_blocking(2);
+	a.set_blocking(2);
 	assert_eq!(c.get(), 2);
 }

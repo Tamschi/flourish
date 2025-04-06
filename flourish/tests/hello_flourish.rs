@@ -48,14 +48,14 @@ fn test() {
 
 	// Don't use blocking setters in callbacks!
 	// There are deferrable (without suffix) and cancellable `_async` and `_eager` variants too.
-	a.change_blocking(5).ok(); // Replaces only distinct values.
+	a.set_distinct_blocking(5); // Replaces only distinct values.
 	assert_eq!(result.load(Relaxed), 7);
 
 	drop(set_result);
 
 	// `GlobalSignalsRuntime` guarantees subscribed values are fresh whenever the
 	// last call into it exits, so *without concurrency* this is synchronous *here*.
-	b.replace(0);
+	b.set(0);
 	assert_eq!(result.load(Relaxed), 7); // unchanged, as `set_result` was dropped.
 
 	// Erase the closure type, at cost of dynamic dispatch through such handles:
@@ -88,8 +88,8 @@ fn test() {
 	let chosen = Signal::computed(|| if choose_a.get() { a.get() } else { b.get() });
 	let chosen = chosen.into_subscription(); // evaluate
 
-	choose_a.replace(true); // changes dependencies, as `chosen` is subscribed
-	a.replace(10);
+	choose_a.set(true); // changes dependencies, as `chosen` is subscribed
+	a.set(10);
 	assert_eq!(chosen.get(), 10); // from cache in `chosen`
 
 	// (Just cleanup for the next example.)
@@ -110,8 +110,8 @@ fn test() {
 		},
 		drop,
 	);
-	a.replace_blocking(0);
-	b.replace_blocking(0);
+	a.set_blocking(0);
+	b.set_blocking(0);
 	assert_eq!(b.get(), 1);
 
 	// Signals can be filtered (but are never empty, so the result is a `Future<Output = Subscription<…>>`):

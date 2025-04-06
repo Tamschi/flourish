@@ -40,29 +40,29 @@ fn auto_dependencies() {
 	let subscription = signal.to_subscription();
 	v.expect([""]);
 
-	a.replace_blocking("a");
-	b.replace_blocking("b");
+	a.set_blocking("a");
+	b.set_blocking("b");
 	v.expect([]);
 
-	index.replace_blocking(1);
+	index.set_blocking(1);
 	v.expect(["a"]);
 
-	a.replace_blocking("aa");
+	a.set_blocking("aa");
 	v.expect(["aa"]);
 
-	b.replace_blocking("bb");
+	b.set_blocking("bb");
 	v.expect([]);
 
-	index.replace_blocking(2);
+	index.set_blocking(2);
 	v.expect(["bb"]);
 
-	a.replace_blocking("a");
+	a.set_blocking("a");
 	v.expect([]);
 
-	b.replace_blocking("b");
+	b.set_blocking("b");
 	v.expect(["b"]);
 
 	drop(subscription);
-	index.replace_blocking(3);
+	index.set_blocking(3);
 	v.expect([]);
 }

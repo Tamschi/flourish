@@ -2,6 +2,8 @@ use std::{borrow::Borrow, future::Future, ops::Deref, pin::Pin};
 
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
+use crate::{MaybeReplaced, MaybeSet};
+
 /// "Unmanaged" (stack-pinnable) signals that have an accessible value.
 ///
 /// **Combinators should implement this.**
@@ -117,27 +119,29 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	Send + Sync + UnmanagedSignal<T, SR>
 {
-	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	/// Unconditionally sets the stored value to `new_value` and signals dependents.
+	///
+	/// Prefer [`.set_distinct(new_value)`] if not signalling for unchanged values is acceptable.
 	///
 	/// # Logic
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	fn change(self: Pin<&Self>, new_value: T)
-	where
-		T: 'static + Sized + PartialEq;
-
-	/// Unconditionally replaces the current value with `new_value` and signals dependents.
-	///
-	/// Prefer [`.change(new_value)`] if debouncing is acceptable.
-	///
-	/// # Logic
-	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **may** defer its effect.
-	fn replace(self: Pin<&Self>, new_value: T)
+	fn set(self: Pin<&Self>, new_value: T)
 	where
 		T: 'static + Sized;
+
+	/// Iff `new_value` is not equal to the current value, replaces it and signals dependents.
+	///
+	/// Otherwise, drops `new_value`.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **may** defer its effect.
+	fn set_distinct(self: Pin<&Self>, new_value: T)
+	where
+		T: 'static + Sized + Eq;
 
 	/// Modifies the current value using the given closure.
 	///
@@ -159,11 +163,13 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	) where
 		T: 'static;
 
-	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	/// Unconditionally set the value to `new_value` and signals dependents.
+	///
+	/// Prefer [`.set_distinct_eager(new_value)`] if not signalling for unchanged values is acceptable.
 	///
 	/// # Returns
 	///
-	/// [`Ok`] with the previous value, or [`Err(new_value)`](`Err`) iff not replaced.
+	/// `Ok(())` or, iff cancelled, `Err(new_value)`.
 	///
 	/// # Panics
 	///
@@ -177,13 +183,44 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn change_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::ChangeEager<'f>
+	fn set_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::SetEager<'f>
 	where
 		Self: 'f + Sized,
-		T: 'f + Sized + PartialEq;
+		T: 'f + Sized;
 
-	/// Return type of [`change_eager`](`UnmanagedSignalCell::change_eager`).
-	type ChangeEager<'f>: 'f + Send + Future<Output = Result<Result<T, T>, T>>
+	/// Return type of [`set_eager`](`UnmanagedSignalCell::set_eager`).
+	type SetEager<'f>: 'f + Send + Future<Output = Result<(), T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	/// Iff `new_value` differs from the current value, sets it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// - `Ok(Ok(()))` iff set,
+	/// - `Ok(Err(new_value))` iff the values weren't distinct and
+	/// - [`Err(new_value)`](`Err`) iff cancelled.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	fn set_distinct_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::SetDistinctEager<'f>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + Eq;
+
+	/// Return type of [`set_distinct_eager`](`UnmanagedSignalCell::set_distinct_eager`).
+	type SetDistinctEager<'f>: 'f + Send + Future<Output = Result<MaybeSet<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -192,7 +229,8 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Returns
 	///
-	/// The previous value.
+	/// - The previous value wrapped in [`Ok`] iff replaced,
+	/// - [`Err(new_value)`](`Err`) iff cancelled.
 	///
 	/// # Panics
 	///
@@ -213,6 +251,35 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 
 	/// Return type of [`replace_eager`](`UnmanagedSignalCell::replace_eager`).
 	type ReplaceEager<'f>: 'f + Send + Future<Output = Result<T, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// [`Ok`] with the previous value, or [`Err(new_value)`](`Err`) iff not replaced.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	fn replace_distinct_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::ReplaceDistinctEager<'f>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + Eq;
+
+	/// Return type of [`replace_distinct_eager`](`UnmanagedSignalCell::replace_distinct_eager`).
+	type ReplaceDistinctEager<'f>: 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -248,13 +315,21 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		Self: 'f + Sized;
 
-	/// The same as [`change_eager`](`UnmanagedSignalCell::change_eager`), but `dyn`-compatible.
-	fn change_eager_dyn<'f>(
+	/// The same as [`set_eager`](`UnmanagedSignalCell::set_eager`), but `dyn`-compatible.
+	fn set_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	) -> Box<dyn 'f + Send + Future<Output = Result<(), T>>>
 	where
-		T: 'f + Sized + PartialEq;
+		T: 'f + Sized;
+
+	/// The same as [`set_distinct_eager`](`UnmanagedSignalCell::set_distinct_eager`), but `dyn`-compatible.
+	fn set_distinct_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<MaybeSet<T>, T>>>
+	where
+		T: 'f + Sized + Eq;
 
 	/// The same as [`replace_eager`](`UnmanagedSignalCell::replace_eager`), but `dyn`-compatible.
 	fn replace_eager_dyn<'f>(
@@ -263,6 +338,14 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
 	where
 		T: 'f + Sized;
+
+	/// The same as [`replace_distinct_eager`](`UnmanagedSignalCell::replace_distinct_eager`), but `dyn`-compatible.
+	fn replace_distinct_eager_dyn<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>>
+	where
+		T: 'f + Sized + Eq;
 
 	/// The same as [`update_eager`](`UnmanagedSignalCell::update_eager`), but `dyn`-compatible.
 	fn update_eager_dyn<'f>(
@@ -276,11 +359,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	where
 		T: 'f;
 
-	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
-	///
-	/// # Returns
-	///
-	/// [`Ok`] with the previous value, or [`Err(new_value)`](`Err`) iff not replaced.
+	/// Unconditionally sets the value to `new_value` and signals dependents.
 	///
 	/// # Panics
 	///
@@ -289,9 +368,26 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	fn change_blocking(&self, new_value: T) -> Result<T, T>
+	fn set_blocking(&self, new_value: T)
 	where
-		T: Sized + PartialEq;
+		T: Sized;
+
+	/// Iff `new_value` differs from the current value, sets it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// [`Ok(())`](`Ok`), or [`Err(new_value)`](`Err`) iff not replaced.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	fn set_distinct_blocking(&self, new_value: T) -> MaybeSet<T>
+	where
+		T: Sized + Eq;
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.
 	///
@@ -306,9 +402,27 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	#[must_use = "If you don't need the old value, prefer `set_blocking.`"]
 	fn replace_blocking(&self, new_value: T) -> T
 	where
 		T: Sized;
+
+	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// [`Ok`] with the previous value, or [`Err(new_value)`](`Err`) iff not replaced.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	fn replace_distinct_blocking(&self, new_value: T) -> MaybeReplaced<T>
+	where
+		T: Sized + Eq;
 
 	/// Modifies the current value using the given closure.
 	///

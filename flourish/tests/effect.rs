@@ -23,7 +23,7 @@ fn heap() {
 	);
 	v.expect(["f"]);
 
-	a_cell.replace_blocking(());
+	a_cell.set_blocking(());
 	v.expect(["drop", "f"]);
 
 	drop(e);

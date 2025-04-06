@@ -27,7 +27,7 @@ fn stack() {
 			}
 			v.expect(["f"]);
 
-			a.replace_blocking(());
+			a.set_blocking(());
 			v.expect(["drop", "f"]);
 		} // drop e
 		v.expect(["drop"]);

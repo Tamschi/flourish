@@ -41,19 +41,19 @@ fn use_macros() {
 		v.expect([2]);
 		x.expect(["sub_aa", "aa", "c", "d"]);
 
-		b_cell.replace_blocking(2);
+		b_cell.set_blocking(2);
 		v.expect([2]);
 		x.expect(["c", "d", "sub_aa", "aa"]);
 
-		a.replace_blocking(0);
+		a.set_blocking(0);
 		v.expect([0]);
 		x.expect(["c", "d", "sub_aa", "aa"]);
 	} // drop sub
 
 	// These evaluate *no* closures!
-	a.replace_blocking(2);
-	b_cell.replace_blocking(3);
-	a.replace_blocking(5);
+	a.set_blocking(2);
+	b_cell.set_blocking(3);
+	a.set_blocking(5);
 	v.expect([]);
 	x.expect([]);
 
@@ -64,7 +64,7 @@ fn use_macros() {
 	v.expect([8, 2]);
 	x.expect(["sub_c", "c", "sub_d", "d"]);
 
-	a.replace_blocking(4);
+	a.set_blocking(4);
 	v.expect([7, 1]);
 	x.expect(["c", "d", "sub_c", "sub_d"]);
 }
