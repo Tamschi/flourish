@@ -645,3 +645,6 @@ mod private {
 		}
 	}
 }
+
+//TODO: Add-on trait with interface to record dependencies without clearing out the old ones. (`record_additional_dependencies`?)
+//TODO: Having that should enable different kinds of asynchronously-updating signals.
