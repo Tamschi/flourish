@@ -630,8 +630,6 @@ mod private {
 		task::{Context, Poll},
 	};
 
-	use futures_lite::FutureExt;
-
 	#[allow(unreachable_pub)] // Used with "global_signals_runtime".
 	pub struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
@@ -641,7 +639,7 @@ mod private {
 		type Output = Output;
 
 		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-			self.0.poll(cx)
+			Pin::new(&mut self.0).poll(cx)
 		}
 	}
 }
