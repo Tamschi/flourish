@@ -3,7 +3,7 @@ use std::{
 	cell::UnsafeCell,
 	fmt::{self, Debug, Formatter},
 	future::Future,
-	marker::{PhantomData, PhantomPinned},
+	marker::PhantomData,
 	mem::{self, ManuallyDrop, MaybeUninit},
 	ops::Deref,
 	pin::Pin,
@@ -12,7 +12,6 @@ use std::{
 	usize,
 };
 
-use futures_lite::FutureExt as _;
 use isoprenoid::runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef};
 use tap::Conv;
 
@@ -1475,7 +1474,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 
 	/// Records `self` as dependency and allows borrowing the value.
-	pub fn read<'r>(&'r self) -> S::Read<'r>
+	pub fn read<'r>(&'r self) -> impl 'r + Guard<T>
 	where
 		S: Sized,
 		T: 'r + Sync,
@@ -1486,7 +1485,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	/// Records `self` as dependency and allows borrowing the value.
 	///
 	/// Prefer [`Signal::read`] where available.
-	pub fn read_exclusive<'r>(&'r self) -> S::ReadExclusive<'r>
+	pub fn read_exclusive<'r>(&'r self) -> impl 'r + Guard<T>
 	where
 		S: Sized,
 		T: 'r,
@@ -1583,24 +1582,23 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 
 	/// Cheaply creates a [`Future`] that has the effect of [`set_eager`](`Signal::set_eager`) when polled.
 	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
-	pub fn set_async<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<(), T>>
+	pub fn set_async<'f>(
+		&self,
+		new_value: T,
+	) -> impl use<'f, T, S, SR> + 'f + Send + Future<Output = Result<(), T>>
 	where
 		T: 'f + Sized,
 		S: 'f + Sized,
 		SR: 'f,
 	{
 		let this = self.downgrade();
-		private::DetachedFuture(
-			Box::pin(async move {
-				if let Some(this) = this.upgrade() {
-					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.set_eager(new_value).boxed().await
-				} else {
-					Err(new_value)
-				}
-			}),
-			PhantomPinned,
-		)
+		async move {
+			if let Some(this) = this.upgrade() {
+				this.set_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		}
 	}
 
 	/// Cheaply creates a [`Future`] that has the effect of [`set_distinct_eager`](`Signal::set_distinct_eager`) when polled.
@@ -1608,46 +1606,41 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	pub fn set_distinct_async<'f>(
 		&self,
 		new_value: T,
-	) -> private::DetachedFuture<'f, Result<MaybeSet<T>, T>>
+	) -> impl use<'f, T, S, SR> + 'f + Send + Future<Output = Result<MaybeSet<T>, T>>
 	where
 		T: 'f + Sized + Eq,
 		S: 'f + Sized,
 		SR: 'f,
 	{
 		let this = self.downgrade();
-		private::DetachedFuture(
-			Box::pin(async move {
-				if let Some(this) = this.upgrade() {
-					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.set_distinct_eager(new_value).boxed().await
-				} else {
-					Err(new_value)
-				}
-			}),
-			PhantomPinned,
-		)
+		async move {
+			if let Some(this) = this.upgrade() {
+				this.set_distinct_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		}
 	}
 
 	/// Cheaply creates a [`Future`] that has the effect of [`replace_eager`](`Signal::replace_eager`) when polled.
 	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
-	pub fn replace_async<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<T, T>>
+	pub fn replace_async<'f>(
+		&self,
+		new_value: T,
+	) -> impl use<'f, T, S, SR> + 'f + Send + Future<Output = Result<T, T>>
 	where
 		T: 'f + Sized,
 		S: 'f + Sized,
 		SR: 'f,
 	{
 		let this = self.downgrade();
-		private::DetachedFuture(
-			Box::pin(async move {
-				if let Some(this) = this.upgrade() {
-					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.replace_eager(new_value).boxed().await
-				} else {
-					Err(new_value)
-				}
-			}),
-			PhantomPinned,
-		)
+		async move {
+			if let Some(this) = this.upgrade() {
+				this.replace_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		}
 	}
 
 	/// Cheaply creates a [`Future`] that has the effect of [`replace_distinct_eager`](`Signal::replace_distinct_eager`) when polled.
@@ -1655,24 +1648,20 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	pub fn replace_distinct_async<'f>(
 		&self,
 		new_value: T,
-	) -> private::DetachedFuture<'f, Result<MaybeReplaced<T>, T>>
+	) -> impl use<'f, T, S, SR> + 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>
 	where
 		T: 'f + Sized + Eq,
 		S: 'f + Sized,
 		SR: 'f,
 	{
 		let this = self.downgrade();
-		private::DetachedFuture(
-			Box::pin(async move {
-				if let Some(this) = this.upgrade() {
-					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.replace_distinct_eager(new_value).boxed().await
-				} else {
-					Err(new_value)
-				}
-			}),
-			PhantomPinned,
-		)
+		async move {
+			if let Some(this) = this.upgrade() {
+				this.replace_distinct_eager(new_value).await
+			} else {
+				Err(new_value)
+			}
+		}
 	}
 
 	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`Signal::update_eager`) when polled.
@@ -1680,24 +1669,20 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	pub fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
-	) -> private::DetachedFuture<'f, Result<U, F>>
+	) -> impl use<'f, T, S, SR, U, F> + 'f + Send + Future<Output = Result<U, F>>
 	where
 		T: 'f,
 		S: 'f + Sized,
 		SR: 'f,
 	{
 		let this = self.downgrade();
-		private::DetachedFuture(
-			Box::pin(async move {
-				if let Some(this) = this.upgrade() {
-					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.update_eager(update).boxed().await
-				} else {
-					Err(update)
-				}
-			}),
-			PhantomPinned,
-		)
+		async move {
+			if let Some(this) = this.upgrade() {
+				this.update_eager(update).await
+			} else {
+				Err(update)
+			}
+		}
 	}
 
 	/// Cheaply creates a [`Future`] that has the effect of [`set_eager`](`Signal::set_eager`) when polled.
@@ -1714,7 +1699,6 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		let this = self.downgrade();
 		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
-				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
 				this.set_eager_dyn(new_value).conv::<Pin<Box<_>>>().await
 			} else {
 				Err(new_value)
@@ -1745,7 +1729,6 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		let this = self.downgrade();
 		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
-				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
 				this.set_distinct_eager_dyn(new_value)
 					.conv::<Pin<Box<_>>>()
 					.await
@@ -1778,7 +1761,6 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		let this = self.downgrade();
 		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
-				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
 				this.replace_eager_dyn(new_value)
 					.conv::<Pin<Box<_>>>()
 					.await
@@ -1811,7 +1793,6 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		let this = self.downgrade();
 		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
-				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
 				this.replace_distinct_eager_dyn(new_value)
 					.conv::<Pin<Box<_>>>()
 					.await
@@ -1895,10 +1876,14 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	pub fn set_eager<'f>(&self, new_value: T) -> S::SetEager<'f>
+	pub fn set_eager<'f>(
+		&self,
+		new_value: T,
+	) -> impl use<'f, T, S, SR> + 'f + Send + Future<Output = Result<(), T>>
 	where
-		S: 'f + Sized,
 		T: 'f + Sized,
+		S: 'f + Sized,
+		SR: 'f,
 	{
 		self._managed().set_eager(new_value)
 	}
@@ -1921,7 +1906,10 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	pub fn set_distinct_eager<'f>(&self, new_value: T) -> S::SetDistinctEager<'f>
+	pub fn set_distinct_eager<'f>(
+		&self,
+		new_value: T,
+	) -> impl use<'f, T, S, SR> + 'f + Send + Future<Output = Result<MaybeSet<T>, T>>
 	where
 		S: 'f + Sized,
 		T: 'f + Sized + Eq,
@@ -1947,7 +1935,10 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	pub fn replace_eager<'f>(&self, new_value: T) -> S::ReplaceEager<'f>
+	pub fn replace_eager<'f>(
+		&self,
+		new_value: T,
+	) -> impl use<'f, T, S, SR> + 'f + Send + Future<Output = Result<T, T>>
 	where
 		S: 'f + Sized,
 		T: 'f + Sized,
@@ -1973,7 +1964,10 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	pub fn replace_distinct_eager<'f>(&self, new_value: T) -> S::ReplaceDistinctEager<'f>
+	pub fn replace_distinct_eager<'f>(
+		&self,
+		new_value: T,
+	) -> impl use<'f, T, S, SR> + 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>
 	where
 		S: 'f + Sized,
 		T: 'f + Sized + Eq,
@@ -2001,10 +1995,10 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	pub fn update_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+	pub fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
-	) -> S::UpdateEager<'f, U, F>
+	) -> impl use<'f, T, S, SR, U, F> + 'f + Send + Future<Output = Result<U, F>>
 	where
 		S: 'f + Sized,
 	{
@@ -2172,33 +2166,5 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The same as [`update_blocking`](`Signal::update_blocking`), but dyn-compatible.
 	pub fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		self._managed().update_blocking_dyn(update)
-	}
-}
-
-/// Duplicated to avoid identities.
-mod private {
-	use std::{
-		future::Future,
-		marker::PhantomPinned,
-		pin::Pin,
-		task::{Context, Poll},
-	};
-
-	use futures_lite::FutureExt;
-	use pin_project::pin_project;
-
-	#[must_use = "Async futures have no effect iff dropped before polling (and may cancel their effect iff dropped)."]
-	#[pin_project]
-	pub struct DetachedFuture<'f, Output: 'f>(
-		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
-		#[pin] pub(super) PhantomPinned,
-	);
-
-	impl<'f, Output: 'f> Future for DetachedFuture<'f, Output> {
-		type Output = Output;
-
-		fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-			self.project().0.poll(cx)
-		}
 	}
 }

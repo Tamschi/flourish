@@ -1,9 +1,9 @@
-use std::{borrow::Borrow, ops::Deref, pin::Pin};
+use std::pin::Pin;
 
 use isoprenoid::runtime::SignalsRuntimeRef;
 use pin_project::pin_project;
 
-use crate::Guard;
+use crate::{traits::BorrowGuard, Guard};
 
 use super::UnmanagedSignal;
 
@@ -13,40 +13,6 @@ pub(crate) struct Shared<T: Send + Sync + ?Sized, SR: SignalsRuntimeRef> {
 	runtime: SR,
 	#[pin]
 	value: T,
-}
-
-pub(crate) struct SharedGuard<'a, T: ?Sized>(&'a T);
-pub(crate) struct SharedGuardExclusive<'a, T: ?Sized>(&'a T);
-
-impl<T: ?Sized> Guard<T> for SharedGuard<'_, T> {}
-impl<T: ?Sized> Guard<T> for SharedGuardExclusive<'_, T> {}
-
-impl<T: ?Sized> Deref for SharedGuard<'_, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0
-	}
-}
-
-impl<T: ?Sized> Deref for SharedGuardExclusive<'_, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0
-	}
-}
-
-impl<T: ?Sized> Borrow<T> for SharedGuard<'_, T> {
-	fn borrow(&self) -> &T {
-		self.0
-	}
-}
-
-impl<T: ?Sized> Borrow<T> for SharedGuardExclusive<'_, T> {
-	fn borrow(&self) -> &T {
-		self.0
-	}
 }
 
 impl<T: Send + Sync + ?Sized, SR: SignalsRuntimeRef> Shared<T, SR> {
@@ -77,39 +43,27 @@ impl<T: Send + Sync + ?Sized, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for 
 		self.value.clone()
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> Self::Read<'r>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		SharedGuard(&unsafe { Pin::into_inner_unchecked(self) }.value)
+		BorrowGuard(&unsafe { Pin::into_inner_unchecked(self) }.value)
 	}
 
-	type Read<'r>
-		= SharedGuard<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Self::ReadExclusive<'r>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		SharedGuardExclusive(&unsafe { Pin::into_inner_unchecked(self) }.value)
+		BorrowGuard(&unsafe { Pin::into_inner_unchecked(self) }.value)
 	}
-
-	type ReadExclusive<'r>
-		= SharedGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + crate::Guard<T>>
 	where
 		T: 'r + Sync,
 	{
-		Box::new(SharedGuard(
+		Box::new(BorrowGuard(
 			&unsafe { Pin::into_inner_unchecked(self) }.value,
 		))
 	}
@@ -118,7 +72,7 @@ impl<T: Send + Sync + ?Sized, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for 
 	where
 		T: 'r,
 	{
-		Box::new(SharedGuardExclusive(
+		Box::new(BorrowGuard(
 			&unsafe { Pin::into_inner_unchecked(self) }.value,
 		))
 	}

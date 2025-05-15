@@ -35,33 +35,27 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 		match *self {}
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> OpaqueGuard<T>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		match *self {}
+		#[allow(unreachable_code)]
+		{
+			(match *self {}) as OpaqueGuard<T>
+		}
 	}
 
-	type Read<'r>
-		= OpaqueGuard<T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> OpaqueGuard<T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl Guard<T> + 'r
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		match *self {}
+		#[allow(unreachable_code)]
+		{
+			(match *self {}) as OpaqueGuard<T>
+		}
 	}
-
-	type ReadExclusive<'r>
-		= OpaqueGuard<T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
@@ -127,64 +121,61 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	fn set_eager<'f>(self: Pin<&Self>, _: T) -> Self::SetEager<'f>
+	fn set_eager<'f>(
+		self: Pin<&Self>,
+		_: T,
+	) -> impl use<'f, T, SR> + 'f + Send + Future<Output = Result<(), T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		match *self {}
+		#[allow(unreachable_code)]
+		{
+			(match *self {}) as OpaqueFuture<Result<(), T>>
+		}
 	}
 
-	type SetEager<'f>
-		= OpaqueFuture<Result<(), T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
-
-	fn set_distinct_eager<'f>(self: Pin<&Self>, _: T) -> Self::SetDistinctEager<'f>
+	fn set_distinct_eager<'f>(
+		self: Pin<&Self>,
+		_: T,
+	) -> impl use<'f, T, SR> + 'f + Send + Future<Output = Result<MaybeSet<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + Eq,
 	{
-		match *self {}
+		#[allow(unreachable_code)]
+		{
+			(match *self {}) as OpaqueFuture<Result<MaybeSet<T>, T>>
+		}
 	}
 
-	type SetDistinctEager<'f>
-		= OpaqueFuture<Result<MaybeSet<T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
-
-	fn replace_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueFuture<Result<T, T>>
+	fn replace_eager<'f>(
+		self: Pin<&Self>,
+		_: T,
+	) -> impl use<'f, T, SR> + 'f + Send + Future<Output = Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		match *self {}
+		#[allow(unreachable_code)]
+		{
+			(match *self {}) as OpaqueFuture<Result<T, T>>
+		}
 	}
-
-	type ReplaceEager<'f>
-		= OpaqueFuture<Result<T, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
 
 	fn replace_distinct_eager<'f>(
 		self: Pin<&Self>,
 		_: T,
-	) -> OpaqueFuture<Result<MaybeReplaced<T>, T>>
+	) -> impl use<'f, T, SR> + 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		match *self {}
+		#[allow(unreachable_code)]
+		{
+			(match *self {}) as OpaqueFuture<Result<MaybeReplaced<T>, T>>
+		}
 	}
-
-	type ReplaceDistinctEager<'f>
-		= OpaqueFuture<Result<MaybeReplaced<T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
 
 	fn update_eager<
 		'f,
@@ -193,17 +184,15 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 	>(
 		self: Pin<&Self>,
 		_: F,
-	) -> OpaqueFuture<Result<U, F>>
+	) -> impl use<'f, T, SR, U, F> + 'f + Send + Future<Output = Result<U, F>>
 	where
 		Self: 'f + Sized,
 	{
-		match *self {}
+		#[allow(unreachable_code)]
+		{
+			(match *self {}) as OpaqueFuture<Result<U, F>>
+		}
 	}
-
-	type UpdateEager<'f, U: 'f, F: 'f>
-		= OpaqueFuture<Result<U, F>>
-	where
-		Self: 'f + Sized;
 
 	fn set_eager_dyn<'f>(
 		self: Pin<&Self>,
@@ -309,7 +298,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 	}
 }
 
-pub struct OpaqueFuture<T> {
+struct OpaqueFuture<T> {
 	_phantom: (PhantomData<T>, PhantomPinned),
 	_vacant: Opaque,
 }
@@ -327,7 +316,7 @@ impl<T> Future for OpaqueFuture<T> {
 	}
 }
 
-pub struct OpaqueGuard<T: ?Sized> {
+struct OpaqueGuard<T: ?Sized> {
 	pub(crate) _phantom: PhantomData<T>,
 	pub(crate) _vacant: Opaque,
 }

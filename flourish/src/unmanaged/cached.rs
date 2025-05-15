@@ -1,9 +1,4 @@
-use std::{
-	borrow::Borrow,
-	ops::Deref,
-	pin::Pin,
-	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{pin::Pin, sync::RwLock};
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
@@ -12,7 +7,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::{Guard, UnmanagedSignal};
+use crate::traits::{Guard, ReadGuard, UnmanagedSignal, WriteGuard};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -23,40 +18,6 @@ pub(crate) struct Cached<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: Signals
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
-
-pub(crate) struct CachedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-pub(crate) struct CachedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
-
-impl<'a, T: ?Sized> Guard<T> for CachedGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for CachedGuardExclusive<'a, T> {}
-
-impl<'a, T: ?Sized> Deref for CachedGuard<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Deref for CachedGuardExclusive<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for CachedGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for CachedGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
 
 // TODO: Safety documentation.
 unsafe impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef + Sync> Sync
@@ -151,35 +112,23 @@ impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Unmanage
 		self.touch().write().unwrap().clone()
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> CachedGuard<'r, T>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
 		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
-		CachedGuard(touch.read().unwrap())
+		ReadGuard(touch.read().unwrap())
 	}
 
-	type Read<'r>
-		= CachedGuard<'r, T>
-	where
-		Self: 'r + Sized,
-		T: Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> CachedGuardExclusive<'r, T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
 		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
-		CachedGuardExclusive(touch.write().unwrap())
+		WriteGuard(touch.write().unwrap())
 	}
-
-	type ReadExclusive<'r>
-		= CachedGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where

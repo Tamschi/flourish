@@ -153,7 +153,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, 
 		self.read_exclusive().clone()
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> ComputedGuard<'r, T>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
@@ -162,13 +162,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, 
 		ComputedGuard(touch.read().unwrap())
 	}
 
-	type Read<'r>
-		= ComputedGuard<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ComputedGuardExclusive<'r, T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r,
@@ -176,12 +170,6 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, 
 		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
 		ComputedGuardExclusive(touch.write().unwrap())
 	}
-
-	type ReadExclusive<'r>
-		= ComputedGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where

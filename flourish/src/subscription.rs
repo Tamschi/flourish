@@ -779,7 +779,7 @@ unsafe fn assume_init_subscription<
 			unsafe { self.project_ref().0.get_exclusive().assume_init() }
 		}
 
-		fn read<'r>(self: Pin<&'r Self>) -> Self::Read<'r>
+		fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 		where
 			Self: Sized,
 			T: 'r + Sync,
@@ -787,25 +787,13 @@ unsafe fn assume_init_subscription<
 			AbiShim(self.project_ref().0.read())
 		}
 
-		type Read<'r>
-			= AbiShim<S::Read<'r>>
-		where
-			Self: 'r + Sized,
-			T: 'r + Sync;
-
-		fn read_exclusive<'r>(self: Pin<&'r Self>) -> Self::ReadExclusive<'r>
+		fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 		where
 			Self: Sized,
 			T: 'r,
 		{
 			AbiShim(self.project_ref().0.read_exclusive())
 		}
-
-		type ReadExclusive<'r>
-			= AbiShim<S::ReadExclusive<'r>>
-		where
-			Self: 'r + Sized,
-			T: 'r;
 
 		fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 		where

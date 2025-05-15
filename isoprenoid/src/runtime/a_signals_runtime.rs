@@ -245,7 +245,7 @@ impl ASignalsRuntime {
 			subscribers.intrinsic = subscribers
 				.intrinsic
 				.checked_sub(1)
-				.expect("Tried to decrement intrinic subscriber count below 0.");
+				.expect("Tried to decrement intrinsic subscriber count below 0.");
 			true
 		} else {
 			subscribers.extrinsic.remove(&dependent)

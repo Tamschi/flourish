@@ -75,7 +75,6 @@ name = "flourish"
 version = "0.1.2"
 dependencies = [
  "async-lock",
- "futures-lite",
  "isoprenoid",
  "pin-project",
  "tap",

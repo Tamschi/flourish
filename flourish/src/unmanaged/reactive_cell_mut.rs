@@ -1,11 +1,10 @@
 use std::{
-	borrow::{Borrow, BorrowMut},
+	borrow::BorrowMut,
 	fmt::{self, Debug, Formatter},
 	future::Future,
 	mem,
-	ops::Deref,
 	pin::Pin,
-	sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
+	sync::{Arc, Mutex, RwLock},
 };
 
 use isoprenoid::{
@@ -14,7 +13,11 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::{shadow_clone, traits::Guard, MaybeReplaced, MaybeSet};
+use crate::{
+	shadow_clone,
+	traits::{Guard, ReadGuard, WriteGuard},
+	MaybeReplaced, MaybeSet,
+};
 
 use super::{UnmanagedSignal, UnmanagedSignalCell};
 
@@ -94,40 +97,6 @@ impl<T: Debug + ?Sized, HandlerFnPin: Debug> Debug
 	}
 }
 
-pub(crate) struct ReactiveCellMutGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-pub(crate) struct ReactiveCellMutGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
-
-impl<'a, T: ?Sized> Guard<T> for ReactiveCellMutGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for ReactiveCellMutGuardExclusive<'a, T> {}
-
-impl<'a, T: ?Sized> Deref for ReactiveCellMutGuard<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Deref for ReactiveCellMutGuardExclusive<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for ReactiveCellMutGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for ReactiveCellMutGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
 impl<
 		T: ?Sized + Send,
 		HandlerFnPin: Send
@@ -157,17 +126,15 @@ impl<
 		}
 	}
 
-	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Guard<T>
+	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> ReadGuard<'a, T>
 	where
 		T: Sync,
 	{
-		let this = &self;
-		ReactiveCellMutGuard(this.touch().read().unwrap())
+		ReadGuard(self.touch().read().unwrap())
 	}
 
-	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> impl 'a + Guard<T> {
-		let this = &self;
-		ReactiveCellMutGuardExclusive(this.touch().write().unwrap())
+	pub(crate) fn read_exclusive<'a>(self: Pin<&'a Self>) -> WriteGuard<'a, T> {
+		WriteGuard(self.touch().write().unwrap())
 	}
 
 	fn touch(self: Pin<&Self>) -> &RwLock<T> {
@@ -250,35 +217,21 @@ impl<
 		self.read_exclusive().clone()
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> ReactiveCellMutGuard<'r, T>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		let touch = self.touch();
-		ReactiveCellMutGuard(touch.read().unwrap())
+		self.read()
 	}
 
-	type Read<'r>
-		= ReactiveCellMutGuard<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ReactiveCellMutGuardExclusive<'r, T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		let touch = self.touch();
-		ReactiveCellMutGuardExclusive(touch.write().unwrap())
+		self.read_exclusive()
 	}
-
-	type ReadExclusive<'r>
-		= ReactiveCellMutGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
@@ -369,7 +322,10 @@ impl<
 			.update(|value, _| update(&mut value.0 .1.write().unwrap()))
 	}
 
-	fn set_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::SetEager<'f>
+	fn set_eager<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> impl use<'f, T, HandlerFnPin, SR> + 'f + Send + Future<Output = Result<(), T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized,
@@ -388,26 +344,21 @@ impl<
 			}
 		});
 
-		private::DetachedFuture(Box::pin(async move {
-			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
-			use futures_lite::FutureExt;
-			f.boxed().await.ok();
+		async move {
+			f.await.ok();
 			Arc::try_unwrap(r)
 				.map_err(|_| ())
 				.expect("The `Arc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
-		}))
+		}
 	}
 
-	type SetEager<'f>
-		= private::DetachedFuture<'f, Result<(), T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
-
-	fn set_distinct_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::SetDistinctEager<'f>
+	fn set_distinct_eager<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> impl use<'f, T, HandlerFnPin, SR> + 'f + Send + Future<Output = Result<MaybeSet<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + Eq,
@@ -432,29 +383,21 @@ impl<
 			}
 		});
 
-		private::DetachedFuture(Box::pin(async move {
-			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
-			use futures_lite::FutureExt;
-			f.boxed().await.ok();
+		async move {
+			f.await.ok();
 			Arc::try_unwrap(r)
 				.map_err(|_| ())
 				.expect("The `Arc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
-		}))
+		}
 	}
-
-	type SetDistinctEager<'f>
-		= private::DetachedFuture<'f, Result<MaybeSet<T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
 
 	fn replace_eager<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> private::DetachedFuture<'f, Result<T, T>>
+	) -> impl use<'f, T, HandlerFnPin, SR> + 'f + Send + Future<Output = Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized,
@@ -473,29 +416,21 @@ impl<
 			}
 		});
 
-		private::DetachedFuture(Box::pin(async move {
-			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
-			use futures_lite::FutureExt;
-			f.boxed().await.ok();
+		async move {
+			f.await.ok();
 			Arc::try_unwrap(r)
 				.map_err(|_| ())
 				.expect("The `Arc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
-		}))
+		}
 	}
-
-	type ReplaceEager<'f>
-		= private::DetachedFuture<'f, Result<T, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
 
 	fn replace_distinct_eager<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> private::DetachedFuture<'f, Result<MaybeReplaced<T>, T>>
+	) -> impl use<'f, T, HandlerFnPin, SR> + 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
@@ -519,29 +454,21 @@ impl<
 			}
 		});
 
-		private::DetachedFuture(Box::pin(async move {
-			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
-			use futures_lite::FutureExt;
-			f.boxed().await.ok();
+		async move {
+			f.await.ok();
 			Arc::try_unwrap(r)
 				.map_err(|_| ())
 				.expect("The `Arc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
-		}))
+		}
 	}
-
-	type ReplaceDistinctEager<'f>
-		= private::DetachedFuture<'f, Result<MaybeReplaced<T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
 
 	fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		self: Pin<&Self>,
 		update: F,
-	) -> private::DetachedFuture<'f, Result<U, F>>
+	) -> impl use<'f, T, HandlerFnPin, SR, U, F> + 'f + Send + Future<Output = Result<U, F>>
 	where
 		Self: 'f + Sized,
 	{
@@ -557,10 +484,8 @@ impl<
 				update(&mut value.0 .1.write().unwrap())
 			}
 		});
-		private::DetachedFuture(Box::pin(async move {
-			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
-			use futures_lite::FutureExt;
-			f.boxed().await.map_err(|_| {
+		async move {
+			f.await.map_err(|_| {
 				Arc::try_unwrap(update)
 					.map_err(|_| ())
 					.expect("The `Arc`'s clone is dropped in the previous line.")
@@ -568,13 +493,8 @@ impl<
 					.expect("unreachable")
 					.expect("unreachable")
 			})
-		}))
+		}
 	}
-
-	type UpdateEager<'f, U: 'f, F: 'f>
-		= private::DetachedFuture<'f, Result<U, F>>
-	where
-		Self: 'f + Sized;
 
 	fn set_eager_dyn<'f>(
 		self: Pin<&Self>,
@@ -839,29 +759,5 @@ impl<
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		self.signal
 			.update_blocking(|value, _| (update(&mut value.0 .1.write().unwrap()), ()))
-	}
-}
-
-/// Duplicated to avoid identities.
-mod private {
-	use std::{
-		future::Future,
-		pin::Pin,
-		task::{Context, Poll},
-	};
-
-	use futures_lite::FutureExt;
-
-	#[must_use = "Eager futures may still cancel their effect iff dropped."]
-	pub(crate) struct DetachedFuture<'f, Output: 'f>(
-		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
-	);
-
-	impl<'f, Output: 'f> Future for DetachedFuture<'f, Output> {
-		type Output = Output;
-
-		fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-			self.0.poll(cx)
-		}
 	}
 }

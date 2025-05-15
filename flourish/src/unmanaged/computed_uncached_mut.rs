@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, ops::Deref, pin::Pin, sync::Mutex};
+use std::{pin::Pin, sync::Mutex};
 
 use isoprenoid::{
 	raw::{NoCallbacks, RawSignal},
@@ -7,7 +7,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::{Guard, UnmanagedSignal};
+use crate::traits::{Guard, UnmanagedSignal, ValueGuard};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -18,40 +18,6 @@ pub(crate) struct ComputedUncachedMut<T: Send, F: Send + FnMut() -> T, SR: Signa
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
-
-pub(crate) struct ComputedUncachedMutGuard<T: ?Sized>(T);
-pub(crate) struct ComputedUncachedMutGuardExclusive<T: ?Sized>(T);
-
-impl<T: ?Sized> Guard<T> for ComputedUncachedMutGuard<T> {}
-impl<T: ?Sized> Guard<T> for ComputedUncachedMutGuardExclusive<T> {}
-
-impl<T: ?Sized> Deref for ComputedUncachedMutGuard<T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-impl<T: ?Sized> Deref for ComputedUncachedMutGuardExclusive<T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-impl<T: ?Sized> Borrow<T> for ComputedUncachedMutGuard<T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
-impl<T: ?Sized> Borrow<T> for ComputedUncachedMutGuardExclusive<T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
 
 // TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef + Sync> Sync
@@ -75,6 +41,16 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> ComputedUncachedMut
 				.0
 				.map_unchecked(|r| &r.0)
 		}
+	}
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ValueGuard<T> {
+		let mutex = self.touch();
+		let mut fn_pin = mutex.lock().expect("unreachable");
+		ValueGuard(
+			self.project_ref()
+				.0
+				.update_dependency_set(move |_, _| fn_pin()),
+		)
 	}
 }
 
@@ -109,39 +85,21 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, 
 		self.read_exclusive().0
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> ComputedUncachedMutGuard<T>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		ComputedUncachedMutGuard(self.read_exclusive().0)
+		self.read_exclusive()
 	}
 
-	type Read<'r>
-		= ComputedUncachedMutGuard<T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ComputedUncachedMutGuardExclusive<T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		let mutex = self.touch();
-		let mut fn_pin = mutex.lock().expect("unreachable");
-		ComputedUncachedMutGuardExclusive(
-			self.project_ref()
-				.0
-				.update_dependency_set(move |_, _| fn_pin()),
-		)
+		self.read_exclusive()
 	}
-
-	type ReadExclusive<'r>
-		= ComputedUncachedMutGuardExclusive<T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where

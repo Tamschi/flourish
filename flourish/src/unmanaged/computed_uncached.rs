@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, ops::Deref, pin::Pin};
+use std::pin::Pin;
 
 use isoprenoid::{
 	raw::{NoCallbacks, RawSignal},
@@ -7,7 +7,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::{Guard, UnmanagedSignal};
+use crate::traits::{Guard, UnmanagedSignal, ValueGuard};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -18,40 +18,6 @@ pub(crate) struct ComputedUncached<T: Send, F: Send + Sync + Fn() -> T, SR: Sign
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
-
-pub(crate) struct ComputedUncachedGuard<T: ?Sized>(T);
-pub(crate) struct ComputedUncachedGuardExclusive<T: ?Sized>(T);
-
-impl<T: ?Sized> Guard<T> for ComputedUncachedGuard<T> {}
-impl<T: ?Sized> Guard<T> for ComputedUncachedGuardExclusive<T> {}
-
-impl<T: ?Sized> Deref for ComputedUncachedGuard<T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-impl<T: ?Sized> Deref for ComputedUncachedGuardExclusive<T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-impl<T: ?Sized> Borrow<T> for ComputedUncachedGuard<T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
-impl<T: ?Sized> Borrow<T> for ComputedUncachedGuardExclusive<T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
 
 // TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef + Sync> Sync
@@ -76,6 +42,15 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> ComputedUncache
 				.map_unchecked(|r| &r.0)
 		}
 	}
+
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ValueGuard<T> {
+		let fn_pin = self.touch();
+		ValueGuard(
+			self.project_ref()
+				.0
+				.update_dependency_set(move |_, _| fn_pin()),
+		)
+	}
 }
 
 /// # Safety
@@ -99,7 +74,7 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> UnmanagedSignal
 	where
 		T: Sync + Clone,
 	{
-		self.read().0
+		self.read_exclusive().0
 	}
 
 	fn get_clone_exclusive(self: Pin<&Self>) -> T
@@ -109,38 +84,21 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> UnmanagedSignal
 		self.read_exclusive().0
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> ComputedUncachedGuard<T>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		ComputedUncachedGuard(self.read_exclusive().0)
+		self.read_exclusive()
 	}
 
-	type Read<'r>
-		= ComputedUncachedGuard<T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ComputedUncachedGuardExclusive<T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		let fn_pin = self.touch();
-		ComputedUncachedGuardExclusive(
-			self.project_ref()
-				.0
-				.update_dependency_set(move |_, _| fn_pin()),
-		)
+		self.read_exclusive()
 	}
-
-	type ReadExclusive<'r>
-		= ComputedUncachedGuardExclusive<T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where

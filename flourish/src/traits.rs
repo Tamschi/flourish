@@ -1,4 +1,10 @@
-use std::{borrow::Borrow, future::Future, ops::Deref, pin::Pin};
+use std::{
+	borrow::Borrow,
+	future::Future,
+	ops::Deref,
+	pin::Pin,
+	sync::{RwLockReadGuard, RwLockWriteGuard},
+};
 
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
@@ -52,29 +58,17 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 		T: Clone;
 
 	/// Records `self` as dependency and allows borrowing the value.
-	fn read<'r>(self: Pin<&'r Self>) -> Self::Read<'r>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
-		T: 'r + Sync;
-
-	/// Return type of [`read`](`UnmanagedSignal::read`).
-	type Read<'r>: 'r + Guard<T>
-	where
-		Self: 'r + Sized,
 		T: 'r + Sync;
 
 	/// Records `self` as dependency and allows borrowing the value.
 	///
 	/// Prefer [`read`](`UnmanagedSignal::read`) where available.
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Self::ReadExclusive<'r>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
-		T: 'r;
-
-	/// Return type of [`read_exclusive`](`UnmanagedSignal::read_exclusive`).
-	type ReadExclusive<'r>: 'r + Guard<T>
-	where
-		Self: 'r + Sized,
 		T: 'r;
 
 	/// The same as [`read`](`UnmanagedSignal::read`), but `dyn`-compatible.
@@ -183,13 +177,10 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn set_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::SetEager<'f>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
-
-	/// Return type of [`set_eager`](`UnmanagedSignalCell::set_eager`).
-	type SetEager<'f>: 'f + Send + Future<Output = Result<(), T>>
+	fn set_eager<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> impl use<'f, Self, T, SR> + 'f + Send + Future<Output = Result<(), T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -214,16 +205,13 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn set_distinct_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::SetDistinctEager<'f>
+	fn set_distinct_eager<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> impl use<'f, Self, T, SR> + 'f + Send + Future<Output = Result<MaybeSet<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + Eq;
-
-	/// Return type of [`set_distinct_eager`](`UnmanagedSignalCell::set_distinct_eager`).
-	type SetDistinctEager<'f>: 'f + Send + Future<Output = Result<MaybeSet<T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.
 	///
@@ -244,13 +232,10 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn replace_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::ReplaceEager<'f>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
-
-	/// Return type of [`replace_eager`](`UnmanagedSignalCell::replace_eager`).
-	type ReplaceEager<'f>: 'f + Send + Future<Output = Result<T, T>>
+	fn replace_eager<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> impl use<'f, Self, T, SR> + 'f + Send + Future<Output = Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -273,16 +258,13 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn replace_distinct_eager<'f>(self: Pin<&Self>, new_value: T) -> Self::ReplaceDistinctEager<'f>
+	fn replace_distinct_eager<'f>(
+		self: Pin<&Self>,
+		new_value: T,
+	) -> impl use<'f, Self, T, SR> + 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + Eq;
-
-	/// Return type of [`replace_distinct_eager`](`UnmanagedSignalCell::replace_distinct_eager`).
-	type ReplaceDistinctEager<'f>: 'f + Send + Future<Output = Result<MaybeReplaced<T>, T>>
-	where
-		Self: 'f + Sized,
-		T: 'f + Sized;
 
 	/// Modifies the current value using the given closure.
 	///
@@ -306,12 +288,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
 		self: Pin<&Self>,
 		update: F,
-	) -> Self::UpdateEager<'f, U, F>
-	where
-		Self: 'f + Sized;
-
-	/// Return type of [`update_eager`](`UnmanagedSignalCell::update_eager`).
-	type UpdateEager<'f, U: 'f, F: 'f>: 'f + Send + Future<Output = Result<U, F>>
+	) -> impl use<'f, Self, T, SR, U, F> + 'f + Send + Future<Output = Result<U, F>>
 	where
 		Self: 'f + Sized;
 
@@ -475,3 +452,63 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 /// >
 /// > See: <https://github.com/rust-lang/rust/issues/65078>
 pub trait Guard<T: ?Sized>: Deref<Target = T> + Borrow<T> {}
+
+pub(crate) struct ValueGuard<T: ?Sized>(pub(crate) T);
+pub(crate) struct BorrowGuard<'a, T: ?Sized>(pub(crate) &'a T);
+pub(crate) struct ReadGuard<'a, T: ?Sized>(pub(crate) RwLockReadGuard<'a, T>);
+pub(crate) struct WriteGuard<'a, T: ?Sized>(pub(crate) RwLockWriteGuard<'a, T>);
+
+impl<T: ?Sized> Guard<T> for ValueGuard<T> {}
+impl<'a, T: ?Sized> Guard<T> for BorrowGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for ReadGuard<'a, T> {}
+impl<'a, T: ?Sized> Guard<T> for WriteGuard<'a, T> {}
+
+impl<T: ?Sized> Deref for ValueGuard<T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+impl<'a, T: ?Sized> Deref for BorrowGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		self.0
+	}
+}
+impl<'a, T: ?Sized> Deref for ReadGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		&*self.0
+	}
+}
+impl<'a, T: ?Sized> Deref for WriteGuard<'a, T> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		&*self.0
+	}
+}
+
+impl<T: ?Sized> Borrow<T> for ValueGuard<T> {
+	fn borrow(&self) -> &T {
+		&self.0
+	}
+}
+impl<'a, T: ?Sized> Borrow<T> for BorrowGuard<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0
+	}
+}
+impl<'a, T: ?Sized> Borrow<T> for ReadGuard<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
+	}
+}
+impl<'a, T: ?Sized> Borrow<T> for WriteGuard<'a, T> {
+	fn borrow(&self) -> &T {
+		self.0.borrow()
+	}
+}

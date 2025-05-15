@@ -1,10 +1,4 @@
-use std::{
-	borrow::Borrow,
-	cell::UnsafeCell,
-	ops::Deref,
-	pin::Pin,
-	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{cell::UnsafeCell, pin::Pin, sync::RwLock};
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
@@ -13,7 +7,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::{Guard, UnmanagedSignal};
+use crate::traits::{Guard, ReadGuard, UnmanagedSignal, WriteGuard};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -24,40 +18,6 @@ pub(crate) struct Folded<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: Si
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
-
-pub(crate) struct FoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-pub(crate) struct FoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
-
-impl<'a, T: ?Sized> Guard<T> for FoldedGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for FoldedGuardExclusive<'a, T> {}
-
-impl<'a, T: ?Sized> Deref for FoldedGuard<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Deref for FoldedGuardExclusive<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for FoldedGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for FoldedGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
 
 // TODO: Safety documentation.
 unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef + Sync> Sync
@@ -158,35 +118,23 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Unm
 		self.read_exclusive().clone()
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> FoldedGuard<'r, T>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
 		let touch = self.touch();
-		FoldedGuard(touch.read().unwrap())
+		ReadGuard(touch.read().unwrap())
 	}
 
-	type Read<'r>
-		= FoldedGuard<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> FoldedGuardExclusive<'r, T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
 		let touch = self.touch();
-		FoldedGuardExclusive(touch.write().unwrap())
+		WriteGuard(touch.write().unwrap())
 	}
-
-	type ReadExclusive<'r>
-		= FoldedGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where

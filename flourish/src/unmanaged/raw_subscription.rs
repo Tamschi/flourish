@@ -1,14 +1,11 @@
-use std::{borrow::Borrow, ops::Deref, pin::Pin};
+use std::pin::Pin;
 
 use isoprenoid::runtime::SignalsRuntimeRef;
 use pin_project::pin_project;
 
 use crate::traits::{Guard, UnmanagedSignal};
 
-use super::{
-	cached::{CachedGuard, CachedGuardExclusive},
-	Cached,
-};
+use super::Cached;
 
 #[pin_project]
 #[must_use = "Subscriptions are cancelled when dropped."]
@@ -22,40 +19,6 @@ pub struct RawSubscription<
 	S: UnmanagedSignal<T, SR>,
 	SR: SignalsRuntimeRef,
 >(#[pin] Cached<T, S, SR>);
-
-pub struct RawSubscriptionGuard<'a, T: ?Sized>(CachedGuard<'a, T>);
-pub struct RawSubscriptionGuardExclusive<'a, T: ?Sized>(CachedGuardExclusive<'a, T>);
-
-impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuardExclusive<'a, T> {}
-
-impl<'a, T: ?Sized> Deref for RawSubscriptionGuard<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Deref for RawSubscriptionGuardExclusive<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for RawSubscriptionGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for RawSubscriptionGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
 
 //TODO: Turn some of these functions into methods.
 
@@ -120,33 +83,21 @@ impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Unmanage
 		self.project_ref().0.get_clone_exclusive()
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> RawSubscriptionGuard<'r, T>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		RawSubscriptionGuard(self.project_ref().0.read())
+		self.project_ref().0.read()
 	}
 
-	type Read<'r>
-		= RawSubscriptionGuard<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> RawSubscriptionGuardExclusive<'r, T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		RawSubscriptionGuardExclusive(self.project_ref().0.read_exclusive())
+		self.project_ref().0.read_exclusive()
 	}
-
-	type ReadExclusive<'r>
-		= RawSubscriptionGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where

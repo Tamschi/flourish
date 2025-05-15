@@ -1,10 +1,4 @@
-use std::{
-	borrow::Borrow,
-	cell::UnsafeCell,
-	ops::Deref,
-	pin::Pin,
-	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{cell::UnsafeCell, pin::Pin, sync::RwLock};
 
 use isoprenoid::{
 	raw::{Callbacks, RawSignal},
@@ -13,7 +7,7 @@ use isoprenoid::{
 };
 use pin_project::pin_project;
 
-use crate::traits::{Guard, UnmanagedSignal};
+use crate::traits::{Guard, ReadGuard, UnmanagedSignal, WriteGuard};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
@@ -27,40 +21,6 @@ pub(crate) struct Reduced<
 #[pin_project]
 struct ForceSyncUnpin<T: ?Sized>(T);
 unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
-
-pub(crate) struct ReducedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-pub(crate) struct ReducedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
-
-impl<'a, T: ?Sized> Guard<T> for ReducedGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for ReducedGuardExclusive<'a, T> {}
-
-impl<'a, T: ?Sized> Deref for ReducedGuard<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Deref for ReducedGuardExclusive<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for ReducedGuard<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
-impl<'a, T: ?Sized> Borrow<T> for ReducedGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
 
 // TODO: Safety documentation.
 unsafe impl<
@@ -187,35 +147,21 @@ impl<
 		self.read_exclusive().clone()
 	}
 
-	fn read<'r>(self: Pin<&'r Self>) -> ReducedGuard<'r, T>
+	fn read<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r + Sync,
 	{
-		let touch = self.touch();
-		ReducedGuard(touch.read().unwrap())
+		ReadGuard(self.touch().read().unwrap())
 	}
 
-	type Read<'r>
-		= ReducedGuard<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> ReducedGuardExclusive<'r, T>
+	fn read_exclusive<'r>(self: Pin<&'r Self>) -> impl 'r + Guard<T>
 	where
 		Self: Sized,
 		T: 'r,
 	{
-		let touch = self.touch();
-		ReducedGuardExclusive(touch.write().unwrap())
+		WriteGuard(self.touch().write().unwrap())
 	}
-
-	type ReadExclusive<'r>
-		= ReducedGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where

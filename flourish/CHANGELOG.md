@@ -8,6 +8,7 @@ TODO: Date
   - Removed `Into` conversion from unmanaged signals to `SignalArc`.  
     (Use `SignalArc::new` instead.)
   - Revised cell API. There are new `set…` methods that **may** be implemented to drop the old value in place, and `change…` is now `replace_distinct…` and now requires `Eq` rather than just `PartialEq`.
+  - Removed associated return types from signal traits, as precise capturing is now supported in trait definitions (since Rust 1.87).
 
 ## next
 
