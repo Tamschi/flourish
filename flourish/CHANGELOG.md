@@ -1,6 +1,17 @@
 # *flourish* Changelog
 
-## next
+## 0.1.3
+
+2025-06-02
+
+- Features:
+  - Wasm-compatibility.
+
+- Revisions:
+  - Conversion table formatting fix.
+  - Fixed changelog heading "0.1.2".
+
+## 0.1.2
 
 2025-04-03
 

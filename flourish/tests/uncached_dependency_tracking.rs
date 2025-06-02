@@ -10,7 +10,7 @@ type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
 mod _validator;
 use _validator::Validator;
 
-//FIXME: This has a race condition somewhere!
+//FIXME: This has a race condition somewhere! (Does it still?)
 
 #[test]
 fn heap() {
