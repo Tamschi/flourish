@@ -1,8 +1,8 @@
 # *flourish* Changelog
 
-## next
+## 0.1.3
 
-TODO: Date
+2025-06-02
 
 - Features:
   - Wasm-compatibility.
