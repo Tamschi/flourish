@@ -4,6 +4,9 @@
 
 TODO: Date
 
+- Features:
+  - Wasm-compatibility.
+
 - Revisions:
   - Conversion table formatting fix.
   - Fixed changelog heading "0.1.2".

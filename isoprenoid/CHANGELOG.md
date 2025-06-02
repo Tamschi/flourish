@@ -6,6 +6,7 @@ TODO: Date
 
 - Features:
   - Added `SignalsRuntimeRef::hint_batched_updates` method with default implementation.
+  - Wasm-compatibility.
 
 - Revisions:
   - Documentation typo fix.

@@ -4,10 +4,9 @@ use std::{
 	collections::{BTreeMap, BTreeSet, VecDeque},
 	fmt::Debug,
 	mem,
-	sync::{atomic::Ordering, Arc, Mutex, Weak},
+	sync::{atomic::Ordering, Arc, Mutex},
 };
 
-use async_lock::OnceCell;
 use core::sync::atomic::AtomicU64;
 use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use scopeguard::{guard, ScopeGuard};
@@ -719,18 +718,22 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		let f = Arc::new(Mutex::new(Some(f)));
 		let _f_guard = guard(Arc::clone(&f), |f| drop(f.lock().unwrap().take()));
 
-		let once = Arc::new(OnceCell::<Mutex<Option<Result<T, Option<F>>>>>::new());
+		let once = Arc::new(
+			async_lock::Mutex::<Mutex<Option<Result<T, Option<F>>>>>::new(Mutex::new(None)),
+		);
+		let setter_lock = Arc::new(Mutex::new(Some(once.try_lock_arc().expect("unreachable"))));
+		let _setter_lock_guard = guard(Arc::clone(&setter_lock), |setter_lock| {
+			drop(setter_lock.lock().expect("unreachable").take());
+		});
+
 		let update = Box::new({
-			let weak: Weak<_> = Arc::downgrade(&once);
+			let setter_lock = Arc::clone(&setter_lock);
 			let guard = {
-				let weak = weak.clone();
+				let setter_lock = Arc::clone(&setter_lock);
 				guard(f, move |f| {
-					if let Some(once) = weak.upgrade() {
-						once.set_blocking(
-							Some(Err(f.lock().expect("unreachable").borrow_mut().take())).into(),
-						)
-						.map_err(|_| ())
-						.expect("unreachable");
+					if let Some(mut setter_lock) = setter_lock.lock().expect("unreachable").take() {
+						*setter_lock =
+							Some(Err(f.lock().expect("unreachable").borrow_mut().take())).into();
 					}
 				})
 			};
@@ -738,11 +741,12 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 				// Allow (rough) cancellation.
 				let arc = ScopeGuard::into_inner(guard);
 				let mut f_guard = arc.lock().expect("unreachable");
-				if let (Some(once), Some(f)) = (weak.upgrade(), f_guard.borrow_mut().take()) {
+				if let (Some(mut setter_lock), Some(f)) = (
+					setter_lock.lock().expect("unreachable").take(),
+					f_guard.borrow_mut().take(),
+				) {
 					let (propagation, t) = f();
-					once.set_blocking(Some(Ok(t)).into())
-						.map_err(|_| ())
-						.expect("unreachable");
+					*setter_lock = Some(Ok(t)).into();
 					propagation
 				} else {
 					Propagation::Halt
@@ -764,7 +768,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 		private::DetachedFuture(Box::pin(async move {
 			match once
-				.wait()
+				.lock()
 				.await
 				.lock()
 				.expect("unreachable")

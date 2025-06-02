@@ -8,13 +8,11 @@ use std::{
 	sync::Arc,
 };
 
-use async_lock::OnceCell;
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 use pin_project::pin_project;
 
 use crate::{
 	opaque::Opaque,
-	shadow_clone,
 	signal::Strong,
 	signals_helper,
 	traits::{UnmanagedSignal, UnmanagedSignalCell},
@@ -527,18 +525,19 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		async {
 			let sub = Subscription::computed_with_runtime(select_fn_pin, runtime.clone());
 			{
-				let once = OnceCell::<()>::new();
+				let once = async_lock::Mutex::new(());
+				let mut lock = Some(once.try_lock().expect("unreachable"));
 				signals_helper! {
 					let effect = effect_with_runtime!({
-						let (sub, once) = (&sub, &once);
+						let sub = &sub;
 						move || {
 							if !predicate_fn_pin(&**sub.read_exclusive_dyn()) {
-								once.set_blocking(()).ok();
+								drop(lock.take());
 							}
 						}
 					}, drop, runtime);
 				}
-				once.wait().await;
+				once.lock().await;
 			}
 			sub
 		}
@@ -616,19 +615,22 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 			// It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
 			// since the closure is guaranteed to run when the subscription is created.
 			// However, that would be considerably trickier code.
-			let once = Arc::new(OnceCell::<()>::new());
+			let once = Arc::new(async_lock::Mutex::<()>::new(()));
+			let mut lock = Some(once.try_lock_arc().expect("unreachable"));
 			let sub = Subscription::folded_with_runtime(
 				MaybeUninit::uninit(),
 				{
-					shadow_clone!(once);
 					move |value| {
 						let next = fn_pin();
 						if predicate_fn_pin(&next) {
-							if once.is_initialized() {
-								*unsafe { value.assume_init_mut() } = next;
-							} else {
-								value.write(next);
-								once.set_blocking(()).expect("unreachable");
+							match lock.take() {
+								None => {
+									*unsafe { value.assume_init_mut() } = next;
+								}
+								Some(lock) => {
+									value.write(next);
+									drop(lock);
+								}
 							}
 							Propagation::Propagate
 						} else {
@@ -638,7 +640,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 				},
 				runtime,
 			);
-			once.wait().await;
+			once.lock().await;
 
 			unsafe { assume_init_subscription(sub) }
 		}
@@ -705,18 +707,21 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 			// It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
 			// since the closure is guaranteed to run when the subscription is created.
 			// However, that would be considerably trickier code.
-			let once = Arc::new(OnceCell::<()>::new());
+			let once = Arc::new(async_lock::Mutex::new(()));
+			let mut lock = Some(once.try_lock_arc().expect("unreachable"));
 			let sub = Subscription::folded_with_runtime(
 				MaybeUninit::uninit(),
 				{
-					shadow_clone!(once);
 					move |value| {
 						if let Some(next) = fn_pin() {
-							if once.is_initialized() {
-								*unsafe { value.assume_init_mut() } = next;
-							} else {
-								value.write(next);
-								once.set_blocking(()).expect("unreachable");
+							match lock.take() {
+								None => {
+									*unsafe { value.assume_init_mut() } = next;
+								}
+								Some(lock) => {
+									value.write(next);
+									drop(lock);
+								}
 							}
 							Propagation::Propagate
 						} else {
@@ -726,7 +731,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 				},
 				runtime,
 			);
-			once.wait().await;
+			once.lock().await;
 
 			unsafe { assume_init_subscription(sub) }
 		}
