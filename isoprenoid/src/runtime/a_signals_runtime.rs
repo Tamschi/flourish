@@ -31,7 +31,7 @@ struct ASignalsRuntime_ {
 	interdependencies: Interdependencies,
 }
 
-#[derive(Debug, Clone, Copy, Eq, Ord)]
+#[derive(Debug, Clone, Copy, Eq)]
 struct Stale {
 	symbol: ASymbol,
 	flush: bool,
@@ -45,7 +45,13 @@ impl Borrow<ASymbol> for Stale {
 
 impl PartialOrd for Stale {
 	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-		self.symbol.partial_cmp(&other.symbol)
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for Stale {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		self.symbol.cmp(&other.symbol)
 	}
 }
 
