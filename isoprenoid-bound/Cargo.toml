@@ -1,0 +1,44 @@
+[package]
+name = "isoprenoid-bound"
+version = "0.1.2"
+authors = ["Tamme Schichler <tamme@schichler.dev>"]
+edition = "2021"
+rust-version = "1.70"
+description = "isoprenoid is the signals runtime framework backing flourish."
+# documentation intentionally defaulted.
+readme = true
+# homepage
+repository = "https://github.com/Tamschi/flourish"
+license = "MIT OR Apache-2.0"
+keywords = ["async", "sdk", "incremental", "runtime", "signals"]
+categories = ["asynchronous", "caching", "concurrency", "gui", "memory-management"]
+publish = false
+
+[package.metadata.docs.rs]
+features = [ "_doc" ]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+ # Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
+global_signals_runtime = [
+	"dep:async-lock",
+	"dep:event-listener",
+	"dep:lock_api",
+	"dep:parking_lot",
+	"dep:scopeguard",
+	"dep:unwind_safe",
+]
+# Ensures that `global_signals_runtime` is not enabled.
+forbid_global_signals_runtime = []
+_test = ["global_signals_runtime", "_doc"] # Internal testing feature.
+_doc = ["global_signals_runtime"] # Internal documentation feature.
+
+[dependencies]
+async-lock = { version = "3.4.0", default-features = false, optional = true, features = ["std"] }
+event-listener = { version = "5.3.0", default-features = false, optional = true } # for `Link: Sync`
+lock_api = { version = "0.4.12", default-features = false, optional = true } # for const `ReentrantMutex::new`
+futures-lite = { version = "2.3.0", default-features = false, features = ["alloc"] }
+parking_lot = { version = "0.12.2", default-features = false, optional = true }
+scopeguard = { version = "1.2.0", default-features = false, optional = true }
+unwind_safe = { version = "0.1.0", default-features = false, optional = true }
