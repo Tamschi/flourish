@@ -1,8 +1,8 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::GlobalSignalsRuntime;
+use flourish_bound::GlobalSignalsRuntime;
 
-type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 
 #[test]
 fn direct() {

@@ -5,7 +5,7 @@
 //! Enable the `global_signals_runtime` Cargo feature for [`GlobalSignalsRuntime`] to implement [`SignalsRuntimeRef`].
 
 use core::{self};
-use std::{self, fmt::Debug, future::Future, mem, num::NonZeroU64};
+use std::{self, fmt::Debug, future::Future, marker::PhantomData, mem, num::NonZeroU64};
 
 /// Embedded in signals to refer to a specific signals runtime.
 ///
@@ -37,11 +37,11 @@ use std::{self, fmt::Debug, future::Future, mem, num::NonZeroU64};
 ///
 /// '`id`'s context' is the execution context of any methods on this trait where the same `id`
 /// is used as parameter and additionally that of callbacks associated with `id`.
-pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
+pub unsafe trait SignalsRuntimeRef: Clone {
 	/// The signal instance key used by this [`SignalsRuntimeRef`].
 	///
 	/// Used to manage dependencies and callbacks.
-	type Symbol: Clone + Copy + Send + Sync;
+	type Symbol: Clone + Copy;
 
 	/// Types used in callback signatures.
 	type CallbackTableTypes: ?Sized + CallbackTableTypes;
@@ -213,7 +213,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// # Safety
 	///
 	/// `f` **must** be dropped or consumed before the next matching [`stop`](`SignalsRuntimeRef::stop`) call returns.
-	fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + Send + FnOnce() -> Propagation);
+	fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + FnOnce() -> Propagation);
 
 	/// **Immediately** submits `f` to run exclusively for `id` *without* recording dependencies.
 	///
@@ -231,7 +231,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// `f` **must not** run or be dropped after the next matching [`stop`](`SignalsRuntimeRef::stop`) call returns.  
 	/// `f` **must not** run or be dropped after the [`Future`] returned by this function is dropped.
-	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
+	fn update_eager<'f, T: 'f, F: 'f + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
@@ -240,7 +240,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// The type of the [`Future`] returned by [`update_eager`](`SignalsRuntimeRef::update_eager`).
 	///
 	/// Dropping this [`Future`] **should** cancel the scheduled update if possible.
-	type UpdateEager<'f, T: 'f, F: 'f>: 'f + Send + Future<Output = Result<T, F>>;
+	type UpdateEager<'f, T: 'f, F: 'f>: 'f + Future<Output = Result<T, F>>;
 
 	/// Runs `f` exclusively for `id` *without* recording dependencies.
 	///
@@ -317,11 +317,13 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 mod a_signals_runtime;
 
 #[cfg(feature = "global_signals_runtime")]
-static ISOPRENOID_GLOBAL_SIGNALS_RUNTIME: a_signals_runtime::ASignalsRuntime =
-	a_signals_runtime::ASignalsRuntime::new();
+thread_local! {
+	static ISOPRENOID_GLOBAL_SIGNALS_RUNTIME: a_signals_runtime::ASignalsRuntime = a_signals_runtime::ASignalsRuntime::new();
+}
 
+/// `!Send` and `!Sync`!
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct ASymbol(pub(crate) NonZeroU64);
+pub(crate) struct ASymbol(pub(crate) NonZeroU64, PhantomData<*mut ()>);
 
 pub(crate) enum ACallbackTableTypes {}
 
@@ -412,11 +414,11 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 	type CallbackTableTypes = GlobalCallbackTableTypes;
 
 	fn next_id(&self) -> GSRSymbol {
-		GSRSymbol((&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).next_id())
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| GSRSymbol((&gsr).next_id()))
 	}
 
 	fn record_dependency(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).record_dependency(id.0)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).record_dependency(id.0))
 	}
 
 	unsafe fn start<T, D: ?Sized>(
@@ -426,70 +428,68 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 		callback_table: *const CallbackTable<D, Self::CallbackTableTypes>,
 		callback_data: *const D,
 	) -> T {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).start(
-			id.0,
-			f,
-			//SAFETY: `GlobalCallbackTableTypes` is deeply transmute-compatible and ABI-compatible to `ACallbackTableTypes`.
-			mem::transmute::<
-				*const CallbackTable<D, GlobalCallbackTableTypes>,
-				*const CallbackTable<D, ACallbackTableTypes>,
-			>(callback_table),
-			callback_data,
-		)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| {
+			(&gsr).start(
+				id.0,
+				f,
+				//SAFETY: `GlobalCallbackTableTypes` is deeply transmute-compatible and ABI-compatible to `ACallbackTableTypes`.
+				mem::transmute::<
+					*const CallbackTable<D, GlobalCallbackTableTypes>,
+					*const CallbackTable<D, ACallbackTableTypes>,
+				>(callback_table),
+				callback_data,
+			)
+		})
 	}
 
 	fn stop(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).stop(id.0)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).stop(id.0))
 	}
 
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).update_dependency_set(id.0, f)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).update_dependency_set(id.0, f))
 	}
 
 	fn subscribe(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).subscribe(id.0)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).subscribe(id.0))
 	}
 
 	fn unsubscribe(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).unsubscribe(id.0)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).unsubscribe(id.0))
 	}
 
-	fn update_or_enqueue(
-		&self,
-		id: Self::Symbol,
-		f: impl 'static + Send + FnOnce() -> Propagation,
-	) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).update_or_enqueue(id.0, f)
+	fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + FnOnce() -> Propagation) {
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).update_or_enqueue(id.0, f))
 	}
 
-	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
+	fn update_eager<'f, T: 'f, F: 'f + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
 	) -> Self::UpdateEager<'f, T, F> {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).update_eager(id.0, f)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).update_eager(id.0, f))
 	}
 
 	type UpdateEager<'f, T: 'f, F: 'f> = private::DetachedFuture<'f, Result<T, F>>;
 
 	fn update_blocking<T>(&self, id: Self::Symbol, f: impl FnOnce() -> (Propagation, T)) -> T {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).update_blocking(id.0, f)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).update_blocking(id.0, f))
 	}
 
 	fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).run_detached(f)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).run_detached(f))
 	}
 
 	fn refresh(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).refresh(id.0)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).refresh(id.0))
 	}
 
 	fn purge(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).purge(id.0)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).purge(id.0))
 	}
 
 	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).hint_batched_updates(f)
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).hint_batched_updates(f))
 	}
 }
 
@@ -634,7 +634,7 @@ mod private {
 
 	#[allow(unreachable_pub)] // Used with "global_signals_runtime".
 	pub struct DetachedFuture<'f, Output: 'f>(
-		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+		pub(super) Pin<Box<dyn 'f + Future<Output = Output>>>,
 	);
 
 	impl<'f, Output: 'f> Future for DetachedFuture<'f, Output> {

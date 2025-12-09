@@ -5,7 +5,7 @@ use std::{
 	ops::Deref,
 };
 
-use isoprenoid::runtime::SignalsRuntimeRef;
+use isoprenoid_bound::runtime::SignalsRuntimeRef;
 
 use crate::{
 	signal::{Signal, Strong, Weak},
@@ -30,15 +30,12 @@ pub type SignalWeakDynCell<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignalCe
 /// These weak references prevent deallocation, but otherwise do allow a managed [`Signal`]
 /// to be destroyed.
 #[repr(transparent)]
-pub struct SignalWeak<
-	T: ?Sized + Send,
-	S: ?Sized + UnmanagedSignal<T, SR>,
-	SR: ?Sized + SignalsRuntimeRef,
-> {
+pub struct SignalWeak<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+{
 	pub(crate) weak: Weak<T, S, SR>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalWeak<T, S, SR>
 {
 	/// Tries to obtain a [`SignalArc`] from this [`SignalWeak`].
@@ -72,22 +69,19 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-/// A reference-counting [`Signal`] handle that is all of [`Clone`], [`Send`], [`Sync`] and [`Unpin`].
+/// A reference-counting [`Signal`] handle that is [`Clone`] and [`Unpin`].
 ///
 /// Inherits value accessors from [`Signal`].
 ///
 /// Note that [`Signal`] implements [`ToOwned<Owned = SignalArc>`](`ToOwned`),
 /// so in cases where ownership is not always required, prefer [`&Signal`](`&`) as function parameter type!
 #[must_use = "Signals are generally inert unless subscribed to."]
-pub struct SignalArc<
-	T: ?Sized + Send,
-	S: ?Sized + UnmanagedSignal<T, SR>,
-	SR: ?Sized + SignalsRuntimeRef,
-> {
+pub struct SignalArc<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+{
 	pub(super) strong: Strong<T, S, SR>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for SignalArc<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -97,7 +91,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for SignalWeak<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -107,7 +101,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
 	for SignalArc<T, S, SR>
 where
 	T: Debug,
@@ -115,13 +109,13 @@ where
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		self.strong.clone_runtime_ref().run_detached(|| {
 			f.debug_struct("SignalSR")
-				.field("(value)", &&**self.strong.read_exclusive_dyn())
+				.field("(value)", &&**self.strong.read_dyn())
 				.finish_non_exhaustive()
 		})
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
 	for SignalArc<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
@@ -131,7 +125,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Borrow<Signal<T, S, SR>> for SignalArc<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
@@ -139,16 +133,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for SignalArc<T, S, SR>
-{
-}
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for SignalArc<T, S, SR>
-{
-}
-
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalArc<T, S, SR>
 {
 	/// Creates a new [`SignalArc`] from the provided [`UnmanagedSignal`].
@@ -198,7 +183,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalArc<T, S, SR>
 {
 	/// Obscures the cell API, allowing only reads and subscriptions.
@@ -232,7 +217,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalArcDynCell<'a, T, SR> {
+impl<'a, T: 'a + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalArcDynCell<'a, T, SR> {
 	/// Obscures the cell API, allowing only reads and subscriptions.
 	///
 	/// Since 0.1.2.
@@ -249,7 +234,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalArcDy
 	}
 }
 
-impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	SignalWeak<T, S, SR>
 {
 	/// Obscures the cell API, allowing only reads and subscriptions.
@@ -289,7 +274,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalWeakDynCell<'a, T, SR> {
+impl<'a, T: 'a + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalWeakDynCell<'a, T, SR> {
 	/// Obscures the cell API, allowing only reads and subscriptions.
 	///
 	/// Since 0.1.2.

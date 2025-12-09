@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, future::Future, ops::Deref, pin::Pin};
 
-use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
+use isoprenoid_bound::runtime::{Propagation, SignalsRuntimeRef};
 
 /// "Unmanaged" (stack-pinnable) signals that have an accessible value.
 ///
@@ -11,7 +11,7 @@ use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 /// It's sound to transmute [`dyn UnmanagedSignal<T, SR>`](`UnmanagedSignal`) between different `T`s as long as that's sound and they're ABI-compatible.
 ///
 /// Note that dropping the [`dyn UnmanagedSignal<T, SR>`](`UnmanagedSignal`) dynamically **transmutes back** since it drops the value as the original type.
-pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
+pub trait UnmanagedSignal<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> {
 	/// Records `self` as dependency without accessing the value.
 	fn touch(self: Pin<&Self>);
 
@@ -20,7 +20,7 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 	/// Prefer [`touch`](`UnmanagedSignal::touch`) where possible.
 	fn get(self: Pin<&Self>) -> T
 	where
-		T: Sync + Copy,
+		T: Copy,
 	{
 		self.get_clone()
 	}
@@ -30,60 +30,22 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 	/// Prefer [`get`](`UnmanagedSignal::get`) where available.
 	fn get_clone(self: Pin<&Self>) -> T
 	where
-		T: Sync + Clone;
-
-	/// Records `self` as dependency and retrieves a copy of the value.
-	///
-	/// Prefer [`get`](`UnmanagedSignal::get`) where available.
-	fn get_exclusive(self: Pin<&Self>) -> T
-	where
-		T: Copy,
-	{
-		self.get_clone_exclusive()
-	}
-
-	/// Records `self` as dependency and retrieves a clone of the value.
-	///
-	/// Prefer [`get_clone`](`UnmanagedSignal::get_clone`) where available.
-	fn get_clone_exclusive(self: Pin<&Self>) -> T
-	where
 		T: Clone;
 
 	/// Records `self` as dependency and allows borrowing the value.
 	fn read<'r>(self: Pin<&'r Self>) -> Self::Read<'r>
 	where
 		Self: Sized,
-		T: 'r + Sync;
+		T: 'r;
 
 	/// Return type of [`read`](`UnmanagedSignal::read`).
 	type Read<'r>: 'r + Guard<T>
-	where
-		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	/// Records `self` as dependency and allows borrowing the value.
-	///
-	/// Prefer [`read`](`UnmanagedSignal::read`) where available.
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> Self::ReadExclusive<'r>
-	where
-		Self: Sized,
-		T: 'r;
-
-	/// Return type of [`read_exclusive`](`UnmanagedSignal::read_exclusive`).
-	type ReadExclusive<'r>: 'r + Guard<T>
 	where
 		Self: 'r + Sized,
 		T: 'r;
 
 	/// The same as [`read`](`UnmanagedSignal::read`), but `dyn`-compatible.
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
-	where
-		T: 'r + Sync;
-
-	/// The same as [`read_exclusive`](`UnmanagedSignal::read_exclusive`), but `dyn`-compatible.
-	///
-	/// Prefer [`read_dyn`](`UnmanagedSignal::read_dyn`) where available.
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r;
 
@@ -114,8 +76,8 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
-	Send + Sync + UnmanagedSignal<T, SR>
+pub trait UnmanagedSignalCell<T: ?Sized, SR: ?Sized + SignalsRuntimeRef>:
+	UnmanagedSignal<T, SR>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
@@ -147,16 +109,14 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
+	fn update(self: Pin<&Self>, update: impl 'static + FnOnce(&mut T) -> Propagation)
 	where
 		Self: Sized,
 		T: 'static;
 
 	/// The same as [`update`](`UnmanagedSignalCell::update`), but `dyn`-compatible.
-	fn update_dyn(
-		self: Pin<&Self>,
-		update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>,
-	) where
+	fn update_dyn(self: Pin<&Self>, update: Box<dyn 'static + FnOnce(&mut T) -> Propagation>)
+	where
 		T: 'static;
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -183,7 +143,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		T: 'f + Sized + PartialEq;
 
 	/// Return type of [`change_eager`](`UnmanagedSignalCell::change_eager`).
-	type ChangeEager<'f>: 'f + Send + Future<Output = Result<Result<T, T>, T>>
+	type ChangeEager<'f>: 'f + Future<Output = Result<Result<T, T>, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -212,7 +172,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		T: 'f + Sized;
 
 	/// Return type of [`replace_eager`](`UnmanagedSignalCell::replace_eager`).
-	type ReplaceEager<'f>: 'f + Send + Future<Output = Result<T, T>>
+	type ReplaceEager<'f>: 'f + Future<Output = Result<T, T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -236,7 +196,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	fn update_eager<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+	fn update_eager<'f, U: 'f, F: 'f + FnOnce(&mut T) -> (Propagation, U)>(
 		self: Pin<&Self>,
 		update: F,
 	) -> Self::UpdateEager<'f, U, F>
@@ -244,7 +204,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 		Self: 'f + Sized;
 
 	/// Return type of [`update_eager`](`UnmanagedSignalCell::update_eager`).
-	type UpdateEager<'f, U: 'f, F: 'f>: 'f + Send + Future<Output = Result<U, F>>
+	type UpdateEager<'f, U: 'f, F: 'f>: 'f + Future<Output = Result<U, F>>
 	where
 		Self: 'f + Sized;
 
@@ -252,7 +212,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	fn change_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	) -> Box<dyn 'f + Future<Output = Result<Result<T, T>, T>>>
 	where
 		T: 'f + Sized + PartialEq;
 
@@ -260,19 +220,15 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	fn replace_eager_dyn<'f>(
 		self: Pin<&Self>,
 		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	) -> Box<dyn 'f + Future<Output = Result<T, T>>>
 	where
 		T: 'f + Sized;
 
 	/// The same as [`update_eager`](`UnmanagedSignalCell::update_eager`), but `dyn`-compatible.
 	fn update_eager_dyn<'f>(
 		self: Pin<&Self>,
-		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
-	) -> Box<
-		dyn 'f
-			+ Send
-			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
-	>
+		update: Box<dyn 'f + FnOnce(&mut T) -> Propagation>,
+	) -> Box<dyn 'f + Future<Output = Result<(), Box<dyn 'f + FnOnce(&mut T) -> Propagation>>>>
 	where
 		T: 'f;
 

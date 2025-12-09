@@ -5,10 +5,10 @@ use std::{
 	mem::{ManuallyDrop, MaybeUninit},
 	ops::Deref,
 	pin::Pin,
-	sync::Arc,
 };
 
-use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
+use futures_channel::oneshot;
+use isoprenoid_bound::runtime::{Propagation, SignalsRuntimeRef};
 use pin_project::pin_project;
 
 use crate::{
@@ -30,14 +30,14 @@ pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSign
 /// Can be directly constructed but also converted to and from that type.
 #[must_use = "Subscriptions are undone when dropped."]
 pub struct Subscription<
-	T: ?Sized + Send,
+	T: ?Sized,
 	S: ?Sized + UnmanagedSignal<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
 	pub(crate) subscribed: ManuallyDrop<Strong<T, S, SR>>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
 	for Subscription<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
@@ -47,7 +47,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Borrow<Signal<T, S, SR>> for Subscription<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
@@ -55,7 +55,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
 	for Subscription<T, S, SR>
 where
 	T: Debug,
@@ -63,22 +63,13 @@ where
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		self.subscribed.clone_runtime_ref().run_detached(|| {
 			f.debug_struct("SubscriptionSR")
-				.field("(value)", &&**self.subscribed.read_exclusive_dyn())
+				.field("(value)", &&**self.subscribed.read_dyn())
 				.finish_non_exhaustive()
 		})
 	}
 }
 
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Subscription<T, S, SR>
-{
-}
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Subscription<T, S, SR>
-{
-}
-
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
 	for Subscription<T, S, SR>
 {
 	fn drop(&mut self) {
@@ -97,7 +88,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for Subscription<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -108,9 +99,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
-	Subscription<T, S, SR>
-{
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Subscription<T, S, SR> {
 	/// Constructs a new [`Subscription`] from the given [`UnmanagedSignal`].
 	///
 	/// Subscribes to it intrinsically in the process.
@@ -142,9 +131,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef
 	} // Implicit drop(self) unsubscribes.
 }
 
-impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
-	Subscription<T, S, SR>
-{
+impl<T: ?Sized, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Subscription<T, S, SR> {
 	/// Erases the (generally opaque) type parameter `S`, allowing the [`Subscription`] to
 	/// be stored easily.
 	pub fn into_dyn<'a>(self) -> SubscriptionDyn<'a, T, SR>
@@ -178,7 +165,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	}
 }
 
-impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {
 	/// Obscures the cell API, allowing only reads and subscriptions.
@@ -197,9 +184,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
-	SubscriptionDynCell<'a, T, SR>
-{
+impl<'a, T: 'a + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SubscriptionDynCell<'a, T, SR> {
 	/// Obscures the cell API, allowing only reads and subscriptions.
 	///
 	/// Since 0.1.2.
@@ -227,9 +212,9 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
 /// ```
 /// # {
 /// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-/// use flourish::GlobalSignalsRuntime;
+/// use flourish_bound::GlobalSignalsRuntime;
 ///
-/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 ///
 /// // The closure runs once on subscription, but not to refresh `sub`!
 /// // It re-runs with each access of its value through `SourcePin`, instead.
@@ -240,15 +225,15 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
 /// let sub_distinct = Signal::distinct(|| ()).into_subscription();
 /// # }
 /// ```
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
+impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-	/// # type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
 	/// # let input = Signal::cell(1);
 	/// Subscription::computed(|| input.get() + 1);
 	/// # }
@@ -256,7 +241,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
+		fn_pin: impl 'a + FnMut() -> T,
 	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
@@ -270,7 +255,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Signal, Subscription};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Signal, Subscription};
 	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
 	/// Subscription::computed_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
@@ -278,7 +263,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed_with_runtime<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
+		fn_pin: impl 'a + FnMut() -> T,
 		runtime: SR,
 	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
@@ -293,9 +278,9 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation};
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-	/// # type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
 	/// # let input = Signal::cell(Container);
@@ -310,7 +295,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// Wraps [`folded`](`folded()`).
 	pub fn folded<'a>(
 		init: T,
-		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
+		fold_fn_pin: impl 'a + FnMut(&mut T) -> Propagation,
 	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
@@ -324,7 +309,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal, Subscription};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal, Subscription};
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
 	/// # let input = Signal::cell_with_runtime(Container, GlobalSignalsRuntime);
@@ -339,7 +324,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// Wraps [`folded`](`folded()`).
 	pub fn folded_with_runtime<'a>(
 		init: T,
-		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
+		fold_fn_pin: impl 'a + FnMut(&mut T) -> Propagation,
 		runtime: SR,
 	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
@@ -356,9 +341,9 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation};
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// let lowest_settled = Subscription::reduced(
@@ -375,8 +360,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced<'a>(
-		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
+		select_fn_pin: impl 'a + FnMut() -> T,
+		reduce_fn_pin: impl 'a + FnMut(&mut T, T) -> Propagation,
 	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
@@ -392,7 +377,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal, Subscription};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal, Subscription};
 	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
 	/// let lowest_settled = Subscription::reduced_with_runtime(
 	/// 	|| input.get(),
@@ -409,8 +394,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced_with_runtime<'a>(
-		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
+		select_fn_pin: impl 'a + FnMut() -> T,
+		reduce_fn_pin: impl 'a + FnMut(&mut T, T) -> Propagation,
 		runtime: SR,
 	) -> Subscription<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
@@ -432,10 +417,10 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
-	/// type SubscriptionDyn<'a, T> = flourish::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	/// # use flourish_bound::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
+	/// type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
@@ -451,10 +436,10 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
-	/// type SignalArcDyn<'a, T> = flourish::SignalArcDyn<'a, T, GlobalSignalsRuntime>;
+	/// # use flourish_bound::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
+	/// type SignalArcDyn<'a, T> = flourish_bound::SignalArcDyn<'a, T, GlobalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
@@ -464,9 +449,9 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # }
 	/// ```
 	pub fn skipped_while<'f, 'a: 'f>(
-		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
-	) -> impl 'f + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
+		select_fn_pin: impl 'a + FnMut() -> T,
+		predicate_fn_pin: impl 'f + FnMut(&T) -> bool,
+	) -> impl 'f + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -486,8 +471,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
 	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<_, _>>> = pin!(async {
@@ -503,8 +488,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish::{GlobalSignalsRuntime, Subscription, SignalArcDyn};
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Subscription, SignalArcDyn};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
 	/// let f: Pin<&dyn Future<Output = SignalArcDyn<_, _>>> = pin!(async {
@@ -514,10 +499,10 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # }
 	/// ```
 	pub fn skipped_while_with_runtime<'f, 'a: 'f>(
-		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		mut predicate_fn_pin: impl 'f + Send + FnMut(&T) -> bool,
+		select_fn_pin: impl 'a + FnMut() -> T,
+		mut predicate_fn_pin: impl 'f + FnMut(&T) -> bool,
 		runtime: SR,
-	) -> impl 'f + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
+	) -> impl 'f + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Sized,
 		SR: 'a,
@@ -525,19 +510,19 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 		async {
 			let sub = Subscription::computed_with_runtime(select_fn_pin, runtime.clone());
 			{
-				let once = async_lock::Mutex::new(());
-				let mut lock = Some(once.try_lock().expect("unreachable"));
+				let (notify_ready, ready) = oneshot::channel();
+				let mut notify = Some(notify_ready);
 				signals_helper! {
 					let effect = effect_with_runtime!({
 						let sub = &sub;
 						move || {
-							if !predicate_fn_pin(&**sub.read_exclusive_dyn()) {
-								drop(lock.take());
+							if !predicate_fn_pin(&**sub.read_dyn()) {
+								notify.take().expect("Reached only once.").send(()).expect("Iff cancelled, then together.");
 							}
 						}
 					}, drop, runtime);
 				}
-				once.lock().await;
+				ready.await.expect("Iff cancelled, then together.");
 			}
 			sub
 		}
@@ -554,10 +539,10 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
-	/// type SubscriptionDyn<'a, T> = flourish::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	/// # use flourish_bound::GlobalSignalsRuntime;
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
+	/// type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
@@ -569,9 +554,9 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	///
 	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
 	pub fn filtered<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
-		predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
-	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
+		fn_pin: impl 'a + FnMut() -> T,
+		predicate_fn_pin: impl 'a + FnMut(&T) -> bool,
+	) -> impl 'a + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Copy,
 		SR: 'a + Default,
@@ -590,8 +575,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
-	/// # type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
 	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<_, _>>> = pin!(async {
@@ -603,33 +588,32 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	///
 	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
 	pub fn filtered_with_runtime<'a>(
-		mut fn_pin: impl 'a + Send + FnMut() -> T,
-		mut predicate_fn_pin: impl 'a + Send + FnMut(&T) -> bool,
+		mut fn_pin: impl 'a + FnMut() -> T,
+		mut predicate_fn_pin: impl 'a + FnMut(&T) -> bool,
 		runtime: SR,
-	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
+	) -> impl 'a + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Copy,
 		SR: 'a,
 	{
 		async {
-			// It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
-			// since the closure is guaranteed to run when the subscription is created.
-			// However, that would be considerably trickier code.
-			let once = Arc::new(async_lock::Mutex::<()>::new(()));
-			let mut lock = Some(once.try_lock_arc().expect("unreachable"));
+			let (notify_initialized, initialized) = oneshot::channel();
+			let mut notify_initialized = Some(notify_initialized);
 			let sub = Subscription::folded_with_runtime(
 				MaybeUninit::uninit(),
 				{
 					move |value| {
 						let next = fn_pin();
 						if predicate_fn_pin(&next) {
-							match lock.take() {
+							match notify_initialized.take() {
 								None => {
 									*unsafe { value.assume_init_mut() } = next;
 								}
-								Some(lock) => {
+								Some(notify_initialized) => {
 									value.write(next);
-									drop(lock);
+									notify_initialized
+										.send(())
+										.expect("Iff cancelled, then together.");
 								}
 							}
 							Propagation::Propagate
@@ -640,7 +624,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 				},
 				runtime,
 			);
-			once.lock().await;
+			initialized.await.expect("Iff cancelled, then together.");
 
 			unsafe { assume_init_subscription(sub) }
 		}
@@ -655,9 +639,9 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish::GlobalSignalsRuntime;
-	/// type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
-	/// type SubscriptionDyn<'a, T> = flourish::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	/// # use flourish_bound::GlobalSignalsRuntime;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
+	/// type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
 	///
 	/// # #[derive(Clone, Copy)] struct Value;
 	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<Value>>> = pin!(async {
@@ -668,8 +652,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	///
 	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
 	pub fn filter_mapped<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> Option<T>,
-	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
+		fn_pin: impl 'a + FnMut() -> Option<T>,
+	) -> impl 'a + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Copy,
 		SR: 'a + Default,
@@ -686,7 +670,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
 	/// # #[derive(Clone, Copy)] struct Value;
 	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<Value, _>>> = pin!(async {
 	/// 	Subscription::filter_mapped_with_runtime(|| None, GlobalSignalsRuntime).await.into_dyn()
@@ -696,31 +680,30 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 	///
 	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
 	pub fn filter_mapped_with_runtime<'a>(
-		mut fn_pin: impl 'a + Send + FnMut() -> Option<T>,
+		mut fn_pin: impl 'a + FnMut() -> Option<T>,
 		runtime: SR,
-	) -> impl 'a + Send + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
+	) -> impl 'a + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
 	where
 		T: 'a + Copy,
 		SR: 'a,
 	{
 		async {
-			// It's actually possible to avoid the `Arc` here, with a tri-state atomic or another `Once`,
-			// since the closure is guaranteed to run when the subscription is created.
-			// However, that would be considerably trickier code.
-			let once = Arc::new(async_lock::Mutex::new(()));
-			let mut lock = Some(once.try_lock_arc().expect("unreachable"));
+			let (notify_initialized, initialized) = oneshot::channel();
+			let mut notify_initialized = Some(notify_initialized);
 			let sub = Subscription::folded_with_runtime(
 				MaybeUninit::uninit(),
 				{
 					move |value| {
 						if let Some(next) = fn_pin() {
-							match lock.take() {
+							match notify_initialized.take() {
 								None => {
 									*unsafe { value.assume_init_mut() } = next;
 								}
-								Some(lock) => {
+								Some(notify_initialized) => {
 									value.write(next);
-									drop(lock);
+									notify_initialized
+										.send(())
+										.expect("Iff cancelled, then together.");
 								}
 							}
 							Propagation::Propagate
@@ -731,7 +714,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 				},
 				runtime,
 			);
-			once.lock().await;
+			initialized.await.expect("Iff cancelled, then together.");
 
 			unsafe { assume_init_subscription(sub) }
 		}
@@ -739,7 +722,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 }
 
 unsafe fn assume_init_subscription<
-	T: ?Sized + Send + Copy,
+	T: ?Sized + Copy,
 	S: UnmanagedSignal<MaybeUninit<T>, SR>,
 	SR: SignalsRuntimeRef,
 >(
@@ -749,7 +732,7 @@ unsafe fn assume_init_subscription<
 	#[repr(transparent)]
 	struct AbiShim<T: ?Sized>(#[pin] T);
 
-	impl<T: Send + Copy, S: UnmanagedSignal<MaybeUninit<T>, SR>, SR: SignalsRuntimeRef>
+	impl<T: Copy, S: UnmanagedSignal<MaybeUninit<T>, SR>, SR: SignalsRuntimeRef>
 		UnmanagedSignal<T, SR> for AbiShim<S>
 	{
 		fn touch(self: Pin<&Self>) {
@@ -758,36 +741,22 @@ unsafe fn assume_init_subscription<
 
 		fn get(self: Pin<&Self>) -> T
 		where
-			T: Sync + Copy,
+			T: Copy,
 		{
 			unsafe { self.project_ref().0.get().assume_init() }
 		}
 
 		fn get_clone(self: Pin<&Self>) -> T
 		where
-			T: Sync + Clone,
-		{
-			unsafe { self.project_ref().0.get_clone().assume_init() }
-		}
-
-		fn get_clone_exclusive(self: Pin<&Self>) -> T
-		where
 			T: Clone,
 		{
-			unsafe { self.project_ref().0.get_clone_exclusive().assume_init() }
-		}
-
-		fn get_exclusive(self: Pin<&Self>) -> T
-		where
-			T: Copy,
-		{
-			unsafe { self.project_ref().0.get_exclusive().assume_init() }
+			unsafe { self.project_ref().0.get_clone().assume_init() }
 		}
 
 		fn read<'r>(self: Pin<&'r Self>) -> Self::Read<'r>
 		where
 			Self: Sized,
-			T: 'r + Sync,
+			T: 'r,
 		{
 			AbiShim(self.project_ref().0.read())
 		}
@@ -796,43 +765,16 @@ unsafe fn assume_init_subscription<
 			= AbiShim<S::Read<'r>>
 		where
 			Self: 'r + Sized,
-			T: 'r + Sync;
-
-		fn read_exclusive<'r>(self: Pin<&'r Self>) -> Self::ReadExclusive<'r>
-		where
-			Self: Sized,
-			T: 'r,
-		{
-			AbiShim(self.project_ref().0.read_exclusive())
-		}
-
-		type ReadExclusive<'r>
-			= AbiShim<S::ReadExclusive<'r>>
-		where
-			Self: 'r + Sized,
 			T: 'r;
 
 		fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 		where
-			T: 'r + Sync,
-		{
-			unsafe {
-				//SAFETY: `MaybeUninit` is ABI-compatible with what it wraps.
-				Box::from_raw(
-					*(&Box::into_raw(self.project_ref().0.read_exclusive_dyn())
-						as *const *mut dyn Guard<MaybeUninit<T>> as *const *mut dyn Guard<T>),
-				)
-			}
-		}
-
-		fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
-		where
 			T: 'r,
 		{
 			unsafe {
 				//SAFETY: `MaybeUninit` is ABI-compatible with what it wraps.
 				Box::from_raw(
-					*(&Box::into_raw(self.project_ref().0.read_exclusive_dyn())
+					*(&Box::into_raw(self.project_ref().0.read_dyn())
 						as *const *mut dyn Guard<MaybeUninit<T>> as *const *mut dyn Guard<T>),
 				)
 			}
@@ -854,9 +796,9 @@ unsafe fn assume_init_subscription<
 		}
 	}
 
-	impl<T: ?Sized + Send + Copy, G: ?Sized + Guard<MaybeUninit<T>>> Guard<T> for AbiShim<G> {}
+	impl<T: ?Sized + Copy, G: ?Sized + Guard<MaybeUninit<T>>> Guard<T> for AbiShim<G> {}
 
-	impl<T: ?Sized + Send + Copy, G: ?Sized + Deref<Target = MaybeUninit<T>>> Deref for AbiShim<G> {
+	impl<T: ?Sized + Copy, G: ?Sized + Deref<Target = MaybeUninit<T>>> Deref for AbiShim<G> {
 		type Target = T;
 
 		fn deref(&self) -> &Self::Target {
@@ -864,7 +806,7 @@ unsafe fn assume_init_subscription<
 		}
 	}
 
-	impl<T: ?Sized + Send + Copy, G: ?Sized + Borrow<MaybeUninit<T>>> Borrow<T> for AbiShim<G> {
+	impl<T: ?Sized + Copy, G: ?Sized + Borrow<MaybeUninit<T>>> Borrow<T> for AbiShim<G> {
 		fn borrow(&self) -> &T {
 			unsafe { self.0.borrow().assume_init_ref() }
 		}

@@ -7,25 +7,18 @@ use std::{
 	task::{Context, Poll},
 };
 
-use isoprenoid::runtime::SignalsRuntimeRef;
+use isoprenoid_bound::runtime::{Propagation, SignalsRuntimeRef};
 
 use crate::traits::{Guard, UnmanagedSignal, UnmanagedSignalCell};
 
 pub enum Opaque {}
 
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> for Opaque {
+impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> for Opaque {
 	fn touch(self: Pin<&Self>) {
 		match *self {}
 	}
 
 	fn get_clone(self: Pin<&Self>) -> T
-	where
-		T: Sync + Clone,
-	{
-		match *self {}
-	}
-
-	fn get_clone_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Clone,
 	{
@@ -35,7 +28,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 	fn read<'r>(self: Pin<&'r Self>) -> OpaqueGuard<T>
 	where
 		Self: Sized,
-		T: 'r + Sync,
+		T: 'r,
 	{
 		match *self {}
 	}
@@ -44,30 +37,9 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 		= OpaqueGuard<T>
 	where
 		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> OpaqueGuard<T>
-	where
-		Self: Sized,
-		T: 'r,
-	{
-		match *self {}
-	}
-
-	type ReadExclusive<'r>
-		= OpaqueGuard<T>
-	where
-		Self: 'r + Sized,
 		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
-	where
-		T: 'r + Sync,
-	{
-		match *self {}
-	}
-
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
 		T: 'r,
 	{
@@ -90,7 +62,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 	}
 }
 
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for Opaque {
+impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for Opaque {
 	fn change(self: Pin<&Self>, _: T)
 	where
 		T: 'static + Sized + PartialEq,
@@ -105,20 +77,16 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	fn update(
-		self: Pin<&Self>,
-		_: impl 'static + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation,
-	) where
+	fn update(self: Pin<&Self>, _: impl 'static + FnOnce(&mut T) -> Propagation)
+	where
 		Self: Sized,
 		T: 'static,
 	{
 		match *self {}
 	}
 
-	fn update_dyn(
-		self: Pin<&Self>,
-		_: Box<dyn 'static + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
-	) where
+	fn update_dyn(self: Pin<&Self>, _: Box<dyn 'static + FnOnce(&mut T) -> Propagation>)
+	where
 		T: 'static,
 	{
 		match *self {}
@@ -152,11 +120,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		Self: 'f + Sized,
 		T: 'f + Sized;
 
-	fn update_eager<
-		'f,
-		U: 'f + Send,
-		F: 'f + Send + FnOnce(&mut T) -> (isoprenoid::runtime::Propagation, U),
-	>(
+	fn update_eager<'f, U: 'f, F: 'f + FnOnce(&mut T) -> (Propagation, U)>(
 		self: Pin<&Self>,
 		_: F,
 	) -> OpaqueFuture<Result<U, F>>
@@ -174,17 +138,14 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 	fn change_eager_dyn<'f>(
 		self: Pin<&Self>,
 		_: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	) -> Box<dyn 'f + Future<Output = Result<Result<T, T>, T>>>
 	where
 		T: 'f + Sized + PartialEq,
 	{
 		match *self {}
 	}
 
-	fn replace_eager_dyn<'f>(
-		self: Pin<&Self>,
-		_: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	fn replace_eager_dyn<'f>(self: Pin<&Self>, _: T) -> Box<dyn 'f + Future<Output = Result<T, T>>>
 	where
 		T: 'f + Sized,
 	{
@@ -193,17 +154,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 
 	fn update_eager_dyn<'f>(
 		self: Pin<&Self>,
-		_: Box<dyn 'f + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
-	) -> Box<
-		dyn 'f
-			+ Send
-			+ Future<
-				Output = Result<
-					(),
-					Box<dyn 'f + Send + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
-				>,
-			>,
-	>
+		_: Box<dyn 'f + FnOnce(&mut T) -> Propagation>,
+	) -> Box<dyn 'f + Future<Output = Result<(), Box<dyn 'f + FnOnce(&mut T) -> Propagation>>>>
 	where
 		T: 'f,
 	{
@@ -224,20 +176,14 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	fn update_blocking<U>(
-		&self,
-		_: impl FnOnce(&mut T) -> (isoprenoid::runtime::Propagation, U),
-	) -> U
+	fn update_blocking<U>(&self, _: impl FnOnce(&mut T) -> (Propagation, U)) -> U
 	where
 		Self: Sized,
 	{
 		match *self {}
 	}
 
-	fn update_blocking_dyn(
-		&self,
-		_: Box<dyn '_ + FnOnce(&mut T) -> isoprenoid::runtime::Propagation>,
-	) {
+	fn update_blocking_dyn(&self, _: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		match *self {}
 	}
 }
@@ -246,11 +192,6 @@ pub struct OpaqueFuture<T> {
 	_phantom: (PhantomData<T>, PhantomPinned),
 	_vacant: Opaque,
 }
-
-/// # Safety
-///
-/// `OpaqueFuture` is vacant.
-unsafe impl<T> Send for OpaqueFuture<T> {}
 
 impl<T> Future for OpaqueFuture<T> {
 	type Output = T;

@@ -1,12 +1,11 @@
 use std::{
 	borrow::Borrow,
-	cell::UnsafeCell,
+	cell::{Ref, RefCell, UnsafeCell},
 	ops::Deref,
 	pin::Pin,
-	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use isoprenoid::{
+use isoprenoid_bound::{
 	raw::{Callbacks, RawSignal},
 	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Token},
@@ -17,29 +16,15 @@ use crate::traits::{Guard, UnmanagedSignal};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct Folded<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef>(
-	#[pin] RawSignal<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>,
+pub(crate) struct Folded<T, F: FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef>(
+	#[pin] RawSignal<(RefCell<T>, UnsafeCell<F>), (), SR>,
 );
 
-#[pin_project]
-struct ForceSyncUnpin<T: ?Sized>(T);
-unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
-
-pub(crate) struct FoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-pub(crate) struct FoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct FoldedGuard<'a, T: ?Sized>(Ref<'a, T>);
 
 impl<'a, T: ?Sized> Guard<T> for FoldedGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for FoldedGuardExclusive<'a, T> {}
 
 impl<'a, T: ?Sized> Deref for FoldedGuard<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Deref for FoldedGuardExclusive<'a, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -53,27 +38,15 @@ impl<'a, T: ?Sized> Borrow<T> for FoldedGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for FoldedGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
-// TODO: Safety documentation.
-unsafe impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef + Sync> Sync
-	for Folded<T, F, SR>
-{
-}
-
-impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Folded<T, F, SR> {
+impl<T, F: FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Folded<T, F, SR> {
 	pub(crate) fn new(init: T, fn_pin: F, runtime: SR) -> Self {
 		Self(RawSignal::with_runtime(
-			(ForceSyncUnpin(init.into()), ForceSyncUnpin(fn_pin.into())),
+			(init.into(), fn_pin.into()),
 			runtime,
 		))
 	}
 
-	pub(crate) fn touch(self: Pin<&Self>) -> &RwLock<T> {
+	pub(crate) fn touch(self: Pin<&Self>) -> &RefCell<T> {
 		unsafe {
 			&Pin::into_inner_unchecked(
 				self.project_ref()
@@ -82,40 +55,34 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Fol
 					.0,
 			)
 			.0
-			 .0
 		}
 	}
 }
 
 enum E {}
-impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef>
-	Callbacks<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR> for E
+impl<T, F: ?Sized + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef>
+	Callbacks<(RefCell<T>, UnsafeCell<F>), (), SR> for E
 {
 	const UPDATE: Option<
-		fn(
-			eager: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
-			lazy: Pin<&()>,
-		) -> Propagation,
+		fn(eager: Pin<&(RefCell<T>, UnsafeCell<F>)>, lazy: Pin<&()>) -> Propagation,
 	> = {
-		fn eval<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Propagation>(
-			state: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
+		fn eval<T, F: ?Sized + FnMut(&mut T) -> Propagation>(
+			state: Pin<&(RefCell<T>, UnsafeCell<F>)>,
 			_: Pin<&()>,
 		) -> Propagation {
 			let fn_pin = unsafe {
 				//SAFETY: This function has exclusive access to `state`.
-				&mut *state.1 .0.get()
+				&mut *state.1.get()
 			};
-			fn_pin(&mut *state.0 .0.write().unwrap())
+			fn_pin(&mut *state.0.borrow_mut())
 		}
 		Some(eval)
 	};
 
 	const ON_SUBSCRIBED_CHANGE: Option<
 		fn(
-			source: Pin<
-				&RawSignal<(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>), (), SR>,
-			>,
-			eager: Pin<&(ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
+			source: Pin<&RawSignal<(RefCell<T>, UnsafeCell<F>), (), SR>>,
+			eager: Pin<&(RefCell<T>, UnsafeCell<F>)>,
 			lazy: Pin<&()>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		) -> Propagation,
@@ -125,19 +92,19 @@ impl<T: Send, F: Send + ?Sized + FnMut(&mut T) -> Propagation, SR: SignalsRuntim
 /// # Safety
 ///
 /// These are the only functions that access `cache`.
-/// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Folded<T, F, SR> {
+/// Externally synchronised through guarantees on [`isoprenoid_bound::raw::Callbacks`].
+impl<T, F: FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Folded<T, F, SR> {
 	unsafe fn init<'a>(
-		state: Pin<&'a (ForceSyncUnpin<RwLock<T>>, ForceSyncUnpin<UnsafeCell<F>>)>,
+		state: Pin<&'a (RefCell<T>, UnsafeCell<F>)>,
 		lazy: Slot<'a, ()>,
 	) -> Token<'a> {
-		let mut guard = state.0 .0.try_write().expect("unreachable");
-		let _ = (&mut *state.1 .0.get())(&mut *guard);
+		let mut guard = state.0.borrow_mut();
+		let _ = (&mut *state.1.get())(&mut *guard);
 		lazy.write(())
 	}
 }
 
-impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
+impl<T, F: FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
 	for Folded<T, F, SR>
 {
 	fn touch(self: Pin<&Self>) {
@@ -146,60 +113,31 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Unm
 
 	fn get_clone(self: Pin<&Self>) -> T
 	where
-		T: Sync + Clone,
-	{
-		self.read().clone()
-	}
-
-	fn get_clone_exclusive(self: Pin<&Self>) -> T
-	where
 		T: Clone,
 	{
-		self.read_exclusive().clone()
+		self.read().clone()
 	}
 
 	fn read<'r>(self: Pin<&'r Self>) -> FoldedGuard<'r, T>
 	where
 		Self: Sized,
-		T: 'r + Sync,
+		T: 'r,
 	{
 		let touch = self.touch();
-		FoldedGuard(touch.read().unwrap())
+		FoldedGuard(touch.borrow())
 	}
 
 	type Read<'r>
 		= FoldedGuard<'r, T>
 	where
 		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> FoldedGuardExclusive<'r, T>
-	where
-		Self: Sized,
-		T: 'r,
-	{
-		let touch = self.touch();
-		FoldedGuardExclusive(touch.write().unwrap())
-	}
-
-	type ReadExclusive<'r>
-		= FoldedGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
 		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
-		T: 'r + Sync,
-	{
-		Box::new(self.read())
-	}
-
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
-	where
 		T: 'r,
 	{
-		Box::new(self.read_exclusive())
+		Box::new(self.read())
 	}
 
 	fn clone_runtime_ref(&self) -> SR

@@ -74,7 +74,7 @@ dependencies = [
 name = "flourish"
 version = "0.1.3"
 dependencies = [
- "async-lock",
+ "futures-channel",
  "futures-lite",
  "isoprenoid",
  "pin-project",
@@ -85,7 +85,7 @@ dependencies = [
 name = "flourish-bound"
 version = "0.1.3"
 dependencies = [
- "async-lock",
+ "futures-channel",
  "futures-lite",
  "isoprenoid-bound",
  "pin-project",
@@ -93,10 +93,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "futures-core"
-version = "0.3.5"
+name = "futures-channel"
+version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59f5fff90fd5d971f936ad674802482ba441b6f09ba5e15fd8b39145582ca399"
+checksum = "2dff15bf788c671c1934e366d07e30c1814a8ef514e1af724a602e8a2fbe1b10"
+dependencies = [
+ "futures-core",
+]
+
+[[package]]
+name = "futures-core"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05f29059c0c2090612e8d742178b0580d2dc940c837851ad723096f87af6663e"
 
 [[package]]
 name = "futures-lite"
@@ -113,7 +122,6 @@ name = "isoprenoid"
 version = "0.1.2"
 dependencies = [
  "async-lock",
- "event-listener",
  "futures-lite",
  "lock_api",
  "parking_lot",
@@ -126,10 +134,7 @@ name = "isoprenoid-bound"
 version = "0.1.2"
 dependencies = [
  "async-lock",
- "event-listener",
  "futures-lite",
- "lock_api",
- "parking_lot",
  "scopeguard",
  "unwind_safe",
 ]

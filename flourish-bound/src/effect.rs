@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, pin::Pin};
 
-use isoprenoid::runtime::SignalsRuntimeRef;
+use isoprenoid_bound::runtime::SignalsRuntimeRef;
 
 use crate::unmanaged::new_raw_unsubscribed_effect;
 
@@ -24,10 +24,7 @@ impl<'a, SR: SignalsRuntimeRef> Effect<'a, SR> {
 	/// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on refresh and drop.
 	///
 	/// *Both* closures are part of the dependency detection scope.
-	pub fn new<T: 'a + Send>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
-		drop_fn_pin: impl 'a + Send + FnMut(T),
-	) -> Self
+	pub fn new<T: 'a>(fn_pin: impl 'a + FnMut() -> T, drop_fn_pin: impl 'a + FnMut(T)) -> Self
 	where
 		SR: Default,
 	{
@@ -37,9 +34,9 @@ impl<'a, SR: SignalsRuntimeRef> Effect<'a, SR> {
 	/// A simple effect with computed state and a `drop_fn_pin` cleanup closure that runs first on refresh and drop.
 	///
 	/// *Both* closures are part of the dependency detection scope.
-	pub fn new_with_runtime<T: 'a + Send>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
-		drop_fn_pin: impl 'a + Send + FnMut(T),
+	pub fn new_with_runtime<T: 'a>(
+		fn_pin: impl 'a + FnMut() -> T,
+		drop_fn_pin: impl 'a + FnMut(T),
 		runtime: SR,
 	) -> Self {
 		let box_ = Box::pin(new_raw_unsubscribed_effect(fn_pin, drop_fn_pin, runtime));

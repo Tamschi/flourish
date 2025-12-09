@@ -40,7 +40,7 @@ pub use effect::Effect;
 mod traits;
 pub use traits::Guard;
 
-pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
+pub use isoprenoid_bound::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 pub mod prelude {
 	//! Unmanaged signal accessors and [`SignalsRuntimeRef`].  
@@ -52,7 +52,7 @@ pub mod prelude {
 	};
 }
 
-#[doc(hidden = "macro-only")]
+#[doc(hidden)]
 pub mod __ {
 	pub use super::unmanaged::{
 		raw_effect::new_raw_unsubscribed_effect,
@@ -69,9 +69,9 @@ pub mod __ {
 /// ```
 /// # {
 /// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-/// use flourish::{shadow_clone, GlobalSignalsRuntime};
+/// use flourish_bound::{shadow_clone, GlobalSignalsRuntime};
 ///
-/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 ///
 /// let a = Signal::cell(1);
 /// let b = Signal::cell(2);
@@ -100,7 +100,7 @@ macro_rules! shadow_clone {
 ///
 /// ```
 /// use std::ops::Add;
-/// use flourish::{prelude::*, shadow_ref_to_owned, Signal, SignalArc, SignalDyn};
+/// use flourish_bound::{prelude::*, shadow_ref_to_owned, Signal, SignalArc, SignalDyn};
 ///
 /// fn live_sum<'a, SR: 'a + SignalsRuntimeRef>(
 /// 	a: &SignalDyn<'a, u64, SR>,

@@ -33,10 +33,8 @@ use crate::{
 	slot::{Slot, Token},
 };
 
-static ISOPRENOID_CALLBACK_TABLES: Mutex<
-	//BTreeMap<CallbackTable<()>, Pin<Box<CallbackTable<()>>>>,
-	BTreeMap<TypeId, AssertSend<*mut ()>>,
-> = Mutex::new(BTreeMap::new());
+static ISOPRENOID_CALLBACK_TABLES: Mutex<BTreeMap<TypeId, AssertSend<*mut ()>>> =
+	Mutex::new(BTreeMap::new());
 
 struct AssertSend<T>(T);
 unsafe impl<T> Send for AssertSend<T> {}
@@ -83,14 +81,14 @@ impl<SR: SignalsRuntimeRef> SignalId<SR> {
 	/// # Panics
 	///
 	/// **May** panic iff called *not* between `self.project_or_init(…)` and `self.stop_and(…)`.
-	fn update_or_enqueue(&self, f: impl 'static + Send + FnOnce() -> Propagation) {
+	fn update_or_enqueue(&self, f: impl 'static + FnOnce() -> Propagation) {
 		self.runtime.update_or_enqueue(self.id, f);
 	}
 
-	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
+	fn update_eager<'f, T: 'f, F: 'f + FnOnce() -> (Propagation, T)>(
 		&self,
 		f: F,
-	) -> impl 'f + Send + Future<Output = Result<T, F>> {
+	) -> impl 'f + Future<Output = Result<T, F>> {
 		self.runtime.update_eager(self.id, f)
 	}
 
@@ -123,20 +121,14 @@ mod once_slot;
 ///
 /// A [`RawSignal`] can be reverted into its uninitialised state, but only by
 /// purging its callbacks and subscriptions and severing its dependency relationships.
-pub struct RawSignal<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> {
+pub struct RawSignal<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> {
 	handle: SignalId<SR>,
 	_pinned: PhantomPinned,
 	lazy: OnceSlot<Lazy>,
 	eager: Eager,
 }
 
-unsafe impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> Sync
-	for RawSignal<Eager, Lazy, SR>
-{
-	// Access to `eval` is synchronised through `lazy`.
-}
-
-impl<Eager: Sync + ?Sized + Debug, Lazy: Sync + Debug, SR: SignalsRuntimeRef + Debug> Debug
+impl<Eager: ?Sized + Debug, Lazy: Debug, SR: SignalsRuntimeRef + Debug> Debug
 	for RawSignal<Eager, Lazy, SR>
 where
 	SR::Symbol: Debug,
@@ -152,7 +144,7 @@ where
 }
 impl<SR: SignalsRuntimeRef + Unpin> Unpin for RawSignal<(), (), SR> {}
 
-impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
+impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 	/// Creates a new instance of [`RawSignal`].
 	pub fn new(eager: Eager) -> Self
 	where
@@ -252,8 +244,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 				);
 
 				unsafe fn update<
-					Eager: Sync + ?Sized,
-					Lazy: Sync,
+					Eager: ?Sized,
+					Lazy,
 					SR: SignalsRuntimeRef,
 					C: Callbacks<Eager, Lazy, SR>,
 				>(
@@ -267,8 +259,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 				}
 
 				unsafe fn on_subscribed_change<
-					Eager: Sync + ?Sized,
-					Lazy: Sync,
+					Eager: ?Sized,
+					Lazy,
 					SR: SignalsRuntimeRef,
 					C: Callbacks<Eager, Lazy, SR>,
 				>(
@@ -320,17 +312,16 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 	/// **May** panic iff called *not* between [`project_or_init`](`RawSignal::project_or_init`) and [`stop`](`RawSignal::stop`).
 	pub fn update(
 		self: Pin<&Self>,
-		f: impl 'static + Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> Propagation,
+		f: impl 'static + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> Propagation,
 	) {
 		let this = Pin::clone(&self);
-		let update: Box<dyn Send + FnOnce() -> Propagation> = Box::new(move || unsafe {
+		let update: Box<dyn FnOnce() -> Propagation> = Box::new(move || unsafe {
 			f(
 				this.map_unchecked(|this| &this.eager),
 				this.lazy.get().map(|lazy| Pin::new_unchecked(lazy)),
 			)
 		});
-		let update: Box<dyn 'static + Send + FnOnce() -> Propagation> =
-			unsafe { mem::transmute(update) };
+		let update: Box<dyn 'static + FnOnce() -> Propagation> = unsafe { mem::transmute(update) };
 		self.handle.update_or_enqueue(update);
 	}
 
@@ -351,29 +342,17 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 	/// # Panics
 	///
 	/// **May** panic iff called *not* between [`project_or_init`](`RawSignal::project_or_init`) and [`stop`](`RawSignal::stop`).
-	pub fn update_eager<
-		'f,
-		T: 'f + Send,
-		F: 'f + Send + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T),
-	>(
+	pub fn update_eager<'f, T: 'f, F: 'f + FnOnce(&Eager, Option<&Lazy>) -> (Propagation, T)>(
 		&'f self,
 		f: F,
-	) -> impl 'f + Send + Future<Output = Result<T, F>>
+	) -> impl 'f + Future<Output = Result<T, F>>
 	where
 		Eager: 'f,
 		Lazy: 'f,
 	{
 		let eager = &self.eager;
-		let lazy = AssertSend(&self.lazy as *const OnceSlot<Lazy>);
+		let lazy = &self.lazy as *const OnceSlot<Lazy>;
 		let f = Arc::new(Mutex::new(Some(f)));
-
-		struct AssertSend<T: ?Sized>(*const T);
-		unsafe impl<T: ?Sized> Send for AssertSend<T> {}
-		impl<T: ?Sized> AssertSend<T> {
-			unsafe fn get(&self) -> &T {
-				&*self.0
-			}
-		}
 
 		let future = self.handle.update_eager({
 			let f = Arc::clone(&f);
@@ -383,7 +362,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 					.expect("unreachable")
 					.take()
 					.expect("unreachable");
-				f(eager, unsafe { lazy.get().get() })
+				f(eager, unsafe { (&*lazy).get() })
 			}
 		});
 		async move {
@@ -415,27 +394,19 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 	/// **May** panic iff called *not* between [`project_or_init`](`RawSignal::project_or_init`) and [`stop`](`RawSignal::stop`).
 	pub fn update_eager_pin<
 		'f,
-		T: 'f + Send,
-		F: 'f + Send + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
+		T: 'f,
+		F: 'f + FnOnce(Pin<&Eager>, Option<Pin<&Lazy>>) -> (Propagation, T),
 	>(
 		self: Pin<&Self>,
 		f: F,
-	) -> impl 'f + Send + Future<Output = Result<T, F>>
+	) -> impl 'f + Future<Output = Result<T, F>>
 	where
 		Eager: 'f,
 		Lazy: 'f,
 	{
-		let eager = AssertSend(&self.eager as *const Eager);
-		let lazy = AssertSend(&self.lazy as *const OnceSlot<Lazy>);
+		let eager = &self.eager as *const Eager;
+		let lazy = &self.lazy as *const OnceSlot<Lazy>;
 		let f = Arc::new(Mutex::new(Some(f)));
-
-		struct AssertSend<T: ?Sized>(*const T);
-		unsafe impl<T: ?Sized> Send for AssertSend<T> {}
-		impl<T: ?Sized> AssertSend<T> {
-			unsafe fn get(&self) -> &T {
-				&*self.0
-			}
-		}
 
 		let future = self.handle.update_eager({
 			let f = Arc::clone(&f);
@@ -447,8 +418,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 					.expect("unreachable");
 				unsafe {
 					f(
-						Pin::new_unchecked(eager.get()),
-						lazy.get().get().map(|r| Pin::new_unchecked(r)),
+						Pin::new_unchecked(&*eager),
+						(&*lazy).get().map(|r| Pin::new_unchecked(r)),
 					)
 				}
 			}
@@ -572,7 +543,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 /// 1. Instructs the runtime to release all resources associated with this [`RawSignal`].
 /// 2. Drops the `Lazy`, iff initialised.
 /// 3. Drops the `Eager`.
-impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
+impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
 	fn drop(&mut self) {
 		if self.lazy.get().is_some() {
 			self.handle.purge()
@@ -583,7 +554,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> Drop for RawSignal
 /// Describes static callback tables used to set up each [`RawSignal`].
 ///
 /// For each [`RawSignal`] instance, these functions are called altogether at most once at a time.
-pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
+pub trait Callbacks<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> {
 	/// The primary update callback for signals. Whenever a signal has internally cached state,
 	/// it should specify an [`UPDATE`](`Callbacks::UPDATE`) handler to recompute it.
 	///
@@ -626,9 +597,7 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
 ///
 /// When using this [`Callbacks`] implementation, updates (implicitly) **should** still propagate to dependent signals.
 pub enum NoCallbacks {}
-impl<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> Callbacks<Eager, Lazy, SR>
-	for NoCallbacks
-{
+impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> Callbacks<Eager, Lazy, SR> for NoCallbacks {
 	const UPDATE: Option<fn(eager: Pin<&Eager>, lazy: Pin<&Lazy>) -> Propagation> = None;
 	const ON_SUBSCRIBED_CHANGE: Option<
 		fn(

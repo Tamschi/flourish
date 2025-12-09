@@ -1,15 +1,15 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::GlobalSignalsRuntime;
+use flourish_bound::GlobalSignalsRuntime;
 mod _validator;
 
-type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-type SignalArcDyn<'a, T> = flourish::SignalArcDyn<'a, T, GlobalSignalsRuntime>;
-type SignalArcDynCell<'a, T> = flourish::SignalArcDynCell<'a, T, GlobalSignalsRuntime>;
-type SignalWeakDyn<'a, T> = flourish::SignalWeakDyn<'a, T, GlobalSignalsRuntime>;
-type SignalWeakDynCell<'a, T> = flourish::SignalWeakDynCell<'a, T, GlobalSignalsRuntime>;
-type SubscriptionDyn<'a, T> = flourish::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
-type SubscriptionDynCell<'a, T> = flourish::SubscriptionDynCell<'a, T, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+type SignalArcDyn<'a, T> = flourish_bound::SignalArcDyn<'a, T, GlobalSignalsRuntime>;
+type SignalArcDynCell<'a, T> = flourish_bound::SignalArcDynCell<'a, T, GlobalSignalsRuntime>;
+type SignalWeakDyn<'a, T> = flourish_bound::SignalWeakDyn<'a, T, GlobalSignalsRuntime>;
+type SignalWeakDynCell<'a, T> = flourish_bound::SignalWeakDynCell<'a, T, GlobalSignalsRuntime>;
+type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+type SubscriptionDynCell<'a, T> = flourish_bound::SubscriptionDynCell<'a, T, GlobalSignalsRuntime>;
 
 #[test]
 fn methods() {

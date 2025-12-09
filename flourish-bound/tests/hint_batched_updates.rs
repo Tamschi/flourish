@@ -1,9 +1,9 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{GlobalSignalsRuntime, SignalsRuntimeRef};
+use flourish_bound::{GlobalSignalsRuntime, SignalsRuntimeRef};
 
-type Effect<'a> = flourish::Effect<'a, GlobalSignalsRuntime>;
-type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Effect<'a> = flourish_bound::Effect<'a, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 
 mod _validator;
 use _validator::Validator;

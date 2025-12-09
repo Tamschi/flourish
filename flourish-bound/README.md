@@ -29,7 +29,7 @@ Fixing this doesn't incur API changes, and I don't need it right now, so I haven
 If you can't call `.get()` or `.change(…)` on pinned unmanaged signals, this import is what you're looking for:
 
 ```rust
-use flourish::prelude::*;
+use flourish_bound::prelude::*;
 ```
 
 ## Quick-Start
@@ -49,15 +49,15 @@ cargo add flourish --features global_signals_runtime
 You can put signals on the heap:
 
 ```rust
-use flourish::{Propagation, GlobalSignalsRuntime, SignalArcDynCell, SignalArcDyn};
+use flourish_bound::{Propagation, GlobalSignalsRuntime, SignalArcDynCell, SignalArcDyn};
 
 // Choose a runtime:
-type Effect<'a> = flourish::Effect<'a, GlobalSignalsRuntime>;
-type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+type Effect<'a> = flourish_bound::Effect<'a, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
 
 // `Signal` is a ref-only type like `Path`, so its constructors return a `SignalArc`.
-let _ = Signal::shared(()); // Untracked `T: Sync`-wrapper.
+let _ = Signal::shared(()); // Untracked `T`-wrapper.
 let _ = Signal::cell(());
 let _ = Signal::cell_cyclic(|_weak| ());
 let _ = Signal::cell_reactive((), |_value, _status| Propagation::Halt);
@@ -94,10 +94,10 @@ let (_signal_dyn, _cell_dyn) = Signal::cell(()).into_dyn_read_only_and_self();
 You can also put signals on the stack:
 
 ```rust
-use flourish::{signals_helper, prelude::*, Propagation};
+use flourish_bound::{signals_helper, prelude::*, Propagation};
 
 signals_helper! {
-  let shared = shared!(()); // Untracked `T: Sync`-wrapper.
+  let shared = shared!(()); // Untracked `T`-wrapper.
   let inert_cell = inert_cell!(());
   let reactive_cell = reactive_cell!((), |_value, _status| Propagation::Halt);
 
@@ -122,17 +122,17 @@ let (_source, _source_cell) = inert_cell.as_source_and_cell();
 let (_source, _source_cell) = reactive_cell.as_source_and_cell();
 ```
 
-Additionally, inside `flourish::unmanaged`, you can find constructor functions for unpinned unmanaged signals that enable composition with data-inlining.
+Additionally, inside `flourish_bound::unmanaged`, you can find constructor functions for unpinned unmanaged signals that enable composition with data-inlining.
 
 ## Linking signals
 
 *flourish* detects and updates dependencies automatically:
 
 ```rust
-use flourish::{shadow_clone, GlobalSignalsRuntime};
+use flourish_bound::{shadow_clone, GlobalSignalsRuntime};
 
 // Choose a runtime:
-type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 
 let a = Signal::cell("a");
 let b = Signal::cell("b");
@@ -189,10 +189,10 @@ As mentioned in passing earlier, closure types captured in signals in this libra
 
 ```rust
 
-use flourish::{shadow_clone, GlobalSignalsRuntime, Propagation};
+use flourish_bound::{shadow_clone, GlobalSignalsRuntime, Propagation};
 
 // Choose a runtime:
-type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 
 let mut cell;
 cell = Signal::cell(()).into_dyn_cell();
@@ -216,7 +216,7 @@ Upcasting conversions from `…DynCell` to read-only `…Dyn` handles and refere
 In particular, references and pointers to `SignalDynCell` can be coerced directly into those to `SignalDyn`:
 
 ```rust
-use flourish::{GlobalSignalsRuntime, Signal, SignalArc, SignalDyn, SignalDynCell};
+use flourish_bound::{GlobalSignalsRuntime, Signal, SignalArc, SignalDyn, SignalDynCell};
 
 let cell: SignalArc<_, _, _> = Signal::<_, _, GlobalSignalsRuntime>::cell(());
 
@@ -229,7 +229,7 @@ let dyn_ref: &SignalDyn<_, _> = dyn_cell_ref;
 You can use existing `isoprenoid` runtime instances with the included types and macros (but ideally, still alias these items for your own use):
 
 ```rust
-use flourish::{signals_helper, GlobalSignalsRuntime, Propagation, Signal, Subscription};
+use flourish_bound::{signals_helper, GlobalSignalsRuntime, Propagation, Signal, Subscription};
 
 let _ = Signal::shared_with_runtime((), GlobalSignalsRuntime);
 let _ = Signal::cell_with_runtime((), GlobalSignalsRuntime);

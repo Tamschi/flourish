@@ -1,6 +1,6 @@
 use std::{
 	borrow::Borrow,
-	cell::UnsafeCell,
+	cell::{Cell, UnsafeCell},
 	fmt::{self, Debug, Formatter},
 	future::Future,
 	marker::{PhantomData, PhantomPinned},
@@ -8,12 +8,11 @@ use std::{
 	ops::Deref,
 	pin::Pin,
 	process::abort,
-	sync::atomic::{AtomicUsize, Ordering},
 	usize,
 };
 
 use futures_lite::FutureExt as _;
-use isoprenoid::runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef};
+use isoprenoid_bound::runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef};
 use tap::Conv;
 
 use crate::{
@@ -35,7 +34,7 @@ use crate::{
 ///
 /// - [`SignalArc`] and [`Subscription`] each implement both [`Borrow<Signal<…>>`](`Borrow`) and [`Deref`].
 /// - [`Signal`] implements [`ToOwned<Owned = SignalArc<…>>`](`ToOwned`).
-pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> {
+pub struct Signal<T: ?Sized, S: ?Sized, SR: ?Sized + SignalsRuntimeRef> {
 	inner: UnsafeCell<Signal_<T, S, SR>>,
 }
 
@@ -44,13 +43,13 @@ pub type SignalDyn<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 /// [`Signal`] after cell-type-erasure.
 pub type SignalDynCell<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
+impl<T: ?Sized, S: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
 	fn inner(&self) -> &Signal_<T, S, SR> {
 		unsafe { &*self.inner.get().cast_const() }
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
 	for Signal<T, S, SR>
 where
 	S: Debug,
@@ -60,7 +59,7 @@ where
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
 	/// Creates a new [`SignalArc`] from the provided [`UnmanagedSignal`].
@@ -75,14 +74,14 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 }
 
 /// Secondary constructors.
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
+impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::GlobalSignalsRuntime;
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::GlobalSignalsRuntime;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// Signal::computed(|| input.get() + 1);
@@ -91,7 +90,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
+		fn_pin: impl 'a + FnMut() -> T,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
@@ -105,7 +104,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Signal};
 	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
 	/// Signal::computed_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
@@ -113,7 +112,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed_with_runtime<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
+		fn_pin: impl 'a + FnMut() -> T,
 		runtime: SR,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
@@ -130,8 +129,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::GlobalSignalsRuntime;
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::GlobalSignalsRuntime;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// Signal::distinct(|| input.get() + 1);
@@ -143,7 +142,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`distinct`](`distinct()`).
 	pub fn distinct<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
+		fn_pin: impl 'a + FnMut() -> T,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized + PartialEq,
@@ -159,7 +158,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Signal};
 	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
 	/// Signal::distinct_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
@@ -170,7 +169,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`distinct`](`distinct()`).
 	pub fn distinct_with_runtime<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
+		fn_pin: impl 'a + FnMut() -> T,
 		runtime: SR,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
@@ -185,8 +184,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::GlobalSignalsRuntime;
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::GlobalSignalsRuntime;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// Signal::computed_uncached(|| input.get() + 1);
@@ -195,7 +194,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`computed_uncached`](`computed_uncached()`).
 	pub fn computed_uncached<'a>(
-		fn_pin: impl 'a + Send + Sync + Fn() -> T,
+		fn_pin: impl 'a + Fn() -> T,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
@@ -209,7 +208,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Signal};
 	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
 	/// Signal::computed_uncached_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
@@ -217,7 +216,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`computed_uncached`](`computed_uncached()`).
 	pub fn computed_uncached_with_runtime<'a>(
-		fn_pin: impl 'a + Send + Sync + Fn() -> T,
+		fn_pin: impl 'a + Fn() -> T,
 		runtime: SR,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
@@ -234,8 +233,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::GlobalSignalsRuntime;
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::GlobalSignalsRuntime;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// let mut read_count = 0;
@@ -249,7 +248,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
 	pub fn computed_uncached_mut<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
+		fn_pin: impl 'a + FnMut() -> T,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
@@ -265,7 +264,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Signal};
 	/// # let input = &Signal::cell_with_runtime(1, GlobalSignalsRuntime);
 	/// let mut read_count = 0;
 	/// Signal::computed_uncached_mut_with_runtime(move || {
@@ -278,7 +277,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
 	pub fn computed_uncached_mut_with_runtime<'a>(
-		fn_pin: impl 'a + Send + FnMut() -> T,
+		fn_pin: impl 'a + FnMut() -> T,
 		runtime: SR,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
@@ -293,8 +292,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
@@ -310,7 +309,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`folded`](`folded()`).
 	pub fn folded<'a>(
 		init: T,
-		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
+		fold_fn_pin: impl 'a + FnMut(&mut T) -> Propagation,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
@@ -324,7 +323,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
 	/// # let input = Signal::cell_with_runtime(Container, GlobalSignalsRuntime);
@@ -339,7 +338,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`folded`](`folded()`).
 	pub fn folded_with_runtime<'a>(
 		init: T,
-		fold_fn_pin: impl 'a + Send + FnMut(&mut T) -> Propagation,
+		fold_fn_pin: impl 'a + FnMut(&mut T) -> Propagation,
 		runtime: SR,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
@@ -356,8 +355,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// let highest_settled = Signal::reduced(
@@ -374,8 +373,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced<'a>(
-		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
+		select_fn_pin: impl 'a + FnMut() -> T,
+		reduce_fn_pin: impl 'a + FnMut(&mut T, T) -> Propagation,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
@@ -391,7 +390,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
 	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
 	/// let highest_settled = Signal::reduced_with_runtime(
 	/// 	|| input.get(),
@@ -408,8 +407,8 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// Wraps [`reduced`](`reduced()`).
 	pub fn reduced_with_runtime<'a>(
-		select_fn_pin: impl 'a + Send + FnMut() -> T,
-		reduce_fn_pin: impl 'a + Send + FnMut(&mut T, T) -> Propagation,
+		select_fn_pin: impl 'a + FnMut() -> T,
+		reduce_fn_pin: impl 'a + FnMut(&mut T, T) -> Propagation,
 		runtime: SR,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
@@ -426,16 +425,16 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-	/// type SignalDyn<'a, T> = flourish::SignalDyn<'a, T, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// type SignalDyn<'a, T> = flourish_bound::SignalDyn<'a, T, GlobalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
 	/// # let input = Signal::cell(Container);
 	/// let shared = Signal::shared(0);
 	///
-	/// fn accepts_signal<T: Send>(signal: &SignalDyn<'_, T>) {}
+	/// fn accepts_signal<T>(signal: &SignalDyn<'_, T>) {}
 	/// accepts_signal(&*shared);
 	/// # }
 	/// ```
@@ -443,7 +442,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Since 0.1.2.
 	pub fn shared<'a>(value: T) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
-		T: 'a + Sized + Sync,
+		T: 'a + Sized,
 		SR: 'a + Default,
 	{
 		Self::shared_with_runtime(value, SR::default())
@@ -456,11 +455,11 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
 	/// let shared = Signal::shared_with_runtime(0, GlobalSignalsRuntime);
 	///
-	/// fn accepts_signal<T: Send, SR: flourish::SignalsRuntimeRef>(
-	///   signal: &flourish::SignalDyn<'_, T, SR>,
+	/// fn accepts_signal<T, SR: flourish_bound::SignalsRuntimeRef>(
+	///   signal: &flourish_bound::SignalDyn<'_, T, SR>,
 	/// ) {}
 	/// accepts_signal(&*shared);
 	/// # }
@@ -472,7 +471,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		runtime: SR,
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
-		T: 'a + Sized + Sync,
+		T: 'a + Sized,
 		SR: 'a + Default,
 	{
 		SignalArc {
@@ -482,7 +481,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 }
 
 /// Cell constructors.
-impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
+impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// A thread-safe value cell that's mutable through shared references.
 	///
 	/// Modification of the value can cause dependent signals to update.
@@ -490,8 +489,8 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
@@ -522,7 +521,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
 	/// let cell = Signal::cell_with_runtime(0, GlobalSignalsRuntime);
 	///
 	/// cell.change(1);
@@ -553,8 +552,8 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalWeakDynCell};
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalWeakDynCell};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # struct Resource {}
 	/// # fn get_from_cache(name: &str) -> Option<Resource> { None }
@@ -591,7 +590,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalWeakDynCell};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalWeakDynCell};
 	/// # struct Resource {}
 	/// # fn get_from_cache(name: &str) -> Option<Resource> { None }
 	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, target: SignalWeakDynCell<'_, Option<Resource>, SR>) {}
@@ -640,8 +639,8 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// let cell = Signal::cell_reactive(0, |value, status| {
 	/// 		dbg!(status);
@@ -652,7 +651,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_reactive<'a>(
 		initial_value: T,
 		on_subscribed_change_fn_pin: impl 'a
-			+ Send
 			+ FnMut(
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -672,7 +670,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
 	/// let cell = Signal::cell_reactive_with_runtime(0, |value, status| {
 	/// 		dbg!(status);
 	/// 		Propagation::Halt
@@ -682,7 +680,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_reactive_with_runtime<'a>(
 		initial_value: T,
 		on_subscribed_change_fn_pin: impl 'a
-			+ Send
 			+ FnMut(
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -710,8 +707,8 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// let cell = Signal::cell_cyclic_reactive(|weak| (0, {
 	/// 		shadow_ref_to_owned!(weak);
@@ -725,7 +722,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_cyclic_reactive<
 		'a,
 		HandlerFnPin: 'a
-			+ Send
 			+ FnMut(
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -753,7 +749,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, Signal};
+	/// # use flourish_bound::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, Signal};
 	/// let cell = Signal::cell_cyclic_reactive_with_runtime(|weak| (0, {
 	/// 		shadow_ref_to_owned!(weak);
 	/// 		move |value, status| {
@@ -766,7 +762,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_cyclic_reactive_with_runtime<
 		'a,
 		HandlerFnPin: 'a
-			+ Send
 			+ FnMut(
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -801,9 +796,9 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
 	/// # fn create_heavy_resource_arc() {}
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// let cell = Signal::cell_reactive_mut(None, |value, status| {
 	/// 		if status {
@@ -819,7 +814,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_reactive_mut<'a>(
 		initial_value: T,
 		on_subscribed_change_fn_pin: impl 'a
-			+ Send
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -843,7 +837,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
 	/// # fn create_heavy_resource_arc() {}
 	/// let cell = Signal::cell_reactive_mut_with_runtime(None, |value, status| {
 	/// 		if status {
@@ -859,7 +853,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_reactive_mut_with_runtime<'a>(
 		initial_value: T,
 		on_subscribed_change_fn_pin: impl 'a
-			+ Send
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -887,8 +880,8 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalArcDynCell};
-	/// type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalArcDynCell};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
 	///
 	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalArcDynCell<'_, (usize, Resource<()>), SR>) {}
 	/// enum Resource<T> {
@@ -925,7 +918,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_cyclic_reactive_mut<
 		'a,
 		HandlerFnPin: 'a
-			+ Send
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -953,7 +945,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalArcDynCell};
+	/// # use flourish_bound::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalArcDynCell};
 	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalArcDynCell<'_, (usize, Resource<()>), SR>) {}
 	/// enum Resource<T> {
 	/// 	Offline,
@@ -989,7 +981,6 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_cyclic_reactive_mut_with_runtime<
 		'a,
 		HandlerFnPin: 'a
-			+ Send
 			+ FnMut(
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
@@ -1025,16 +1016,15 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	}
 }
 
-pub(crate) struct Signal_<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef>
-{
+pub(crate) struct Signal_<T: ?Sized, S: ?Sized, SR: ?Sized + SignalsRuntimeRef> {
 	_phantom: PhantomData<(PhantomData<T>, SR)>,
-	strong: AtomicUsize,
-	weak: AtomicUsize,
+	strong: Cell<usize>,
+	weak: Cell<usize>,
 	managed: UnsafeCell<ManuallyDrop<S>>,
 }
 
 pub(crate) struct Strong<
-	T: ?Sized + Send,
+	T: ?Sized,
 	S: ?Sized + UnmanagedSignal<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
@@ -1042,78 +1032,14 @@ pub(crate) struct Strong<
 }
 
 pub(crate) struct Weak<
-	T: ?Sized + Send,
+	T: ?Sized,
 	S: ?Sized + UnmanagedSignal<T, SR>,
 	SR: ?Sized + SignalsRuntimeRef,
 > {
 	weak: *const Signal<T, S, SR>,
 }
 
-/// # Safety
-///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Signal<T, S, SR>
-{
-}
-
-/// # Safety
-///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Signal_<T, S, SR>
-{
-}
-
-/// # Safety
-///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Strong<T, S, SR>
-{
-}
-
-/// # Safety
-///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Weak<T, S, SR>
-{
-}
-
-/// # Safety
-///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Signal<T, S, SR>
-{
-}
-
-/// # Safety
-///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Signal_<T, S, SR>
-{
-}
-
-/// # Safety
-///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Strong<T, S, SR>
-{
-}
-
-/// # Safety
-///
-/// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Weak<T, S, SR>
-{
-}
-
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Strong<T, S, SR>
 {
 	pub(crate) fn pin(managed: S) -> Self
@@ -1187,7 +1113,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
+impl<'a, T: 'a + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef>
 	Strong<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>
 {
 	pub(crate) fn into_read_only(self) -> Strong<T, dyn 'a + UnmanagedSignal<T, SR>, SR> {
@@ -1198,7 +1124,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
 	for Strong<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
@@ -1208,7 +1134,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Borrow<Signal<T, S, SR>> for Strong<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
@@ -1216,27 +1142,17 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Weak<T, S, SR>
-{
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Weak<T, S, SR> {
 	fn _inner(&self) -> &Signal_<T, S, SR> {
 		unsafe { &*(*self.weak).inner.get().cast_const() }
 	}
 
 	pub(crate) fn upgrade(&self) -> Option<Strong<T, S, SR>> {
-		let mut strong = self._inner().strong.load(Ordering::Relaxed);
-		while strong > 0 {
-			match self._inner().strong.compare_exchange(
-				strong,
-				strong + 1,
-				Ordering::Acquire,
-				Ordering::Relaxed,
-			) {
-				Ok(_) => return Some(Strong { strong: self.weak }),
-				Err(actual) => strong = actual,
-			}
-		}
-		None
+		let strong = self._inner().strong.get();
+		(strong > 0).then(|| {
+			self._inner().strong.set(strong + 1);
+			Strong { strong: self.weak }
+		})
 	}
 
 	pub(crate) unsafe fn unsafe_copy(&self) -> Self {
@@ -1260,7 +1176,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<'a, T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>
+impl<'a, T: ?Sized, SR: ?Sized + SignalsRuntimeRef>
 	Weak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>
 {
 	pub(crate) fn into_read_only(self) -> Weak<T, dyn 'a + UnmanagedSignal<T, SR>, SR> {
@@ -1269,22 +1185,26 @@ impl<'a, T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
 	for Strong<T, S, SR>
 {
 	fn drop(&mut self) {
-		if self._get().inner().strong.fetch_sub(1, Ordering::Release) == 1 {
+		let strong = &self._get().inner().strong;
+		strong.update(|strong| strong - 1);
+		if strong.get() == 0 {
 			unsafe { ManuallyDrop::drop(&mut *self._get().inner().managed.get()) }
 			drop(Weak { weak: self.strong })
 		}
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
 	for Weak<T, S, SR>
 {
 	fn drop(&mut self) {
-		if self._inner().weak.fetch_sub(1, Ordering::Release) == 1 {
+		let weak = &self._inner().weak;
+		weak.update(|weak| weak - 1);
+		if weak.get() == 0 {
 			unsafe {
 				drop(Box::from_raw(self.weak.cast_mut()));
 			}
@@ -1292,7 +1212,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> ToOwned
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> ToOwned
 	for Signal<T, S, SR>
 {
 	type Owned = SignalArc<T, S, SR>;
@@ -1305,41 +1225,45 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for Strong<T, S, SR>
 {
 	fn clone(&self) -> Self {
-		if self._get().inner().strong.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
+		let strong = &self._get().inner().strong;
+		if strong.get() > usize::MAX / 2 {
 			eprintln!("SignalArc overflow.");
 			abort()
 		}
+		strong.update(|strong| strong + 1);
 		Self {
 			strong: self.strong,
 		}
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
 	for Weak<T, S, SR>
 {
 	fn clone(&self) -> Self {
-		if self._inner().weak.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
+		let weak = &self._inner().weak;
+		if weak.get() > usize::MAX / 2 {
 			eprintln!("SignalWeak overflow.");
 			abort()
 		}
+		weak.update(|weak| weak + 1);
 		Self { weak: self.weak }
 	}
 }
 
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
-impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
+impl<T: ?Sized, S: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
 	pub(crate) fn _managed(&self) -> Pin<&S> {
 		unsafe { Pin::new_unchecked(&*self.inner().managed.get()) }
 	}
 }
 
 /// Adapters.
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
 	/// Creates a new [`Subscription`] for this [`Signal`].
@@ -1390,7 +1314,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
+impl<T: ?Sized, S: UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
 	/// Reborrows with the [`UnmanagedSignalCell`] `S` replaced by an opaque [`UnmanagedSignal`] in the type signature.
 	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
@@ -1408,7 +1332,7 @@ impl<T: ?Sized + Send, S: UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalDynCell<'a, T, SR> {
+impl<'a, T: 'a + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SignalDynCell<'a, T, SR> {
 	/// Reborrows while upcasting the reference, discarding mutation access.
 	///
 	/// Since 0.1.2.
@@ -1425,7 +1349,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalDynCe
 }
 
 /// Value accessors.
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
 	/// Records `self` as dependency without accessing the value.
@@ -1438,7 +1362,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	/// Prefer [`Signal::touch`] where possible.
 	pub fn get(&self) -> T
 	where
-		T: Sync + Copy,
+		T: Copy,
 	{
 		self._managed().get()
 	}
@@ -1448,49 +1372,18 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	/// Prefer [`Signal::get`] where available.
 	pub fn get_clone(&self) -> T
 	where
-		T: Sync + Clone,
-	{
-		self._managed().get_clone()
-	}
-
-	/// Records `self` as dependency and retrieves a copy of the value.
-	///
-	/// Prefer [`Signal::get`] where available.
-	pub fn get_exclusive(&self) -> T
-	where
-		T: Copy,
-	{
-		self._managed().get_clone_exclusive()
-	}
-
-	/// Records `self` as dependency and retrieves a clone of the value.
-	///
-	/// Prefer [`Signal::get_clone`] where available.
-	pub fn get_clone_exclusive(&self) -> T
-	where
 		T: Clone,
 	{
-		self._managed().get_clone_exclusive()
+		self._managed().get_clone()
 	}
 
 	/// Records `self` as dependency and allows borrowing the value.
 	pub fn read<'r>(&'r self) -> S::Read<'r>
 	where
 		S: Sized,
-		T: 'r + Sync,
-	{
-		self._managed().read()
-	}
-
-	/// Records `self` as dependency and allows borrowing the value.
-	///
-	/// Prefer [`Signal::read`] where available.
-	pub fn read_exclusive<'r>(&'r self) -> S::ReadExclusive<'r>
-	where
-		S: Sized,
 		T: 'r,
 	{
-		self._managed().read_exclusive()
+		self._managed().read()
 	}
 
 	/// The same as [`Signal::read`], but dyn-compatible.
@@ -1498,19 +1391,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	/// Prefer [`Signal::read`] where available.
 	pub fn read_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
 	where
-		T: 'r + Sync,
-	{
-		self._managed().read_dyn()
-	}
-
-	/// The same as [`Signal::read_exclusive`], but dyn-compatible.
-	///
-	/// Prefer [`Signal::read_dyn`] where available.
-	pub fn read_exclusive_dyn<'r>(&'r self) -> Box<dyn 'r + Guard<T>>
-	where
 		T: 'r,
 	{
-		self._managed().read_exclusive_dyn()
+		self._managed().read_dyn()
 	}
 
 	/// Clones this [`Signal`]'s [`SignalsRuntimeRef`].
@@ -1525,7 +1408,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -1564,7 +1447,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
+	pub fn update(&self, update: impl 'static + FnOnce(&mut T) -> Propagation)
 	where
 		S: Sized,
 		T: 'static,
@@ -1573,7 +1456,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	}
 
 	/// The same as [`update`](`Signal::update`), but dyn-compatible.
-	pub fn update_dyn(&self, update: Box<dyn 'static + Send + FnOnce(&mut T) -> Propagation>)
+	pub fn update_dyn(&self, update: Box<dyn 'static + FnOnce(&mut T) -> Propagation>)
 	where
 		T: 'static,
 	{
@@ -1596,7 +1479,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 			Box::pin(async move {
 				if let Some(this) = this.upgrade() {
 					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.change_eager(new_value).boxed().await
+					this.change_eager(new_value).boxed_local().await
 				} else {
 					Err(new_value)
 				}
@@ -1618,7 +1501,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 			Box::pin(async move {
 				if let Some(this) = this.upgrade() {
 					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.replace_eager(new_value).boxed().await
+					this.replace_eager(new_value).boxed_local().await
 				} else {
 					Err(new_value)
 				}
@@ -1629,7 +1512,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 
 	/// Cheaply creates a [`Future`] that has the effect of [`update_eager`](`Signal::update_eager`) when polled.
 	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
-	pub fn update_async<'f, U: 'f + Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+	pub fn update_async<'f, U: 'f, F: 'f + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
 	) -> private::DetachedFuture<'f, Result<U, F>>
@@ -1643,7 +1526,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 			Box::pin(async move {
 				if let Some(this) = this.upgrade() {
 					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.update_eager(update).boxed().await
+					this.update_eager(update).boxed_local().await
 				} else {
 					Err(update)
 				}
@@ -1659,7 +1542,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	pub fn change_async_dyn<'f>(
 		&self,
 		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	) -> Box<dyn 'f + Future<Output = Result<Result<T, T>, T>>>
 	where
 		T: 'f + Sized + PartialEq,
 	{
@@ -1677,8 +1560,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
 			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
 			mem::transmute::<
-				Box<dyn '_ + Send + Future<Output = Result<Result<T, T>, T>>>,
-				Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>,
+				Box<dyn '_ + Future<Output = Result<Result<T, T>, T>>>,
+				Box<dyn 'f + Future<Output = Result<Result<T, T>, T>>>,
 			>(f)
 		}
 	}
@@ -1687,10 +1570,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
 	///
 	/// Prefer [`replace_async`](`Signal::replace_async`) where possible.
-	pub fn replace_async_dyn<'f>(
-		&self,
-		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	pub fn replace_async_dyn<'f>(&self, new_value: T) -> Box<dyn 'f + Future<Output = Result<T, T>>>
 	where
 		T: 'f + Sized,
 	{
@@ -1710,8 +1590,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
 			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
 			mem::transmute::<
-				Box<dyn '_ + Send + Future<Output = Result<T, T>>>,
-				Box<dyn 'f + Send + Future<Output = Result<T, T>>>,
+				Box<dyn '_ + Future<Output = Result<T, T>>>,
+				Box<dyn 'f + Future<Output = Result<T, T>>>,
 			>(f)
 		}
 	}
@@ -1722,12 +1602,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// Prefer [`update_async`](`Signal::update_async`) where possible.
 	pub fn update_async_dyn<'f>(
 		&self,
-		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
-	) -> Box<
-		dyn 'f
-			+ Send
-			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
-	>
+		update: Box<dyn 'f + FnOnce(&mut T) -> Propagation>,
+	) -> Box<dyn 'f + Future<Output = Result<(), Box<dyn 'f + FnOnce(&mut T) -> Propagation>>>>
 	where
 		T: 'f,
 	{
@@ -1747,17 +1623,11 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 			mem::transmute::<
 				Box<
 					dyn '_
-						+ Send
-						+ Future<
-							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
-						>,
+						+ Future<Output = Result<(), Box<dyn 'f + FnOnce(&mut T) -> Propagation>>>,
 				>,
 				Box<
 					dyn 'f
-						+ Send
-						+ Future<
-							Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>,
-						>,
+						+ Future<Output = Result<(), Box<dyn 'f + FnOnce(&mut T) -> Propagation>>>,
 				>,
 			>(f)
 		}
@@ -1835,7 +1705,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	pub fn update_eager<'f, U: Send, F: 'f + Send + FnOnce(&mut T) -> (Propagation, U)>(
+	pub fn update_eager<'f, U, F: 'f + FnOnce(&mut T) -> (Propagation, U)>(
 		&self,
 		update: F,
 	) -> S::UpdateEager<'f, U, F>
@@ -1849,7 +1719,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	pub fn change_eager_dyn<'f>(
 		&self,
 		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
+	) -> Box<dyn 'f + Future<Output = Result<Result<T, T>, T>>>
 	where
 		T: 'f + Sized + PartialEq,
 	{
@@ -1857,10 +1727,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	}
 
 	/// The same as [`replace_eager`](`Signal::replace_eager`), but dyn-compatible.
-	pub fn replace_eager_dyn<'f>(
-		&self,
-		new_value: T,
-	) -> Box<dyn 'f + Send + Future<Output = Result<T, T>>>
+	pub fn replace_eager_dyn<'f>(&self, new_value: T) -> Box<dyn 'f + Future<Output = Result<T, T>>>
 	where
 		T: 'f + Sized,
 	{
@@ -1870,12 +1737,8 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The same as [`update_eager`](`Signal::update_eager`), but dyn-compatible.
 	pub fn update_eager_dyn<'f>(
 		&self,
-		update: Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>,
-	) -> Box<
-		dyn 'f
-			+ Send
-			+ Future<Output = Result<(), Box<dyn 'f + Send + FnOnce(&mut T) -> Propagation>>>,
-	>
+		update: Box<dyn 'f + FnOnce(&mut T) -> Propagation>,
+	) -> Box<dyn 'f + Future<Output = Result<(), Box<dyn 'f + FnOnce(&mut T) -> Propagation>>>>
 	where
 		T: 'f,
 	{
@@ -1965,7 +1828,7 @@ mod private {
 	#[must_use = "Async futures have no effect iff dropped before polling (and may cancel their effect iff dropped)."]
 	#[pin_project]
 	pub struct DetachedFuture<'f, Output: 'f>(
-		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
+		pub(super) Pin<Box<dyn 'f + Future<Output = Output>>>,
 		#[pin] pub(super) PhantomPinned,
 	);
 

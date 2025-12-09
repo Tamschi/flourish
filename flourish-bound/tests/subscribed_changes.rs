@@ -1,9 +1,9 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{shadow_clone, GlobalSignalsRuntime, Propagation};
+use flourish_bound::{shadow_clone, GlobalSignalsRuntime, Propagation};
 
-type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
 
 mod _validator;
 use _validator::Validator;

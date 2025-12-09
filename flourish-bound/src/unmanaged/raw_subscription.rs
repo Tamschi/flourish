@@ -1,14 +1,11 @@
 use std::{borrow::Borrow, ops::Deref, pin::Pin};
 
-use isoprenoid::runtime::SignalsRuntimeRef;
+use isoprenoid_bound::runtime::SignalsRuntimeRef;
 use pin_project::pin_project;
 
 use crate::traits::{Guard, UnmanagedSignal};
 
-use super::{
-	cached::{CachedGuard, CachedGuardExclusive},
-	Cached,
-};
+use super::{cached::CachedGuard, Cached};
 
 #[pin_project]
 #[must_use = "Subscriptions are cancelled when dropped."]
@@ -18,26 +15,16 @@ pub struct RawSubscription<
 	// without always caching. This would unlock **various** bounds relaxations! It may be
 	// necessary to add a generic way to subscribe to sources, but it's possible that this
 	// should be crate-private.
-	T: Send + Clone,
+	T: Clone,
 	S: UnmanagedSignal<T, SR>,
 	SR: SignalsRuntimeRef,
 >(#[pin] Cached<T, S, SR>);
 
 pub struct RawSubscriptionGuard<'a, T: ?Sized>(CachedGuard<'a, T>);
-pub struct RawSubscriptionGuardExclusive<'a, T: ?Sized>(CachedGuardExclusive<'a, T>);
 
 impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuardExclusive<'a, T> {}
 
 impl<'a, T: ?Sized> Deref for RawSubscriptionGuard<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Deref for RawSubscriptionGuardExclusive<'a, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -51,17 +38,11 @@ impl<'a, T: ?Sized> Borrow<T> for RawSubscriptionGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawSubscriptionGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
 //TODO: Turn some of these functions into methods.
 
 #[doc(hidden)]
 pub fn new_raw_unsubscribed_subscription<
-	T: Send + Clone,
+	T: Clone,
 	S: UnmanagedSignal<T, SR>,
 	SR: SignalsRuntimeRef,
 >(
@@ -71,21 +52,21 @@ pub fn new_raw_unsubscribed_subscription<
 }
 
 #[doc(hidden)]
-pub fn pull_new_subscription<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
+pub fn pull_new_subscription<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
 	subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
 	subscription.project_ref().0.subscribe()
 }
 
 #[doc(hidden)]
-pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalsRuntimeRef>(
+pub fn pin_into_pin_impl_source<'a, T: ?Sized, SR: SignalsRuntimeRef>(
 	pin: Pin<&'a impl UnmanagedSignal<T, SR>>,
 ) -> Pin<&'a impl UnmanagedSignal<T, SR>> {
 	pin
 }
 
 /// Note that `subscribe` and `unsubscribe` have no effect on [`RawSubscription`]!
-impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
+impl<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
 	for RawSubscription<T, S, SR>
 {
 	fn touch(self: Pin<&Self>) {
@@ -94,36 +75,22 @@ impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Unmanage
 
 	fn get(self: Pin<&Self>) -> T
 	where
-		T: Sync + Copy,
+		T: Copy,
 	{
 		self.project_ref().0.get()
 	}
 
 	fn get_clone(self: Pin<&Self>) -> T
 	where
-		T: Sync + Clone,
-	{
-		self.project_ref().0.get_clone()
-	}
-
-	fn get_exclusive(self: Pin<&Self>) -> T
-	where
-		T: Copy,
-	{
-		self.project_ref().0.get_exclusive()
-	}
-
-	fn get_clone_exclusive(self: Pin<&Self>) -> T
-	where
 		T: Clone,
 	{
-		self.project_ref().0.get_clone_exclusive()
+		self.project_ref().0.get_clone()
 	}
 
 	fn read<'r>(self: Pin<&'r Self>) -> RawSubscriptionGuard<'r, T>
 	where
 		Self: Sized,
-		T: 'r + Sync,
+		T: 'r,
 	{
 		RawSubscriptionGuard(self.project_ref().0.read())
 	}
@@ -132,34 +99,13 @@ impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Unmanage
 		= RawSubscriptionGuard<'r, T>
 	where
 		Self: 'r + Sized,
-		T: 'r + Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> RawSubscriptionGuardExclusive<'r, T>
-	where
-		Self: Sized,
-		T: 'r,
-	{
-		RawSubscriptionGuardExclusive(self.project_ref().0.read_exclusive())
-	}
-
-	type ReadExclusive<'r>
-		= RawSubscriptionGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
 		T: 'r;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
-		T: 'r + Sync,
-	{
-		self.project_ref().0.read_dyn()
-	}
-
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
-	where
 		T: 'r,
 	{
-		self.project_ref().0.read_exclusive_dyn()
+		self.project_ref().0.read_dyn()
 	}
 
 	fn subscribe(self: Pin<&Self>) {}

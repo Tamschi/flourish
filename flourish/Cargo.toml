@@ -25,7 +25,7 @@ _test = ["global_signals_runtime", "_doc"] # Internal testing feature.
 _doc = ["global_signals_runtime"] # Internal documentation feature.
 
 [dependencies]
-async-lock = { version = "3.4.0", default-features = false, features = ["std"] }
+futures-channel = { version = "0.3.31", default-features = false, features = ["alloc"] }
 futures-lite = { version = "2.3.0", default-features = false, features = ["alloc"] }
 isoprenoid = { version = "0.1.2", path = "../isoprenoid" }
 pin-project = "1.1.5"

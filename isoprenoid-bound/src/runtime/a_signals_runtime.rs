@@ -1,14 +1,13 @@
 use std::{
 	borrow::{Borrow, BorrowMut as _},
-	cell::{RefCell, RefMut},
+	cell::{Cell, RefCell, RefMut},
 	collections::{BTreeMap, BTreeSet, VecDeque},
 	fmt::Debug,
+	marker::PhantomData,
 	mem,
-	sync::{atomic::Ordering, Arc, Mutex},
+	sync::{Arc, Mutex},
 };
 
-use core::sync::atomic::AtomicU64;
-use parking_lot::{ReentrantMutex, ReentrantMutexGuard};
 use scopeguard::{guard, ScopeGuard};
 use unwind_safe::try_eval;
 
@@ -16,17 +15,15 @@ use super::{private, ACallbackTableTypes, ASymbol, CallbackTable, Propagation, S
 
 #[derive(Debug)]
 pub(crate) struct ASignalsRuntime {
-	source_counter: AtomicU64,
-	critical_mutex: ReentrantMutex<RefCell<ASignalsRuntime_>>,
+	source_counter: Cell<u64>,
+	state: RefCell<ASignalsRuntime_>,
 }
-
-unsafe impl Sync for ASignalsRuntime {}
 
 struct ASignalsRuntime_ {
 	context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
 	callbacks: BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
 	///FIXME: This is not-at-all a fair queue.
-	update_queue: BTreeMap<ASymbol, VecDeque<Box<dyn 'static + Send + FnOnce() -> Propagation>>>,
+	update_queue: BTreeMap<ASymbol, VecDeque<Box<dyn 'static + FnOnce() -> Propagation>>>,
 	stale_queue: BTreeSet<Stale>,
 	interdependencies: Interdependencies,
 }
@@ -120,14 +117,14 @@ impl Interdependencies {
 impl ASignalsRuntime {
 	pub(crate) const fn new() -> Self {
 		Self {
-			source_counter: AtomicU64::new(0),
-			critical_mutex: ReentrantMutex::new(RefCell::new(ASignalsRuntime_ {
+			source_counter: Cell::new(0),
+			state: RefCell::new(ASignalsRuntime_ {
 				context_stack: Vec::new(),
 				callbacks: BTreeMap::new(),
 				update_queue: BTreeMap::new(),
 				stale_queue: BTreeSet::new(),
 				interdependencies: Interdependencies::new(),
-			})),
+			}),
 		}
 	}
 
@@ -156,10 +153,9 @@ impl ASignalsRuntime {
 	}
 
 	fn subscribe_to_with<'a>(
-		&self,
+		&'a self,
 		dependency: ASymbol,
 		dependent: ASymbol,
-		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
 	) -> RefMut<'a, ASignalsRuntime_> {
 		let subscribers = borrow
@@ -189,7 +185,7 @@ impl ASignalsRuntime {
 				.copied()
 				.collect::<Vec<_>>()
 			{
-				borrow = self.subscribe_to_with(transitive_dependency, dependency, lock, borrow);
+				borrow = self.subscribe_to_with(transitive_dependency, dependency, borrow);
 			}
 
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&dependency) {
@@ -210,21 +206,21 @@ impl ASignalsRuntime {
 						drop(borrow);
 						let propagation =
 							try_eval(|| on_subscribed_change(data, true)).finally(|()| {
-								let mut borrow = (**lock).borrow_mut();
+								let mut borrow = self.state.borrow_mut();
 								assert_eq!(borrow.context_stack.pop(), Some(None));
 								assert_eq!(
 									borrow.context_stack.pop(),
 									Some(Some((dependency, BTreeSet::new())))
 								);
 							});
-						borrow = (**lock).borrow_mut();
+						borrow = self.state.borrow_mut();
 						borrow = match propagation {
 							Propagation::Halt => borrow,
 							Propagation::Propagate => {
-								self.mark_dependencies_stale(dependency, &lock, borrow, false)
+								self.mark_dependencies_stale(dependency, borrow, false)
 							}
 							Propagation::FlushOut => {
-								self.mark_dependencies_stale(dependency, &lock, borrow, true)
+								self.mark_dependencies_stale(dependency, borrow, true)
 							}
 						}
 					}
@@ -235,10 +231,9 @@ impl ASignalsRuntime {
 	}
 
 	fn unsubscribe_from_with<'a>(
-		&self,
+		&'a self,
 		dependency: ASymbol,
 		dependent: ASymbol,
-		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
 	) -> RefMut<'a, ASignalsRuntime_> {
 		let subscribers = borrow
@@ -267,8 +262,7 @@ impl ASignalsRuntime {
 				.copied()
 				.collect::<Vec<_>>()
 			{
-				borrow =
-					self.unsubscribe_from_with(transitive_dependency, dependency, lock, borrow);
+				borrow = self.unsubscribe_from_with(transitive_dependency, dependency, borrow);
 			}
 
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&dependency) {
@@ -289,21 +283,21 @@ impl ASignalsRuntime {
 						drop(borrow);
 						let propagation =
 							try_eval(|| on_subscribed_change(data, false)).finally(|()| {
-								let mut borrow = (**lock).borrow_mut();
+								let mut borrow = self.state.borrow_mut();
 								assert_eq!(borrow.context_stack.pop(), Some(None));
 								assert_eq!(
 									borrow.context_stack.pop(),
 									Some(Some((dependency, BTreeSet::new())))
 								);
 							});
-						borrow = (**lock).borrow_mut();
+						borrow = self.state.borrow_mut();
 						borrow = match propagation {
 							Propagation::Halt => borrow,
 							Propagation::Propagate => {
-								self.mark_dependencies_stale(dependency, &lock, borrow, false)
+								self.mark_dependencies_stale(dependency, borrow, false)
 							}
 							Propagation::FlushOut => {
-								self.mark_dependencies_stale(dependency, &lock, borrow, true)
+								self.mark_dependencies_stale(dependency, borrow, true)
 							}
 						}
 					}
@@ -315,8 +309,7 @@ impl ASignalsRuntime {
 	}
 
 	fn process_pending<'a>(
-		&self,
-		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+		&'a self,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
 	) -> RefMut<'a, ASignalsRuntime_> {
 		if !borrow.context_stack.is_empty() {
@@ -326,7 +319,7 @@ impl ASignalsRuntime {
 		loop {
 			while let Some((symbol, update)) = {
 				let next_update;
-				(next_update, borrow) = self.next_update(lock, borrow);
+				(next_update, borrow) = self.next_update(borrow);
 				next_update
 			} {
 				// Detach without recursion.
@@ -336,17 +329,17 @@ impl ASignalsRuntime {
 					update()
 				})
 				.finally(|()| {
-					let mut borrow = (**lock).borrow_mut();
+					let mut borrow = self.state.borrow_mut();
 					assert_eq!(borrow.context_stack.pop(), Some(None));
 				});
-				borrow = (**lock).borrow_mut();
+				borrow = self.state.borrow_mut();
 				match propagation {
 					Propagation::Propagate => {
-						borrow = self.mark_dependencies_stale(symbol, &lock, borrow, false)
+						borrow = self.mark_dependencies_stale(symbol, borrow, false)
 					}
 					Propagation::Halt => (),
 					Propagation::FlushOut => {
-						borrow = self.mark_dependencies_stale(symbol, &lock, borrow, true)
+						borrow = self.mark_dependencies_stale(symbol, borrow, true)
 					}
 				}
 			}
@@ -360,10 +353,10 @@ impl ASignalsRuntime {
 					self.refresh(symbol)
 				})
 				.finally(|()| {
-					let mut borrow = (**lock).borrow_mut();
+					let mut borrow = self.state.borrow_mut();
 					assert_eq!(borrow.context_stack.pop(), Some(None));
 				});
-				borrow = (**lock).borrow_mut();
+				borrow = self.state.borrow_mut();
 			} else {
 				break;
 			}
@@ -373,11 +366,10 @@ impl ASignalsRuntime {
 	}
 
 	fn next_update<'a>(
-		&self,
-		_lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+		&'a self,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
 	) -> (
-		Option<(ASymbol, Box<dyn 'static + Send + FnOnce() -> Propagation>)>,
+		Option<(ASymbol, Box<dyn 'static + FnOnce() -> Propagation>)>,
 		RefMut<'a, ASignalsRuntime_>,
 	) {
 		while let Some(mut first_group) = borrow.update_queue.first_entry() {
@@ -393,7 +385,7 @@ impl ASignalsRuntime {
 	fn mark_dependencies_stale<'a>(
 		&self,
 		id: ASymbol,
-		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
+
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
 		flush: bool,
 	) -> RefMut<'a, ASignalsRuntime_> {
@@ -420,7 +412,7 @@ impl ASignalsRuntime {
 				{
 					// The dependency wasn't marked stale yet and also won't update, so recurse.
 					// Note that flushing is propagated during the refresh instead!
-					borrow = self.mark_dependencies_stale(symbol, lock, borrow, false);
+					borrow = self.mark_dependencies_stale(symbol, borrow, false);
 				}
 			}
 		} else {
@@ -434,7 +426,7 @@ impl ASignalsRuntime {
 						.is_empty()
 				{
 					// The dependency wasn't marked stale yet and also won't update, so recurse.
-					borrow = self.mark_dependencies_stale(symbol, lock, borrow, false);
+					borrow = self.mark_dependencies_stale(symbol, borrow, false);
 				}
 			}
 		}
@@ -442,10 +434,9 @@ impl ASignalsRuntime {
 	}
 
 	fn shrink_dependencies<'a>(
-		&self,
+		&'a self,
 		id: ASymbol,
 		recorded_dependencies: BTreeSet<ASymbol>,
-		lock: &'a ReentrantMutexGuard<'a, RefCell<ASignalsRuntime_>>,
 		mut borrow: RefMut<'a, ASignalsRuntime_>,
 	) -> RefMut<'a, ASignalsRuntime_> {
 		let prior_dependencies = borrow
@@ -480,7 +471,7 @@ impl ASignalsRuntime {
 			.is_some_and(|subs| !subs.is_empty());
 		if is_subscribed {
 			for removed_dependency in removed_dependencies {
-				borrow = self.unsubscribe_from_with(removed_dependency, id, lock, borrow)
+				borrow = self.unsubscribe_from_with(removed_dependency, id, borrow)
 			}
 		}
 
@@ -494,16 +485,19 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 	fn next_id(&self) -> Self::Symbol {
 		ASymbol(
-			//TODO: Relax ordering?
-			(self.source_counter.fetch_add(1, Ordering::SeqCst) + 1)
-				.try_into()
-				.expect("infallible within reasonable time"),
+			{
+				self.source_counter.update(|counter| counter + 1);
+				self.source_counter
+					.get()
+					.try_into()
+					.expect("infallible within reasonable time")
+			},
+			PhantomData,
 		)
 	}
 
 	fn record_dependency(&self, id: Self::Symbol) {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 		if let Some(Some((ref context_id, recorded_dependencies))) =
 			&mut borrow.context_stack.last_mut()
 		{
@@ -526,7 +520,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 				// The subscription happens before dependency wiring.
 				// This is important to avoid infinite recursion!
-				borrow = self.subscribe_to_with(id, context_id, &lock, borrow);
+				borrow = self.subscribe_to_with(id, context_id, borrow);
 			}
 
 			let added_a = borrow
@@ -544,7 +538,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			debug_assert_eq!(added_a, added_b);
 		}
 
-		self.process_pending(&lock, borrow);
+		self.process_pending(borrow);
 	}
 
 	unsafe fn start<T, D: ?Sized>(
@@ -554,8 +548,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		callback_table: *const CallbackTable<D, Self::CallbackTableTypes>,
 		callback_data: *const D,
 	) -> T {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 
 		if borrow.callbacks.contains_key(&id) {
 			panic!("Tried to `start` `id` twice.")
@@ -567,7 +560,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			f()
 		})
 		.finally(|()| {
-			let mut borrow = (*lock).borrow_mut();
+			let mut borrow = self.state.borrow_mut();
 			let Some(Some((popped_id, recorded_dependencies))) = borrow.context_stack.pop() else {
 				unreachable!()
 			};
@@ -586,9 +579,9 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 				),
 				None
 			);
-			let _ = self.shrink_dependencies(id, recorded_dependencies, &lock, borrow);
+			let _ = self.shrink_dependencies(id, recorded_dependencies, borrow);
 		});
-		borrow = (*lock).borrow_mut();
+		borrow = self.state.borrow_mut();
 
 		if borrow
 			.interdependencies
@@ -616,7 +609,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 				}
 			})
 			.finally(|()| {
-				let mut borrow = (*lock).borrow_mut();
+				let mut borrow = self.state.borrow_mut();
 				assert_eq!(borrow.context_stack.pop(), Some(None));
 				assert_eq!(
 					borrow.context_stack.pop(),
@@ -624,21 +617,20 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 				);
 			});
 
-			borrow = (*lock).borrow_mut();
+			borrow = self.state.borrow_mut();
 			borrow = match propagation {
-				Propagation::Propagate => self.mark_dependencies_stale(id, &lock, borrow, false),
+				Propagation::Propagate => self.mark_dependencies_stale(id, borrow, false),
 				Propagation::Halt => borrow,
-				Propagation::FlushOut => self.mark_dependencies_stale(id, &lock, borrow, true),
+				Propagation::FlushOut => self.mark_dependencies_stale(id, borrow, true),
 			};
 		}
 
-		self.process_pending(&lock, borrow);
+		self.process_pending(borrow);
 		t
 	}
 
 	fn stop(&self, id: Self::Symbol) {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 
 		if borrow
 			.context_stack
@@ -657,12 +649,11 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		drop(borrow.update_queue.remove(&id));
 
 		// There may have been side-effects.
-		self.process_pending(&lock, borrow);
+		self.process_pending(borrow);
 	}
 
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 
 		let t = try_eval(|| {
 			borrow.context_stack.push(Some((id, BTreeSet::new())));
@@ -670,57 +661,51 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			f()
 		})
 		.finally(|()| {
-			let mut borrow = (*lock).borrow_mut();
+			let mut borrow = self.state.borrow_mut();
 			let Some(Some((popped_id, recorded_dependencies))) = borrow.context_stack.pop() else {
 				unreachable!()
 			};
 			assert_eq!(popped_id, id);
-			let _ = self.shrink_dependencies(id, recorded_dependencies, &lock, borrow);
+			let _ = self.shrink_dependencies(id, recorded_dependencies, borrow);
 		});
 
-		borrow = (*lock).borrow_mut();
-		self.process_pending(&lock, borrow);
+		borrow = self.state.borrow_mut();
+		self.process_pending(borrow);
 		t
 	}
 
 	fn subscribe(&self, id: Self::Symbol) {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 
-		borrow = self.subscribe_to_with(id, id, &lock, borrow);
+		borrow = self.subscribe_to_with(id, id, borrow);
 
-		self.process_pending(&lock, borrow);
+		self.process_pending(borrow);
 	}
 
 	fn unsubscribe(&self, id: Self::Symbol) {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 
-		borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
+		borrow = self.unsubscribe_from_with(id, id, borrow);
 
-		self.process_pending(&lock, borrow);
+		self.process_pending(borrow);
 	}
 
-	fn update_or_enqueue(
-		&self,
-		id: Self::Symbol,
-		f: impl 'static + Send + FnOnce() -> Propagation,
-	) {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+	fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + FnOnce() -> Propagation) {
+		let mut borrow = self.state.borrow_mut();
 		borrow
 			.update_queue
 			.entry(id)
 			.or_default()
 			.push_back(Box::new(f));
-		self.process_pending(&lock, borrow);
+		self.process_pending(borrow);
 	}
 
-	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
+	fn update_eager<'f, T: 'f, F: 'f + FnOnce() -> (Propagation, T)>(
 		&self,
 		id: Self::Symbol,
 		f: F,
 	) -> Self::UpdateEager<'f, T, F> {
+		//TODO: Replace `Arc` with `!Sync` alternative.
 		let f = Arc::new(Mutex::new(Some(f)));
 		let _f_guard = guard(Arc::clone(&f), |f| drop(f.lock().unwrap().take()));
 
@@ -763,14 +748,13 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		self.update_or_enqueue(id, unsafe {
 			//SAFETY: This function never handles `F` or `T` after `_f_guard` drops.
 			mem::transmute::<
-				Box<dyn '_ + Send + FnOnce() -> Propagation>,
-				Box<dyn 'static + Send + FnOnce() -> Propagation>,
+				Box<dyn '_ + FnOnce() -> Propagation>,
+				Box<dyn 'static + FnOnce() -> Propagation>,
 			>(update)
 		});
 
-		let lock = self.critical_mutex.lock();
-		let borrow = (*lock).borrow_mut();
-		self.process_pending(&lock, borrow);
+		let borrow = self.state.borrow_mut();
+		self.process_pending(borrow);
 
 		private::DetachedFuture(Box::pin(async move {
 			match once
@@ -801,8 +785,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			id: ASymbol,
 			f: Box<dyn '_ + FnOnce() -> (Propagation, T)>,
 		) -> T {
-			let lock = this.critical_mutex.lock();
-			let borrow = (*lock).borrow_mut();
+			let borrow = this.state.borrow_mut();
 
 			let (stale, mut borrow) = this.peek_stale(borrow);
 			let has_stale = stale.is_some();
@@ -813,36 +796,34 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 			let (propagation, t) = f();
 			borrow = match propagation {
-				Propagation::Propagate => this.mark_dependencies_stale(id, &lock, borrow, false),
+				Propagation::Propagate => this.mark_dependencies_stale(id, borrow, false),
 				Propagation::Halt => borrow,
-				Propagation::FlushOut => this.mark_dependencies_stale(id, &lock, borrow, true),
+				Propagation::FlushOut => this.mark_dependencies_stale(id, borrow, true),
 			};
-			this.process_pending(&lock, borrow);
+			this.process_pending(borrow);
 			t
 		}
 		update_blocking(self, id, Box::new(f))
 	}
 
 	fn run_detached<T>(&self, f: impl FnOnce() -> T) -> T {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 		let t = try_eval(|| {
 			borrow.context_stack.push(None);
 			drop(borrow);
 			f()
 		})
 		.finally(|()| {
-			let mut borrow = (*lock).borrow_mut();
+			let mut borrow = self.state.borrow_mut();
 			assert_eq!(borrow.context_stack.pop(), Some(None));
 		});
-		borrow = (*lock).borrow_mut();
-		self.process_pending(&lock, borrow);
+		borrow = self.state.borrow_mut();
+		self.process_pending(borrow);
 		t
 	}
 
 	fn refresh(&self, id: Self::Symbol) {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 		if let Some(Stale { symbol: _, flush }) = borrow.stale_queue.take(&id) {
 			if let Some(&(callback_table, data)) = borrow.callbacks.get(&id) {
 				if let &CallbackTable {
@@ -856,36 +837,35 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 						self.update_dependency_set(id, || unsafe { update(data) })
 					})
 					.finally(|()| {
-						let mut borrow = (*lock).borrow_mut();
+						let mut borrow = self.state.borrow_mut();
 						assert_eq!(borrow.context_stack.pop(), Some(None));
 					});
-					borrow = (*lock).borrow_mut();
+					borrow = self.state.borrow_mut();
 					match propagation {
 						Propagation::Propagate => {
-							borrow = self.mark_dependencies_stale(id, &lock, borrow, flush)
+							borrow = self.mark_dependencies_stale(id, borrow, flush)
 						}
 						Propagation::Halt => (),
 						Propagation::FlushOut => {
-							borrow = self.mark_dependencies_stale(id, &lock, borrow, true)
+							borrow = self.mark_dependencies_stale(id, borrow, true)
 						}
 					}
 				} else {
 					// If there's no callback, then always mark dependencies as stale!
 					// (This happens with uncached signals, for example.)
-					borrow = self.mark_dependencies_stale(id, &lock, borrow, flush);
+					borrow = self.mark_dependencies_stale(id, borrow, flush);
 				}
 			} else {
 				// If there's no callback, then always mark dependencies as stale!
 				// (This happens with uncached signals, for example.)
-				borrow = self.mark_dependencies_stale(id, &lock, borrow, flush);
+				borrow = self.mark_dependencies_stale(id, borrow, flush);
 			}
 		}
-		self.process_pending(&lock, borrow);
+		self.process_pending(borrow);
 	}
 
 	fn purge(&self, id: Self::Symbol) {
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 
 		if borrow
 			.context_stack
@@ -896,7 +876,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			panic!("Tried to purge `id` in its own context.");
 		}
 
-		borrow = self.shrink_dependencies(id, BTreeSet::new(), &lock, borrow);
+		borrow = self.shrink_dependencies(id, BTreeSet::new(), borrow);
 		for dependent in borrow
 			.interdependencies
 			.all_by_dependency
@@ -913,7 +893,6 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 					.all_by_dependent
 					.entry(dependent)
 					.or_default() - &[id].into(),
-				&lock,
 				borrow,
 			);
 		}
@@ -926,7 +905,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			.intrinsic
 			> 0
 		{
-			borrow = self.unsubscribe_from_with(id, id, &lock, borrow);
+			borrow = self.unsubscribe_from_with(id, id, borrow);
 		}
 
 		borrow.callbacks.remove(&id);
@@ -953,13 +932,12 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 
 		borrow.stale_queue.remove(&id);
 
-		self.process_pending(&lock, borrow);
+		self.process_pending(borrow);
 	}
 
 	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {
 		// Ensures that the context stack is not empty while `f` runs, blocking updates.
-		let lock = self.critical_mutex.lock();
-		let mut borrow = (*lock).borrow_mut();
+		let mut borrow = self.state.borrow_mut();
 		if borrow.context_stack.is_empty() {
 			let t = try_eval(|| {
 				borrow.context_stack.push(None);
@@ -967,11 +945,11 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 				f()
 			})
 			.finally(|()| {
-				let mut borrow = (*lock).borrow_mut();
+				let mut borrow = self.state.borrow_mut();
 				assert_eq!(borrow.context_stack.pop(), Some(None));
 			});
-			borrow = (*lock).borrow_mut();
-			self.process_pending(&lock, borrow);
+			borrow = self.state.borrow_mut();
+			self.process_pending(borrow);
 			t
 		} else {
 			drop(borrow);

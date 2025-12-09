@@ -4,19 +4,19 @@
 fn test() {
 	use std::sync::atomic::{AtomicI32, Ordering::Relaxed};
 
-	use flourish::{shadow_clone, GlobalSignalsRuntime, Propagation};
+	use flourish_bound::{shadow_clone, GlobalSignalsRuntime, Propagation};
 
 	// Choose a runtime: (You should do this once centrally in your app.)
-	type Effect<'a> = flourish::Effect<'a, GlobalSignalsRuntime>;
-	type Signal<T, S> = flourish::Signal<T, S, GlobalSignalsRuntime>;
-	type SignalDyn<'a, T> = flourish::SignalDyn<'a, T, GlobalSignalsRuntime>;
-	// type SignalDynCell<'a, T> = flourish::SignalDynCell<'a, T, GlobalSignalsRuntime>;
-	// type SignalArc<T, S> = flourish::SignalArc<T, S, GlobalSignalsRuntime>;
-	type SignalArcDyn<'a, T> = flourish::SignalArcDyn<'a, T, GlobalSignalsRuntime>;
-	// type SignalArcDynCell<'a, T> = flourish::SignalArcDynCell<'a, T, GlobalSignalsRuntime>;
-	type Subscription<T, S> = flourish::Subscription<T, S, GlobalSignalsRuntime>;
-	type SubscriptionDyn<'a, T> = flourish::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
-	// type SubscriptionDynCell<'a, T> = flourish::SubscriptionDynCell<'a, T, GlobalSignalsRuntime>;
+	type Effect<'a> = flourish_bound::Effect<'a, GlobalSignalsRuntime>;
+	type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	type SignalDyn<'a, T> = flourish_bound::SignalDyn<'a, T, GlobalSignalsRuntime>;
+	// type SignalDynCell<'a, T> = flourish_bound::SignalDynCell<'a, T, GlobalSignalsRuntime>;
+	// type SignalArc<T, S> = flourish_bound::SignalArc<T, S, GlobalSignalsRuntime>;
+	type SignalArcDyn<'a, T> = flourish_bound::SignalArcDyn<'a, T, GlobalSignalsRuntime>;
+	// type SignalArcDynCell<'a, T> = flourish_bound::SignalArcDynCell<'a, T, GlobalSignalsRuntime>;
+	type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
+	type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	// type SubscriptionDynCell<'a, T> = flourish_bound::SubscriptionDynCell<'a, T, GlobalSignalsRuntime>;
 
 	let a = Signal::cell(1);
 	let b = Signal::cell(2);
@@ -69,7 +69,7 @@ fn test() {
 
 	// Pass by heap reference without indirection…
 	let _ = dyn_to_shared(&sum);
-	fn dyn_to_shared<'a, T: ?Sized + Send>(signal: &SignalDyn<'a, T>) -> SignalArcDyn<'a, T> {
+	fn dyn_to_shared<'a, T: ?Sized>(signal: &SignalDyn<'a, T>) -> SignalArcDyn<'a, T> {
 		if true {
 			// …and derive an owned handle:
 			signal.to_owned()

@@ -1,11 +1,11 @@
 use std::{
 	borrow::Borrow,
+	cell::{Ref, RefCell},
 	ops::Deref,
 	pin::Pin,
-	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use isoprenoid::{
+use isoprenoid_bound::{
 	raw::{Callbacks, RawSignal},
 	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Token},
@@ -16,29 +16,15 @@ use crate::traits::{Guard, UnmanagedSignal};
 
 #[pin_project]
 #[must_use = "Signals do nothing unless they are polled or subscribed to."]
-pub(crate) struct Cached<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
-	#[pin] RawSignal<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>,
+pub(crate) struct Cached<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
+	#[pin] RawSignal<S, RefCell<T>, SR>,
 );
 
-#[pin_project]
-struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
-unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
-
-pub(crate) struct CachedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
-pub(crate) struct CachedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
+pub(crate) struct CachedGuard<'a, T: ?Sized>(Ref<'a, T>);
 
 impl<'a, T: ?Sized> Guard<T> for CachedGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for CachedGuardExclusive<'a, T> {}
 
 impl<'a, T: ?Sized> Deref for CachedGuard<'a, T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		self.0.deref()
-	}
-}
-
-impl<'a, T: ?Sized> Deref for CachedGuardExclusive<'a, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -52,53 +38,34 @@ impl<'a, T: ?Sized> Borrow<T> for CachedGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for CachedGuardExclusive<'a, T> {
-	fn borrow(&self) -> &T {
-		self.0.borrow()
-	}
-}
-
-// TODO: Safety documentation.
-unsafe impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef + Sync> Sync
-	for Cached<T, S, SR>
-{
-}
-
-impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
+impl<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
 	pub(crate) fn new(source: S) -> Self {
 		let runtime = source.clone_runtime_ref();
-		Self(RawSignal::with_runtime(
-			ForceSyncUnpin(source.into()),
-			runtime,
-		))
+		Self(RawSignal::with_runtime(source.into(), runtime))
 	}
 
-	pub(crate) fn touch(self: Pin<&Self>) -> Pin<&RwLock<T>> {
+	pub(crate) fn touch(self: Pin<&Self>) -> Pin<&RefCell<T>> {
 		unsafe {
 			self.project_ref()
 				.0
 				.project_or_init::<E>(|source, cache| Self::init(source, cache))
 				.1
-				.project_ref()
-				.0
 		}
 	}
 }
 
 enum E {}
-impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
-	Callbacks<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR> for E
+impl<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Callbacks<S, RefCell<T>, SR>
+	for E
 {
-	const UPDATE: Option<
-		fn(eager: Pin<&ForceSyncUnpin<S>>, lazy: Pin<&ForceSyncUnpin<RwLock<T>>>) -> Propagation,
-	> = {
-		fn eval<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
-			source: Pin<&ForceSyncUnpin<S>>,
-			cache: Pin<&ForceSyncUnpin<RwLock<T>>>,
+	const UPDATE: Option<fn(eager: Pin<&S>, lazy: Pin<&RefCell<T>>) -> Propagation> = {
+		fn eval<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
+			source: Pin<&S>,
+			cache: Pin<&RefCell<T>>,
 		) -> Propagation {
 			//FIXME: This can be split up to avoid congestion where not necessary.
-			let new_value = source.project_ref().0.get_clone_exclusive();
-			*cache.project_ref().0.write().unwrap() = new_value;
+			let new_value = source.get_clone();
+			*cache.borrow_mut() = new_value;
 			Propagation::Propagate
 		}
 		Some(eval)
@@ -106,9 +73,9 @@ impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 
 	const ON_SUBSCRIBED_CHANGE: Option<
 		fn(
-			source: Pin<&RawSignal<ForceSyncUnpin<S>, ForceSyncUnpin<RwLock<T>>, SR>>,
-			eager: Pin<&ForceSyncUnpin<S>>,
-			lazy: Pin<&ForceSyncUnpin<RwLock<T>>>,
+			source: Pin<&RawSignal<S, RefCell<T>, SR>>,
+			eager: Pin<&S>,
+			lazy: Pin<&RefCell<T>>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		) -> Propagation,
 	> = None;
@@ -117,20 +84,14 @@ impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 /// # Safety
 ///
 /// These are the only functions that access `cache`.
-/// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
-	unsafe fn init<'a>(
-		source: Pin<&'a ForceSyncUnpin<S>>,
-		cache: Slot<'a, ForceSyncUnpin<RwLock<T>>>,
-	) -> Token<'a> {
-		cache.write(ForceSyncUnpin(
-			//FIXME: This can be split up to avoid congestion where not necessary.
-			source.project_ref().0.get_clone_exclusive().into(),
-		))
+/// Externally synchronised through guarantees on [`isoprenoid_bound::raw::Callbacks`].
+impl<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
+	unsafe fn init<'a>(source: Pin<&'a S>, cache: Slot<'a, RefCell<T>>) -> Token<'a> {
+		cache.write(source.get_clone().into())
 	}
 }
 
-impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
+impl<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
 	for Cached<T, S, SR>
 {
 	fn touch(self: Pin<&Self>) {
@@ -139,60 +100,30 @@ impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Unmanage
 
 	fn get_clone(self: Pin<&Self>) -> T
 	where
-		T: Sync + Clone,
-	{
-		self.read().clone()
-	}
-
-	fn get_clone_exclusive(self: Pin<&Self>) -> T
-	where
 		T: Clone,
 	{
-		self.touch().write().unwrap().clone()
+		self.read().clone()
 	}
 
 	fn read<'r>(self: Pin<&'r Self>) -> CachedGuard<'r, T>
 	where
 		Self: Sized,
-		T: 'r + Sync,
+		T: 'r,
 	{
 		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
-		CachedGuard(touch.read().unwrap())
+		CachedGuard(touch.borrow())
 	}
 
 	type Read<'r>
 		= CachedGuard<'r, T>
 	where
-		Self: 'r + Sized,
-		T: Sync;
-
-	fn read_exclusive<'r>(self: Pin<&'r Self>) -> CachedGuardExclusive<'r, T>
-	where
-		Self: Sized,
-		T: 'r,
-	{
-		let touch = unsafe { Pin::into_inner_unchecked(self.touch()) };
-		CachedGuardExclusive(touch.write().unwrap())
-	}
-
-	type ReadExclusive<'r>
-		= CachedGuardExclusive<'r, T>
-	where
-		Self: 'r + Sized,
-		T: 'r;
+		Self: 'r + Sized;
 
 	fn read_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
 	where
-		T: 'r + Sync,
-	{
-		Box::new(self.read())
-	}
-
-	fn read_exclusive_dyn<'r>(self: Pin<&'r Self>) -> Box<dyn 'r + Guard<T>>
-	where
 		T: 'r,
 	{
-		Box::new(self.read_exclusive())
+		Box::new(self.read())
 	}
 
 	fn clone_runtime_ref(&self) -> SR

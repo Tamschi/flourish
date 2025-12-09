@@ -1,6 +1,6 @@
 #![cfg(feature = "global_signals_runtime")]
 
-use flourish::{
+use flourish_bound::{
 	signals_helper,
 	unmanaged::{UnmanagedSignal, UnmanagedSignalCell},
 };

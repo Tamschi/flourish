@@ -1,77 +1,62 @@
-use std::{ops::DerefMut as _, pin::Pin, sync::Mutex};
+use std::{cell::RefCell, pin::Pin};
 
-use isoprenoid::{
+use isoprenoid_bound::{
 	raw::{Callbacks, RawSignal},
 	runtime::{CallbackTableTypes, Propagation, SignalsRuntimeRef},
 	slot::{Slot, Token},
 };
-use pin_project::pin_project;
 
 #[must_use = "Effects are cancelled when dropped."]
 #[repr(transparent)]
-pub struct RawEffect<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>(
-	RawSignal<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
+pub struct RawEffect<T, S: FnMut() -> T, D: FnMut(T), SR: SignalsRuntimeRef>(
+	RawSignal<RefCell<(S, D)>, RefCell<Option<T>>, SR>,
 );
 
-#[pin_project]
-struct ForceSyncUnpin<T: ?Sized>(#[pin] T);
-unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
-
-//TODO: Add some associated methods, like not-boxing `read`/`read_exclusive`.
+//TODO: Add some associated methods, like not-boxing `read`.
 //TODO: Turn some of these functions into methods.
 
 #[doc(hidden)]
-pub fn new_raw_unsubscribed_effect<
-	T: Send,
-	S: Send + FnMut() -> T,
-	D: Send + FnMut(T),
-	SR: SignalsRuntimeRef,
->(
+pub fn new_raw_unsubscribed_effect<T, S: FnMut() -> T, D: FnMut(T), SR: SignalsRuntimeRef>(
 	init_fn_pin: S,
 	drop_fn_pin: D,
 	runtime: SR,
 ) -> RawEffect<T, S, D, SR> {
 	RawEffect(RawSignal::with_runtime(
-		ForceSyncUnpin((init_fn_pin, drop_fn_pin).into()),
+		(init_fn_pin, drop_fn_pin).into(),
 		runtime,
 	))
 }
 
-impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef> Drop
-	for RawEffect<T, S, D, SR>
-{
+impl<T, S: FnMut() -> T, D: FnMut(T), SR: SignalsRuntimeRef> Drop for RawEffect<T, S, D, SR> {
 	fn drop(&mut self) {
 		let raw_signal = unsafe { Pin::new_unchecked(&mut self.0) };
 		raw_signal.purge_and_deinit_with(|eager, lazy| {
-			let drop = &mut eager.0.try_lock().unwrap().1;
-			lazy.0
-				.try_lock()
-				.unwrap()
-				.deref_mut()
-				.take()
-				.and_then(|value| Some(drop(value)));
+			let drop = &mut eager.borrow_mut().1;
+			if let Some(value) = lazy.borrow_mut().take() {
+				drop(value)
+			}
 		});
 	}
 }
 
 enum E {}
-impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
-	Callbacks<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR> for E
+impl<T, S: FnMut() -> T, D: FnMut(T), SR: SignalsRuntimeRef>
+	Callbacks<RefCell<(S, D)>, RefCell<Option<T>>, SR> for E
 {
 	const UPDATE: Option<
-		fn(
-			eager: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
-			lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
-		) -> isoprenoid::runtime::Propagation,
+		fn(eager: Pin<&RefCell<(S, D)>>, lazy: Pin<&RefCell<Option<T>>>) -> Propagation,
 	> = {
-		fn eval<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T)>(
-			source: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
-			cache: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
+		fn eval<T, S: FnMut() -> T, D: FnMut(T)>(
+			source: Pin<&RefCell<(S, D)>>,
+			cache: Pin<&RefCell<Option<T>>>,
 		) -> Propagation {
-			let (source, drop) = &mut *source.0.lock().expect("unreachable");
-			let cache = &mut *cache.0.lock().expect("unreachable");
+			let (source, drop) = &mut *source.borrow_mut();
+
+			//TODO: `cache.update` is likely the call, but it seems isoprenoid-bound must be fixed to use intellisense.
+			let cache = &mut *cache.borrow_mut();
 			cache.take().map(drop);
 			*cache = Some(source());
+
 			Propagation::Halt
 		}
 		Some(eval)
@@ -79,11 +64,9 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
 
 	const ON_SUBSCRIBED_CHANGE: Option<
 		fn(
-			source: Pin<
-				&RawSignal<ForceSyncUnpin<Mutex<(S, D)>>, ForceSyncUnpin<Mutex<Option<T>>>, SR>,
-			>,
-			eager: Pin<&ForceSyncUnpin<Mutex<(S, D)>>>,
-			lazy: Pin<&ForceSyncUnpin<Mutex<Option<T>>>>,
+			source: Pin<&RawSignal<RefCell<(S, D)>, RefCell<Option<T>>, SR>>,
+			eager: Pin<&RefCell<(S, D)>>,
+			lazy: Pin<&RefCell<Option<T>>>,
 			subscribed: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		) -> Propagation,
 	> = None;
@@ -92,17 +75,13 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
 /// # Safety
 ///
 /// These are the only functions that access `cache`.
-/// Externally synchronised through guarantees on [`isoprenoid::raw::Callbacks`].
-impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
-	RawEffect<T, S, D, SR>
-{
+/// Externally synchronised through guarantees on [`isoprenoid_bound::raw::Callbacks`].
+impl<T, S: FnMut() -> T, D: FnMut(T), SR: SignalsRuntimeRef> RawEffect<T, S, D, SR> {
 	unsafe fn init<'a>(
-		source: Pin<&'a ForceSyncUnpin<Mutex<(S, D)>>>,
-		cache: Slot<'a, ForceSyncUnpin<Mutex<Option<T>>>>,
+		source: Pin<&'a RefCell<(S, D)>>,
+		cache: Slot<'a, RefCell<Option<T>>>,
 	) -> Token<'a> {
-		cache.write(ForceSyncUnpin(
-			Some(source.project_ref().0.lock().expect("unreachable").0()).into(),
-		))
+		cache.write(Some(source.borrow_mut().0()).into())
 	}
 
 	pub fn pull(self: Pin<&RawEffect<T, S, D, SR>>) {
