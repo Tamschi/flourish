@@ -1,7 +1,7 @@
 #![warn(clippy::pedantic)]
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
-#![doc = include_str!("../README.md")]
+#![cfg_attr(feature = "_doc", doc = include_str!("../README.md"))]
 
 #[cfg(all(
 	feature = "local_signals_runtime",
@@ -12,6 +12,3 @@ compile_error!("A dependent enabled the `local_signals_runtime` feature, but ano
 pub mod raw;
 pub mod runtime;
 pub mod slot;
-
-#[doc = include_str!("../README.md")]
-mod readme {}
