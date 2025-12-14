@@ -82,12 +82,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "flourish-bound"
+name = "flourish-unsend"
 version = "0.1.3"
 dependencies = [
  "futures-channel",
  "futures-lite",
- "isoprenoid-bound",
+ "isoprenoid-unsend",
  "pin-project",
  "tap",
 ]
@@ -130,7 +130,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "isoprenoid-bound"
+name = "isoprenoid-unsend"
 version = "0.1.2"
 dependencies = [
  "async-lock",

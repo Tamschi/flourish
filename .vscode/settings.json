@@ -9,7 +9,8 @@
         "RPITIT",
         "scopeguard",
         "sptr",
-        "uninit"
+        "uninit",
+        "unsend"
     ],
     "rust-analyzer.cargo.features": [
         "_test"
