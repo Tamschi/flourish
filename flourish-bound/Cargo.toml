@@ -20,9 +20,9 @@ features = [ "_doc" ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-global_signals_runtime = ["isoprenoid-bound/global_signals_runtime"] # Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
-_test = ["global_signals_runtime", "_doc"] # Internal testing feature.
-_doc = ["global_signals_runtime"] # Internal documentation feature.
+local_signals_runtime = ["isoprenoid-bound/local_signals_runtime"] # Implements `SignalsRuntimeRef` for `LocalSignalsRuntime`.
+_test = ["local_signals_runtime", "_doc"] # Internal testing feature.
+_doc = ["local_signals_runtime"] # Internal documentation feature.
 
 [dependencies]
 futures-channel = { version = "0.3.31", default-features = false, features = ["alloc"] }

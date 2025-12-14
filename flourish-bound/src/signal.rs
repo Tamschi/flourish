@@ -79,9 +79,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::GlobalSignalsRuntime;
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::LocalSignalsRuntime;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// Signal::computed(|| input.get() + 1);
@@ -103,9 +103,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Signal};
-	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Signal};
+	/// # let input = Signal::cell_with_runtime(1, LocalSignalsRuntime);
 	/// Signal::computed_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
 	/// ```
@@ -128,9 +128,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::GlobalSignalsRuntime;
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::LocalSignalsRuntime;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// Signal::distinct(|| input.get() + 1);
@@ -157,9 +157,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Signal};
-	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Signal};
+	/// # let input = Signal::cell_with_runtime(1, LocalSignalsRuntime);
 	/// Signal::distinct_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
 	/// ```
@@ -183,9 +183,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::GlobalSignalsRuntime;
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::LocalSignalsRuntime;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// Signal::computed_uncached(|| input.get() + 1);
@@ -207,9 +207,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Signal};
-	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Signal};
+	/// # let input = Signal::cell_with_runtime(1, LocalSignalsRuntime);
 	/// Signal::computed_uncached_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
 	/// ```
@@ -232,9 +232,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::GlobalSignalsRuntime;
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::LocalSignalsRuntime;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// let mut read_count = 0;
@@ -263,9 +263,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Signal};
-	/// # let input = &Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Signal};
+	/// # let input = &Signal::cell_with_runtime(1, LocalSignalsRuntime);
 	/// let mut read_count = 0;
 	/// Signal::computed_uncached_mut_with_runtime(move || {
 	/// 	input.touch();
@@ -291,9 +291,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
@@ -322,11 +322,11 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, Signal};
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
-	/// # let input = Signal::cell_with_runtime(Container, GlobalSignalsRuntime);
+	/// # let input = Signal::cell_with_runtime(Container, LocalSignalsRuntime);
 	/// Signal::folded_with_runtime(Container::default(), |value| {
 	/// 	value.clone_from(&input.read());
 	/// 	value.sort();
@@ -354,9 +354,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// let highest_settled = Signal::reduced(
@@ -389,9 +389,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
-	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, Signal};
+	/// # let input = Signal::cell_with_runtime(1, LocalSignalsRuntime);
 	/// let highest_settled = Signal::reduced_with_runtime(
 	/// 	|| input.get(),
 	/// 	|value, next| if next > *value {
@@ -400,7 +400,7 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// 	} else {
 	/// 		Propagation::Halt
 	/// 	},
-	/// 	GlobalSignalsRuntime,
+	/// 	LocalSignalsRuntime,
 	/// );
 	/// # }
 	/// ```
@@ -424,10 +424,10 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
-	/// type SignalDyn<'a, T> = flourish_bound::SignalDyn<'a, T, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
+	/// type SignalDyn<'a, T> = flourish_bound::SignalDyn<'a, T, LocalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
@@ -454,9 +454,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
-	/// let shared = Signal::shared_with_runtime(0, GlobalSignalsRuntime);
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, Signal};
+	/// let shared = Signal::shared_with_runtime(0, LocalSignalsRuntime);
 	///
 	/// fn accepts_signal<T, SR: flourish_bound::SignalsRuntimeRef>(
 	///   signal: &flourish_bound::SignalDyn<'_, T, SR>,
@@ -488,9 +488,9 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
@@ -520,9 +520,9 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
-	/// let cell = Signal::cell_with_runtime(0, GlobalSignalsRuntime);
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, Signal};
+	/// let cell = Signal::cell_with_runtime(0, LocalSignalsRuntime);
 	///
 	/// cell.change(1);
 	/// cell.replace(2);
@@ -551,9 +551,9 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalWeakDynCell};
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalWeakDynCell};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// # struct Resource {}
 	/// # fn get_from_cache(name: &str) -> Option<Resource> { None }
@@ -589,8 +589,8 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalWeakDynCell};
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalWeakDynCell};
 	/// # struct Resource {}
 	/// # fn get_from_cache(name: &str) -> Option<Resource> { None }
 	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, target: SignalWeakDynCell<'_, Option<Resource>, SR>) {}
@@ -608,7 +608,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// let cell = Signal::cell_cyclic_with_runtime(
 	/// 	|weak| load_into(weak, "resource"),
-	/// 	GlobalSignalsRuntime,
+	/// 	LocalSignalsRuntime,
 	/// );
 	/// # }
 	/// ```
@@ -638,9 +638,9 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// let cell = Signal::cell_reactive(0, |value, status| {
 	/// 		dbg!(status);
@@ -669,12 +669,12 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, Signal};
 	/// let cell = Signal::cell_reactive_with_runtime(0, |value, status| {
 	/// 		dbg!(status);
 	/// 		Propagation::Halt
-	/// 	}, GlobalSignalsRuntime);
+	/// 	}, LocalSignalsRuntime);
 	/// # }
 	/// ```
 	pub fn cell_reactive_with_runtime<'a>(
@@ -706,9 +706,9 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation};
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{shadow_ref_to_owned, LocalSignalsRuntime, Propagation};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// let cell = Signal::cell_cyclic_reactive(|weak| (0, {
 	/// 		shadow_ref_to_owned!(weak);
@@ -748,15 +748,15 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, Signal};
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{shadow_ref_to_owned, LocalSignalsRuntime, Propagation, Signal};
 	/// let cell = Signal::cell_cyclic_reactive_with_runtime(|weak| (0, {
 	/// 		shadow_ref_to_owned!(weak);
 	/// 		move |value, status| {
 	/// 			assert_eq!(weak.upgrade().unwrap().get(), *value);
 	/// 			dbg!(status);
 	/// 			Propagation::Halt
-	/// 	}}), GlobalSignalsRuntime);
+	/// 	}}), LocalSignalsRuntime);
 	/// # }
 	/// ```
 	pub fn cell_cyclic_reactive_with_runtime<
@@ -795,10 +795,10 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation};
 	/// # fn create_heavy_resource_arc() {}
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// let cell = Signal::cell_reactive_mut(None, |value, status| {
 	/// 		if status {
@@ -836,8 +836,8 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal};
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, Signal};
 	/// # fn create_heavy_resource_arc() {}
 	/// let cell = Signal::cell_reactive_mut_with_runtime(None, |value, status| {
 	/// 		if status {
@@ -847,7 +847,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// 			*value = None;
 	/// 			Propagation::FlushOut
 	/// 		}
-	/// 	}, GlobalSignalsRuntime);
+	/// 	}, LocalSignalsRuntime);
 	/// # }
 	/// ```
 	pub fn cell_reactive_mut_with_runtime<'a>(
@@ -879,9 +879,9 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalArcDynCell};
-	/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{shadow_ref_to_owned, LocalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalArcDynCell};
+	/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	///
 	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalArcDynCell<'_, (usize, Resource<()>), SR>) {}
 	/// enum Resource<T> {
@@ -944,8 +944,8 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{shadow_ref_to_owned, GlobalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalArcDynCell};
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{shadow_ref_to_owned, LocalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalArcDynCell};
 	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalArcDynCell<'_, (usize, Resource<()>), SR>) {}
 	/// enum Resource<T> {
 	/// 	Offline,
@@ -975,7 +975,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// 				Propagation::Halt
 	/// 			}
 	/// 		}
-	/// 	}), GlobalSignalsRuntime);
+	/// 	}), LocalSignalsRuntime);
 	/// # }
 	/// ```
 	pub fn cell_cyclic_reactive_mut_with_runtime<

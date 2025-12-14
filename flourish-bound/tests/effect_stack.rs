@@ -1,4 +1,4 @@
-#![cfg(feature = "global_signals_runtime")]
+#![cfg(feature = "local_signals_runtime")]
 
 use flourish_bound::{
 	signals_helper,

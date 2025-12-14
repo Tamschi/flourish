@@ -1,22 +1,22 @@
-#![cfg(feature = "global_signals_runtime")]
+#![cfg(feature = "local_signals_runtime")]
 
 #[test]
 fn test() {
 	use std::sync::atomic::{AtomicI32, Ordering::Relaxed};
 
-	use flourish_bound::{shadow_clone, GlobalSignalsRuntime, Propagation};
+	use flourish_bound::{shadow_clone, LocalSignalsRuntime, Propagation};
 
 	// Choose a runtime: (You should do this once centrally in your app.)
-	type Effect<'a> = flourish_bound::Effect<'a, GlobalSignalsRuntime>;
-	type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
-	type SignalDyn<'a, T> = flourish_bound::SignalDyn<'a, T, GlobalSignalsRuntime>;
-	// type SignalDynCell<'a, T> = flourish_bound::SignalDynCell<'a, T, GlobalSignalsRuntime>;
-	// type SignalArc<T, S> = flourish_bound::SignalArc<T, S, GlobalSignalsRuntime>;
-	type SignalArcDyn<'a, T> = flourish_bound::SignalArcDyn<'a, T, GlobalSignalsRuntime>;
-	// type SignalArcDynCell<'a, T> = flourish_bound::SignalArcDynCell<'a, T, GlobalSignalsRuntime>;
-	type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
-	type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
-	// type SubscriptionDynCell<'a, T> = flourish_bound::SubscriptionDynCell<'a, T, GlobalSignalsRuntime>;
+	type Effect<'a> = flourish_bound::Effect<'a, LocalSignalsRuntime>;
+	type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
+	type SignalDyn<'a, T> = flourish_bound::SignalDyn<'a, T, LocalSignalsRuntime>;
+	// type SignalDynCell<'a, T> = flourish_bound::SignalDynCell<'a, T, LocalSignalsRuntime>;
+	// type SignalArc<T, S> = flourish_bound::SignalArc<T, S, LocalSignalsRuntime>;
+	type SignalArcDyn<'a, T> = flourish_bound::SignalArcDyn<'a, T, LocalSignalsRuntime>;
+	// type SignalArcDynCell<'a, T> = flourish_bound::SignalArcDynCell<'a, T, LocalSignalsRuntime>;
+	type Subscription<T, S> = flourish_bound::Subscription<T, S, LocalSignalsRuntime>;
+	type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, LocalSignalsRuntime>;
+	// type SubscriptionDynCell<'a, T> = flourish_bound::SubscriptionDynCell<'a, T, LocalSignalsRuntime>;
 
 	let a = Signal::cell(1);
 	let b = Signal::cell(2);
@@ -53,7 +53,7 @@ fn test() {
 
 	drop(set_result);
 
-	// `GlobalSignalsRuntime` guarantees subscribed values are fresh whenever the
+	// `LocalSignalsRuntime` guarantees subscribed values are fresh whenever the
 	// last call into it exits, so *without concurrency* this is synchronous *here*.
 	b.replace(0);
 	assert_eq!(result.load(Relaxed), 7); // unchanged, as `set_result` was dropped.

@@ -1,9 +1,9 @@
-#![cfg(feature = "global_signals_runtime")]
+#![cfg(feature = "local_signals_runtime")]
 
 use ::core::pin::{pin, Pin};
 use flourish_bound::{
 	unmanaged::{inert_cell, UnmanagedSignal, UnmanagedSignalCell},
-	GlobalSignalsRuntime,
+	LocalSignalsRuntime,
 };
 mod _validator;
 use _validator::Validator;
@@ -13,9 +13,9 @@ fn use_unmanaged() {
 	let v = &Validator::new();
 	let x = &Validator::new();
 
-	let a = pin!(inert_cell(1, GlobalSignalsRuntime));
+	let a = pin!(inert_cell(1, LocalSignalsRuntime));
 	let a = Pin::into_ref(a);
-	let b = pin!(inert_cell(2, GlobalSignalsRuntime));
+	let b = pin!(inert_cell(2, LocalSignalsRuntime));
 	let b = Pin::into_ref(b);
 	let (b, b_cell) = b.as_source_and_cell();
 	let c = pin!(flourish_bound::unmanaged::computed(
@@ -23,7 +23,7 @@ fn use_unmanaged() {
 			x.push("c");
 			a.get() + b.get()
 		},
-		GlobalSignalsRuntime
+		LocalSignalsRuntime
 	));
 	let c = Pin::into_ref(c) as Pin<&dyn UnmanagedSignal<_, _>>;
 	let d = pin!(flourish_bound::unmanaged::computed(
@@ -31,7 +31,7 @@ fn use_unmanaged() {
 			x.push("d");
 			a.get() - b.get()
 		},
-		GlobalSignalsRuntime
+		LocalSignalsRuntime
 	));
 	let d = Pin::into_ref(d) as Pin<&dyn UnmanagedSignal<_, _>>;
 	let aa = pin!(flourish_bound::unmanaged::computed_uncached(
@@ -39,7 +39,7 @@ fn use_unmanaged() {
 			x.push("aa");
 			c.get() + d.get()
 		},
-		GlobalSignalsRuntime
+		LocalSignalsRuntime
 	));
 	let aa = Pin::into_ref(aa) as Pin<&dyn UnmanagedSignal<_, _>>;
 	v.expect([]);
@@ -52,7 +52,7 @@ fn use_unmanaged() {
 					x.push("sub_aa");
 					v.push(aa.get())
 				},
-				GlobalSignalsRuntime
+				LocalSignalsRuntime
 			)
 		));
 		let _sub_aa = Pin::into_ref(_sub_aa);
@@ -83,7 +83,7 @@ fn use_unmanaged() {
 				x.push("sub_c");
 				v.push(c.get())
 			},
-			GlobalSignalsRuntime
+			LocalSignalsRuntime
 		)
 	));
 	let _sub_c = Pin::into_ref(_sub_c);
@@ -95,7 +95,7 @@ fn use_unmanaged() {
 				x.push("sub_d");
 				v.push(d.get())
 			},
-			GlobalSignalsRuntime
+			LocalSignalsRuntime
 		)
 	));
 	let _sub_d = Pin::into_ref(_sub_d);

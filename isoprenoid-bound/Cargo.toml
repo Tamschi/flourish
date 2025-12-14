@@ -20,16 +20,16 @@ features = [ "_doc" ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
- # Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
-global_signals_runtime = [
+ # Implements `SignalsRuntimeRef` for `LocalSignalsRuntime`.
+local_signals_runtime = [
 	"dep:async-lock",
 	"dep:scopeguard",
 	"dep:unwind_safe",
 ]
-# Ensures that `global_signals_runtime` is not enabled.
+# Ensures that `local_signals_runtime` is not enabled.
 forbid_global_signals_runtime = []
-_test = ["global_signals_runtime", "_doc"] # Internal testing feature.
-_doc = ["global_signals_runtime"] # Internal documentation feature.
+_test = ["local_signals_runtime", "_doc"] # Internal testing feature.
+_doc = ["local_signals_runtime"] # Internal documentation feature.
 
 [dependencies]
 async-lock = { version = "3.4.0", default-features = false, optional = true, features = ["std"] }

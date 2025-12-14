@@ -40,7 +40,7 @@ pub use effect::Effect;
 mod traits;
 pub use traits::Guard;
 
-pub use isoprenoid_bound::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
+pub use isoprenoid_bound::runtime::{LocalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 pub mod prelude {
 	//! Unmanaged signal accessors and [`SignalsRuntimeRef`].  
@@ -68,10 +68,10 @@ pub mod __ {
 ///
 /// ```
 /// # {
-/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-/// use flourish_bound::{shadow_clone, GlobalSignalsRuntime};
+/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+/// use flourish_bound::{shadow_clone, LocalSignalsRuntime};
 ///
-/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 ///
 /// let a = Signal::cell(1);
 /// let b = Signal::cell(2);

@@ -211,10 +211,10 @@ impl<'a, T: 'a + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SubscriptionDynCel
 ///
 /// ```
 /// # {
-/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-/// use flourish_bound::GlobalSignalsRuntime;
+/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+/// use flourish_bound::LocalSignalsRuntime;
 ///
-/// type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+/// type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 ///
 /// // The closure runs once on subscription, but not to refresh `sub`!
 /// // It re-runs with each access of its value through `SourcePin`, instead.
@@ -230,10 +230,10 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
-	/// # type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::LocalSignalsRuntime;
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
+	/// # type Subscription<T, S> = flourish_bound::Subscription<T, S, LocalSignalsRuntime>;
 	/// # let input = Signal::cell(1);
 	/// Subscription::computed(|| input.get() + 1);
 	/// # }
@@ -254,9 +254,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Signal, Subscription};
-	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Signal, Subscription};
+	/// # let input = Signal::cell_with_runtime(1, LocalSignalsRuntime);
 	/// Subscription::computed_with_runtime(|| input.get() + 1, input.clone_runtime_ref());
 	/// # }
 	/// ```
@@ -277,10 +277,10 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
-	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
-	/// # type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
+	/// # type Subscription<T, S> = flourish_bound::Subscription<T, S, LocalSignalsRuntime>;
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
 	/// # let input = Signal::cell(Container);
@@ -308,11 +308,11 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal, Subscription};
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, Signal, Subscription};
 	/// # #[derive(Default, Clone)] struct Container;
 	/// # impl Container { fn sort(&mut self) {} }
-	/// # let input = Signal::cell_with_runtime(Container, GlobalSignalsRuntime);
+	/// # let input = Signal::cell_with_runtime(Container, LocalSignalsRuntime);
 	/// Subscription::folded_with_runtime(Container::default(), |value| {
 	/// 	value.clone_from(&input.read());
 	/// 	value.sort();
@@ -340,10 +340,10 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation};
-	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
-	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, LocalSignalsRuntime>;
 	///
 	/// # let input = Signal::cell(1);
 	/// let lowest_settled = Subscription::reduced(
@@ -376,9 +376,9 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
-	/// # use flourish_bound::{GlobalSignalsRuntime, Propagation, Signal, Subscription};
-	/// # let input = Signal::cell_with_runtime(1, GlobalSignalsRuntime);
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
+	/// # use flourish_bound::{LocalSignalsRuntime, Propagation, Signal, Subscription};
+	/// # let input = Signal::cell_with_runtime(1, LocalSignalsRuntime);
 	/// let lowest_settled = Subscription::reduced_with_runtime(
 	/// 	|| input.get(),
 	/// 	|value, next| if next < *value {
@@ -387,7 +387,7 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// 	} else {
 	/// 		Propagation::Halt
 	/// 	},
-	/// 	GlobalSignalsRuntime,
+	/// 	LocalSignalsRuntime,
 	/// );
 	/// # }
 	/// ```
@@ -415,12 +415,12 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish_bound::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
-	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
-	/// type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	/// # use flourish_bound::LocalSignalsRuntime;
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, LocalSignalsRuntime>;
+	/// type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, LocalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
@@ -434,12 +434,12 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish_bound::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
-	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
-	/// type SignalArcDyn<'a, T> = flourish_bound::SignalArcDyn<'a, T, GlobalSignalsRuntime>;
+	/// # use flourish_bound::LocalSignalsRuntime;
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, LocalSignalsRuntime>;
+	/// type SignalArcDyn<'a, T> = flourish_bound::SignalArcDyn<'a, T, LocalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
@@ -469,14 +469,14 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish_bound::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
-	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{LocalSignalsRuntime, Subscription, SubscriptionDyn};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
 	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<_, _>>> = pin!(async {
-	/// 	Subscription::skipped_while_with_runtime(|| input.get(), |_| true, GlobalSignalsRuntime)
+	/// 	Subscription::skipped_while_with_runtime(|| input.get(), |_| true, LocalSignalsRuntime)
 	/// 		.await.into_dyn()
 	/// });
 	/// # }
@@ -486,14 +486,14 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish_bound::{GlobalSignalsRuntime, Subscription, SignalArcDyn};
-	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{LocalSignalsRuntime, Subscription, SignalArcDyn};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
 	/// let f: Pin<&dyn Future<Output = SignalArcDyn<_, _>>> = pin!(async {
-	/// 	Subscription::skipped_while_with_runtime(|| input.get(), |_| true, GlobalSignalsRuntime)
+	/// 	Subscription::skipped_while_with_runtime(|| input.get(), |_| true, LocalSignalsRuntime)
 	/// 		.await.unsubscribe().into_dyn()
 	/// });
 	/// # }
@@ -537,12 +537,12 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish_bound::GlobalSignalsRuntime;
-	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
-	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
-	/// type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	/// # use flourish_bound::LocalSignalsRuntime;
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, LocalSignalsRuntime>;
+	/// type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, LocalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
@@ -573,14 +573,14 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish_bound::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
-	/// # type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+	/// # use flourish_bound::{LocalSignalsRuntime, Subscription, SubscriptionDyn};
+	/// # type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
 	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<_, _>>> = pin!(async {
-	/// 	Subscription::filtered_with_runtime(|| input.get(), |_| false, GlobalSignalsRuntime)
+	/// 	Subscription::filtered_with_runtime(|| input.get(), |_| false, LocalSignalsRuntime)
 	/// 		.await.into_dyn()
 	/// });
 	/// # }
@@ -637,11 +637,11 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish_bound::GlobalSignalsRuntime;
-	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
-	/// type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, GlobalSignalsRuntime>;
+	/// # use flourish_bound::LocalSignalsRuntime;
+	/// type Subscription<T, S> = flourish_bound::Subscription<T, S, LocalSignalsRuntime>;
+	/// type SubscriptionDyn<'a, T> = flourish_bound::SubscriptionDyn<'a, T, LocalSignalsRuntime>;
 	///
 	/// # #[derive(Clone, Copy)] struct Value;
 	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<Value>>> = pin!(async {
@@ -668,12 +668,12 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	///
 	/// ```
 	/// # {
-	/// # #![cfg(feature = "global_signals_runtime")] // flourish feature
+	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish_bound::{GlobalSignalsRuntime, Subscription, SubscriptionDyn};
+	/// # use flourish_bound::{LocalSignalsRuntime, Subscription, SubscriptionDyn};
 	/// # #[derive(Clone, Copy)] struct Value;
 	/// let f: Pin<&dyn Future<Output = SubscriptionDyn<Value, _>>> = pin!(async {
-	/// 	Subscription::filter_mapped_with_runtime(|| None, GlobalSignalsRuntime).await.into_dyn()
+	/// 	Subscription::filter_mapped_with_runtime(|| None, LocalSignalsRuntime).await.into_dyn()
 	/// });
 	/// # }
 	/// ```

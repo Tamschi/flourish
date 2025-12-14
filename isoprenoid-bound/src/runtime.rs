@@ -1,8 +1,8 @@
-//! Low-level types for implementing [`SignalsRuntimeRef`], as well as [`GlobalSignalsRuntime`].
+//! Low-level types for implementing [`SignalsRuntimeRef`], as well as [`LocalSignalsRuntime`].
 //!
 //! # Features
 //!
-//! Enable the `global_signals_runtime` Cargo feature for [`GlobalSignalsRuntime`] to implement [`SignalsRuntimeRef`].
+//! Enable the `local_signals_runtime` Cargo feature for [`LocalSignalsRuntime`] to implement [`SignalsRuntimeRef`].
 
 use core::{self};
 use std::{self, fmt::Debug, future::Future, marker::PhantomData, mem, num::NonZeroU64};
@@ -11,7 +11,7 @@ use std::{self, fmt::Debug, future::Future, marker::PhantomData, mem, num::NonZe
 ///
 /// The signals runtime determines when its associated signals are refreshed in response to dependency changes.
 ///
-/// [`GlobalSignalsRuntime`] provides a usable default.
+/// [`LocalSignalsRuntime`] provides a usable default.
 ///
 /// # Logic
 /// Callback invocations associated with the same `id` **must** be totally orderable across all threads.
@@ -313,10 +313,10 @@ pub unsafe trait SignalsRuntimeRef: Clone {
 	}
 }
 
-#[cfg(feature = "global_signals_runtime")]
+#[cfg(feature = "local_signals_runtime")]
 mod a_signals_runtime;
 
-#[cfg(feature = "global_signals_runtime")]
+#[cfg(feature = "local_signals_runtime")]
 thread_local! {
 	static ISOPRENOID_GLOBAL_SIGNALS_RUNTIME: a_signals_runtime::ASignalsRuntime = a_signals_runtime::ASignalsRuntime::new();
 }
@@ -337,7 +337,7 @@ impl CallbackTableTypes for ACallbackTableTypes {
 ///
 /// # Features
 ///
-/// Enable the `global_signals_runtime` Cargo feature to implement [`SignalsRuntimeRef`] for this type.
+/// Enable the `local_signals_runtime` Cargo feature to implement [`SignalsRuntimeRef`] for this type.
 ///
 /// # Logic
 ///
@@ -346,21 +346,21 @@ impl CallbackTableTypes for ACallbackTableTypes {
 /// other threads won't necessarily be visible without external synchronisation points.
 ///
 /// (This means that in addition to transiently borrowing calls, returned [`Future`]s
-/// **may** cause the [`GlobalSignalsRuntime`] not to settle until they are dropped.)
+/// **may** cause the [`LocalSignalsRuntime`] not to settle until they are dropped.)
 ///
 /// Otherwise, it makes no additional guarantees over those specified in [`SignalsRuntimeRef`]'s documentation.
 ///
 /// # Panics
 ///
-/// [`SignalsRuntimeRef::Symbol`]s associated with the [`GlobalSignalsRuntime`] are ordered.  
+/// [`SignalsRuntimeRef::Symbol`]s associated with the [`LocalSignalsRuntime`] are ordered.  
 /// Given [`GSRSymbol`]s `a` and `b`, `b` can depend on `a` only iff `a` < `b` (by creation order).
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GlobalSignalsRuntime;
+pub struct LocalSignalsRuntime;
 
-impl Debug for GlobalSignalsRuntime {
+impl Debug for LocalSignalsRuntime {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if cfg!(feature = "global_signals_runtime") {
-			#[cfg(feature = "global_signals_runtime")]
+		if cfg!(feature = "local_signals_runtime") {
+			#[cfg(feature = "local_signals_runtime")]
 			Debug::fmt(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME, f)?;
 			Ok(())
 		} else {
@@ -369,19 +369,19 @@ impl Debug for GlobalSignalsRuntime {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 					write!(
 						f,
-						"(unavailable without `isoprenoid/global_signals_runtime` feature)"
+						"(unavailable without `isoprenoid/local_signals_runtime` feature)"
 					)
 				}
 			}
 
-			f.debug_struct("GlobalSignalsRuntime")
+			f.debug_struct("LocalSignalsRuntime")
 				.field("state", &Unavailable)
 				.finish_non_exhaustive()
 		}
 	}
 }
 
-/// A [`SignalsRuntimeRef::Symbol`] associated with the [`GlobalSignalsRuntime`].
+/// A [`SignalsRuntimeRef::Symbol`] associated with the [`LocalSignalsRuntime`].
 ///
 /// Given [`GSRSymbol`]s `a` and `b`, `b` can depend on `a` only iff `a` < `b` (by creation order).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -407,9 +407,9 @@ impl CallbackTableTypes for GlobalCallbackTableTypes {
 	type SubscribedStatus = bool;
 }
 
-#[cfg(feature = "global_signals_runtime")]
-/// **The feature `"global_signals_runtime"` is required to enable this implementation.**
-unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
+#[cfg(feature = "local_signals_runtime")]
+/// **The feature `"local_signals_runtime"` is required to enable this implementation.**
+unsafe impl SignalsRuntimeRef for LocalSignalsRuntime {
 	type Symbol = GSRSymbol;
 	type CallbackTableTypes = GlobalCallbackTableTypes;
 
@@ -581,7 +581,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Ord for CallbackTable<T, CTT> 
 pub trait CallbackTableTypes: 'static {
 	/// A status indicating "how subscribed" a signal now is.
 	///
-	/// [`GlobalSignalsRuntime`] notifies only for the first and removal of the last subscription for each signal,
+	/// [`LocalSignalsRuntime`] notifies only for the first and removal of the last subscription for each signal,
 	/// so it uses a [`bool`], but other runtimes may notify with the direct or total subscriber count or a more complex measure.
 	type SubscribedStatus;
 }
@@ -632,7 +632,7 @@ mod private {
 
 	use futures_lite::FutureExt;
 
-	#[allow(unreachable_pub)] // Used with "global_signals_runtime".
+	#[allow(unreachable_pub)] // Used with "local_signals_runtime".
 	pub struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Future<Output = Output>>>,
 	);

@@ -43,18 +43,18 @@ cargo add flourish
 For applications ("batteries included"):
 
 ```sh
-cargo add flourish --features global_signals_runtime
+cargo add flourish --features local_signals_runtime
 ```
 
 You can put signals on the heap:
 
 ```rust
-use flourish_bound::{Propagation, GlobalSignalsRuntime, SignalArcDynCell, SignalArcDyn};
+use flourish_bound::{Propagation, LocalSignalsRuntime, SignalArcDynCell, SignalArcDyn};
 
 // Choose a runtime:
-type Effect<'a> = flourish_bound::Effect<'a, GlobalSignalsRuntime>;
-type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
-type Subscription<T, S> = flourish_bound::Subscription<T, S, GlobalSignalsRuntime>;
+type Effect<'a> = flourish_bound::Effect<'a, LocalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
+type Subscription<T, S> = flourish_bound::Subscription<T, S, LocalSignalsRuntime>;
 
 // `Signal` is a ref-only type like `Path`, so its constructors return a `SignalArc`.
 let _ = Signal::shared(()); // Untracked `T`-wrapper.
@@ -86,8 +86,8 @@ let _ = Effect::new(|| (), drop);
 let (_signal, _cell) = Signal::cell(()).into_read_only_and_self();
 
 // Erase the unmanaged/closure type:
-let _: SignalArcDynCell<(), GlobalSignalsRuntime> = Signal::cell(()).into_dyn_cell();
-let _: SignalArcDyn<(), GlobalSignalsRuntime> = Signal::computed(|| ()).into_dyn();
+let _: SignalArcDynCell<(), LocalSignalsRuntime> = Signal::cell(()).into_dyn_cell();
+let _: SignalArcDyn<(), LocalSignalsRuntime> = Signal::computed(|| ()).into_dyn();
 let (_signal_dyn, _cell_dyn) = Signal::cell(()).into_dyn_read_only_and_self();
 ```
 
@@ -129,10 +129,10 @@ Additionally, inside `flourish_bound::unmanaged`, you can find constructor funct
 *flourish* detects and updates dependencies automatically:
 
 ```rust
-use flourish_bound::{shadow_clone, GlobalSignalsRuntime};
+use flourish_bound::{shadow_clone, LocalSignalsRuntime};
 
 // Choose a runtime:
-type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 
 let a = Signal::cell("a");
 let b = Signal::cell("b");
@@ -179,7 +179,7 @@ drop(signal);
 
 Signals are fully lazy, so they generally only run their closures while subscribed or to refresh their value if dirty.
 
-The default `GlobalSignalsRuntime` notifies signals iteratively from earlier to later when possible. Only one such notification cascade is processed at a time with this runtime.
+The default `LocalSignalsRuntime` notifies signals iteratively from earlier to later when possible. Only one such notification cascade is processed at a time with this runtime.
 
 ("uncached" signals run their closure whenever their value is retrieved instead, not on update.)
 
@@ -189,10 +189,10 @@ As mentioned in passing earlier, closure types captured in signals in this libra
 
 ```rust
 
-use flourish_bound::{shadow_clone, GlobalSignalsRuntime, Propagation};
+use flourish_bound::{shadow_clone, LocalSignalsRuntime, Propagation};
 
 // Choose a runtime:
-type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 
 let mut cell;
 cell = Signal::cell(()).into_dyn_cell();
@@ -216,9 +216,9 @@ Upcasting conversions from `…DynCell` to read-only `…Dyn` handles and refere
 In particular, references and pointers to `SignalDynCell` can be coerced directly into those to `SignalDyn`:
 
 ```rust
-use flourish_bound::{GlobalSignalsRuntime, Signal, SignalArc, SignalDyn, SignalDynCell};
+use flourish_bound::{LocalSignalsRuntime, Signal, SignalArc, SignalDyn, SignalDynCell};
 
-let cell: SignalArc<_, _, _> = Signal::<_, _, GlobalSignalsRuntime>::cell(());
+let cell: SignalArc<_, _, _> = Signal::<_, _, LocalSignalsRuntime>::cell(());
 
 let dyn_cell_ref: &SignalDynCell<_, _> = cell.as_dyn_cell();
 let dyn_ref: &SignalDyn<_, _> = dyn_cell_ref;
@@ -229,33 +229,33 @@ let dyn_ref: &SignalDyn<_, _> = dyn_cell_ref;
 You can use existing `isoprenoid` runtime instances with the included types and macros (but ideally, still alias these items for your own use):
 
 ```rust
-use flourish_bound::{signals_helper, GlobalSignalsRuntime, Propagation, Signal, Subscription};
+use flourish_bound::{signals_helper, LocalSignalsRuntime, Propagation, Signal, Subscription};
 
-let _ = Signal::shared_with_runtime((), GlobalSignalsRuntime);
-let _ = Signal::cell_with_runtime((), GlobalSignalsRuntime);
-let _ = Signal::cell_reactive_with_runtime((), |_, _| Propagation::Halt, GlobalSignalsRuntime);
+let _ = Signal::shared_with_runtime((), LocalSignalsRuntime);
+let _ = Signal::cell_with_runtime((), LocalSignalsRuntime);
+let _ = Signal::cell_reactive_with_runtime((), |_, _| Propagation::Halt, LocalSignalsRuntime);
 
-let _ = Signal::computed_with_runtime(|| (), GlobalSignalsRuntime);
-let _ = Signal::computed_uncached_with_runtime(|| (), GlobalSignalsRuntime);
-let _ = Signal::computed_uncached_mut_with_runtime(|| (), GlobalSignalsRuntime);
-let _ = Signal::folded_with_runtime((), |_value| Propagation::Propagate, GlobalSignalsRuntime);
-let _ = Signal::reduced_with_runtime(|| (), |_value, _next| Propagation::Propagate, GlobalSignalsRuntime);
+let _ = Signal::computed_with_runtime(|| (), LocalSignalsRuntime);
+let _ = Signal::computed_uncached_with_runtime(|| (), LocalSignalsRuntime);
+let _ = Signal::computed_uncached_mut_with_runtime(|| (), LocalSignalsRuntime);
+let _ = Signal::folded_with_runtime((), |_value| Propagation::Propagate, LocalSignalsRuntime);
+let _ = Signal::reduced_with_runtime(|| (), |_value, _next| Propagation::Propagate, LocalSignalsRuntime);
 
-let _ = Subscription::computed_with_runtime(|| (), GlobalSignalsRuntime);
+let _ = Subscription::computed_with_runtime(|| (), LocalSignalsRuntime);
 
 signals_helper! {
-  let _inert_cell = inert_cell_with_runtime!((), GlobalSignalsRuntime);
-  let _reactive_cell = reactive_cell_with_runtime!((), |_, _| Propagation::Halt, GlobalSignalsRuntime);
+  let _inert_cell = inert_cell_with_runtime!((), LocalSignalsRuntime);
+  let _reactive_cell = reactive_cell_with_runtime!((), |_, _| Propagation::Halt, LocalSignalsRuntime);
 
-  let _source = computed_with_runtime!(|| (), GlobalSignalsRuntime);
-  let _source = computed_uncached_with_runtime!(|| (), GlobalSignalsRuntime);
-  let _source = computed_uncached_mut_with_runtime!(|| (), GlobalSignalsRuntime);
-  let _source = folded_with_runtime!((), |_value| Propagation::Propagate, GlobalSignalsRuntime);
-  let _source = reduced_with_runtime!(|| (), |_value, _next| Propagation::Propagate, GlobalSignalsRuntime);
+  let _source = computed_with_runtime!(|| (), LocalSignalsRuntime);
+  let _source = computed_uncached_with_runtime!(|| (), LocalSignalsRuntime);
+  let _source = computed_uncached_mut_with_runtime!(|| (), LocalSignalsRuntime);
+  let _source = folded_with_runtime!((), |_value| Propagation::Propagate, LocalSignalsRuntime);
+  let _source = reduced_with_runtime!(|| (), |_value, _next| Propagation::Propagate, LocalSignalsRuntime);
 
-  let _source = subscription_with_runtime!(|| (), GlobalSignalsRuntime);
+  let _source = subscription_with_runtime!(|| (), LocalSignalsRuntime);
 
-  let _effect = effect_with_runtime!(|| (), drop, GlobalSignalsRuntime);
+  let _effect = effect_with_runtime!(|| (), drop, LocalSignalsRuntime);
 }
 ```
 

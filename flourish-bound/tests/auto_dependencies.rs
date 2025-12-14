@@ -1,8 +1,8 @@
-#![cfg(feature = "global_signals_runtime")]
+#![cfg(feature = "local_signals_runtime")]
 
-use flourish_bound::{shadow_clone, GlobalSignalsRuntime};
+use flourish_bound::{shadow_clone, LocalSignalsRuntime};
 
-type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 
 mod _validator;
 use _validator::Validator;

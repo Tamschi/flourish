@@ -1,9 +1,9 @@
-#![cfg(feature = "global_signals_runtime")]
+#![cfg(feature = "local_signals_runtime")]
 
 use flourish_bound::{
 	signals_helper,
 	unmanaged::{UnmanagedSignal, UnmanagedSignalCell},
-	GlobalSignalsRuntime,
+	LocalSignalsRuntime,
 };
 mod _validator;
 use _validator::Validator;
@@ -14,30 +14,30 @@ fn use_macros() {
 	let x = &Validator::new();
 
 	signals_helper! {
-		let a = inert_cell_with_runtime!(1, GlobalSignalsRuntime);
-		let b = inert_cell_with_runtime!(2, GlobalSignalsRuntime);
+		let a = inert_cell_with_runtime!(1, LocalSignalsRuntime);
+		let b = inert_cell_with_runtime!(2, LocalSignalsRuntime);
 	}
 	let (b, b_cell) = b.as_source_and_cell();
 	signals_helper! {
 		let c = computed_with_runtime!(|| {
 			x.push("c");
 			a.get() + b.get()
-		}, GlobalSignalsRuntime);
+		}, LocalSignalsRuntime);
 		let d = computed_with_runtime!(|| {
 			x.push("d");
 			a.get() - b.get()
-		}, GlobalSignalsRuntime);
+		}, LocalSignalsRuntime);
 		let aa = computed_uncached_with_runtime!(|| {
 			x.push("aa");
 			c.get() + d.get()
-		}, GlobalSignalsRuntime);
+		}, LocalSignalsRuntime);
 	}
 	v.expect([]);
 	x.expect([]);
 
 	{
 		signals_helper! {
-			let _sub_aa = subscription_with_runtime!(|| { x.push("sub_aa"); v.push(aa.get()) }, GlobalSignalsRuntime);
+			let _sub_aa = subscription_with_runtime!(|| { x.push("sub_aa"); v.push(aa.get()) }, LocalSignalsRuntime);
 		}
 		v.expect([2]);
 		x.expect(["sub_aa", "aa", "c", "d"]);
@@ -59,8 +59,8 @@ fn use_macros() {
 	x.expect([]);
 
 	signals_helper! {
-		let _sub_c = subscription_with_runtime!(|| { x.push("sub_c"); v.push(c.get()) }, GlobalSignalsRuntime);
-		let _sub_d = subscription_with_runtime!(|| { x.push("sub_d"); v.push(d.get()) }, GlobalSignalsRuntime);
+		let _sub_c = subscription_with_runtime!(|| { x.push("sub_c"); v.push(c.get()) }, LocalSignalsRuntime);
+		let _sub_d = subscription_with_runtime!(|| { x.push("sub_d"); v.push(d.get()) }, LocalSignalsRuntime);
 	}
 	v.expect([8, 2]);
 	x.expect(["sub_c", "c", "sub_d", "d"]);

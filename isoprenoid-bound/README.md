@@ -6,13 +6,13 @@ Distinct major versions of *flourish* are compatible as long as they use the sam
 
 ## Features
 
-### `"global_signals_runtime"`
+### `"local_signals_runtime"`
 
-Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
+Implements `SignalsRuntimeRef` for `LocalSignalsRuntime`.
 
 ### `"forbid_global_signals_runtime"`
 
-Asserts that `"global_signals_runtime"` is not enabled.
+Asserts that `"local_signals_runtime"` is not enabled.
 
 ## Quick-start
 

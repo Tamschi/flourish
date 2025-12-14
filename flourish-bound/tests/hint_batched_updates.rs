@@ -1,9 +1,9 @@
-#![cfg(feature = "global_signals_runtime")]
+#![cfg(feature = "local_signals_runtime")]
 
-use flourish_bound::{GlobalSignalsRuntime, SignalsRuntimeRef};
+use flourish_bound::{LocalSignalsRuntime, SignalsRuntimeRef};
 
-type Effect<'a> = flourish_bound::Effect<'a, GlobalSignalsRuntime>;
-type Signal<T, S> = flourish_bound::Signal<T, S, GlobalSignalsRuntime>;
+type Effect<'a> = flourish_bound::Effect<'a, LocalSignalsRuntime>;
+type Signal<T, S> = flourish_bound::Signal<T, S, LocalSignalsRuntime>;
 
 mod _validator;
 use _validator::Validator;
@@ -22,7 +22,7 @@ fn deduplication() {
 	b.replace(());
 	validator.expect([(), ()]);
 
-	GlobalSignalsRuntime.hint_batched_updates(|| {
+	LocalSignalsRuntime.hint_batched_updates(|| {
 		validator.expect([]);
 		a.replace(());
 		validator.expect([]);
