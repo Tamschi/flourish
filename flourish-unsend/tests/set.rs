@@ -26,7 +26,7 @@ fn set() {
 	let _effect = Effect::new(
 		{
 			shadow_clone!(a, b);
-			move || b.replace(a.get())
+			move || b.set(a.get())
 		},
 		drop,
 	);

@@ -63,14 +63,14 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> for Opaqu
 }
 
 impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for Opaque {
-	fn change(self: Pin<&Self>, _: T)
+	fn set_if_distinct(self: Pin<&Self>, _: T)
 	where
 		T: 'static + Sized + PartialEq,
 	{
 		match *self {}
 	}
 
-	fn replace(self: Pin<&Self>, _: T)
+	fn set(self: Pin<&Self>, _: T)
 	where
 		T: 'static + Sized,
 	{
@@ -92,7 +92,7 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for O
 		match *self {}
 	}
 
-	fn change_eager<'f>(self: Pin<&Self>, _: T) -> OpaqueFuture<Result<Result<T, T>, T>>
+	fn set_if_distinct_eager<'f>(self: Pin<&Self>, _: T) -> Self::SetIfDistinctEager<'f>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
@@ -100,8 +100,39 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for O
 		match *self {}
 	}
 
-	type ChangeEager<'f>
+	type SetIfDistinctEager<'f>
+		= OpaqueFuture<Result<Result<(), T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn replace_if_distinct_eager<'f>(
+		self: Pin<&Self>,
+		_: T,
+	) -> OpaqueFuture<Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized + PartialEq,
+	{
+		match *self {}
+	}
+
+	type ReplaceIfDistinctEager<'f>
 		= OpaqueFuture<Result<Result<T, T>, T>>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized;
+
+	fn set_eager<'f>(self: Pin<&Self>, _: T) -> Self::SetEager<'f>
+	where
+		Self: 'f + Sized,
+		T: 'f + Sized,
+	{
+		match *self {}
+	}
+
+	type SetEager<'f>
+		= OpaqueFuture<Result<(), T>>
 	where
 		Self: 'f + Sized,
 		T: 'f + Sized;
@@ -135,12 +166,29 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for O
 	where
 		Self: 'f + Sized;
 
-	fn change_eager_dyn<'f>(
+	fn set_if_distinct_eager_dyn<'f>(
+		self: Pin<&Self>,
+		_: T,
+	) -> Box<dyn 'f + Future<Output = Result<Result<(), T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		match *self {}
+	}
+
+	fn replace_if_distinct_eager_dyn<'f>(
 		self: Pin<&Self>,
 		_: T,
 	) -> Box<dyn 'f + Future<Output = Result<Result<T, T>, T>>>
 	where
 		T: 'f + Sized + PartialEq,
+	{
+		match *self {}
+	}
+
+	fn set_eager_dyn<'f>(self: Pin<&Self>, _: T) -> Box<dyn 'f + Future<Output = Result<(), T>>>
+	where
+		T: 'f + Sized,
 	{
 		match *self {}
 	}
@@ -162,9 +210,23 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for O
 		match *self {}
 	}
 
-	fn change_blocking(&self, _: T) -> Result<T, T>
+	fn set_if_distinct_blocking(&self, _: T) -> Result<(), T>
 	where
 		T: Sized + PartialEq,
+	{
+		match *self {}
+	}
+
+	fn replace_if_distinct_blocking(&self, _: T) -> Result<T, T>
+	where
+		T: Sized + PartialEq,
+	{
+		match *self {}
+	}
+
+	fn set_blocking(&self, _: T) -> ()
+	where
+		T: Sized,
 	{
 		match *self {}
 	}

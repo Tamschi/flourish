@@ -497,8 +497,8 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// # impl Container { fn sort(&mut self) {} }
 	/// let cell = Signal::cell(0);
 	///
-	/// cell.change(1);
-	/// cell.replace(2);
+	/// cell.set_if_distinct(1);
+	/// cell.set(2);
 	/// cell.update(|value| {
 	/// 	*value += 1;
 	/// 	Propagation::Propagate
@@ -525,8 +525,8 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// # use flourish::{GlobalSignalsRuntime, Propagation, Signal};
 	/// let cell = Signal::cell_with_runtime(0, GlobalSignalsRuntime);
 	///
-	/// cell.change(1);
-	/// cell.replace(2);
+	/// cell.set_if_distinct(1);
+	/// cell.set(2);
 	/// cell.update(|value| {
 	/// 	*value += 1;
 	/// 	Propagation::Propagate
@@ -1534,26 +1534,26 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	pub fn change(&self, new_value: T)
+	pub fn set_if_distinct(&self, new_value: T)
 	where
 		T: 'static + Sized + PartialEq,
 	{
-		self._managed().change(new_value)
+		self._managed().set_if_distinct(new_value)
 	}
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.
 	///
-	/// Prefer [`.change(new_value)`] if debouncing is acceptable.
+	/// Prefer [`.set_if_distinct(new_value)`](`Signal::set_if_distinct`) if halting propagation is acceptable.
 	///
 	/// # Logic
 	///
 	/// This method **must not** block *indefinitely*.  
 	/// This method **may** defer its effect.
-	pub fn replace(&self, new_value: T)
+	pub fn set(&self, new_value: T)
 	where
 		T: 'static + Sized,
 	{
-		self._managed().replace(new_value)
+		self._managed().set(new_value)
 	}
 
 	/// Modifies the current value using the given closure.
@@ -1580,9 +1580,34 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		self._managed().update_dyn(update)
 	}
 
-	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`Signal::change_eager`) when polled.
+	/// Cheaply creates a [`Future`] that has the effect of [`set_if_distinct_eager`](`Signal::set_if_distinct_eager`) when polled.
 	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
-	pub fn change_async<'f>(
+	pub fn set_if_distinct_async<'f>(
+		&self,
+		new_value: T,
+	) -> private::DetachedFuture<'f, Result<Result<(), T>, T>>
+	where
+		T: 'f + Sized + PartialEq,
+		S: 'f + Sized,
+		SR: 'f,
+	{
+		let this = self.downgrade();
+		private::DetachedFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.set_if_distinct_eager(new_value).boxed().await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
+	}
+
+	/// Cheaply creates a [`Future`] that has the effect of [`replace_if_distinct_eager`](`Signal::replace_if_distinct_eager`) when polled.
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	pub fn replace_if_distinct_async<'f>(
 		&self,
 		new_value: T,
 	) -> private::DetachedFuture<'f, Result<Result<T, T>, T>>
@@ -1596,7 +1621,29 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 			Box::pin(async move {
 				if let Some(this) = this.upgrade() {
 					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-					this.change_eager(new_value).boxed().await
+					this.replace_if_distinct_eager(new_value).boxed().await
+				} else {
+					Err(new_value)
+				}
+			}),
+			PhantomPinned,
+		)
+	}
+
+	/// Cheaply creates a [`Future`] that has the effect of [`set_eager`](`Signal::set_eager`) when polled.
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	pub fn set_async<'f>(&self, new_value: T) -> private::DetachedFuture<'f, Result<(), T>>
+	where
+		T: 'f + Sized,
+		S: 'f + Sized,
+		SR: 'f,
+	{
+		let this = self.downgrade();
+		private::DetachedFuture(
+			Box::pin(async move {
+				if let Some(this) = this.upgrade() {
+					//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+					this.set_eager(new_value).boxed().await
 				} else {
 					Err(new_value)
 				}
@@ -1652,11 +1699,44 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		)
 	}
 
-	/// Cheaply creates a [`Future`] that has the effect of [`change_eager`](`Signal::change_eager`) when polled.
+	/// Cheaply creates a [`Future`] that has the effect of [`set_if_distinct_eager`](`Signal::set_if_distinct_eager`) when polled.
 	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
 	///
-	/// Prefer [`change_async`](`Signal::change_async`) where possible.
-	pub fn change_async_dyn<'f>(
+	/// Prefer [`set_if_distinct_async`](`Signal::set_if_distinct_async`) where possible.
+	pub fn set_if_distinct_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<(), T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+				this.set_if_distinct_eager_dyn(new_value)
+					.conv::<Pin<Box<_>>>()
+					.await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<Result<(), T>, T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<Result<(), T>, T>>>,
+			>(f)
+		}
+	}
+
+	/// Cheaply creates a [`Future`] that has the effect of [`replace_if_distinct_eager`](`Signal::replace_if_distinct_eager`) when polled.
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	///
+	/// Prefer [`replace_if_distinct_async`](`Signal::replace_if_distinct_async`) where possible.
+	pub fn replace_if_distinct_async_dyn<'f>(
 		&self,
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
@@ -1667,7 +1747,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		let f = Box::new(async move {
 			if let Some(this) = this.upgrade() {
 				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
-				this.change_eager_dyn(new_value).conv::<Pin<Box<_>>>().await
+				this.replace_if_distinct_eager_dyn(new_value)
+					.conv::<Pin<Box<_>>>()
+					.await
 			} else {
 				Err(new_value)
 			}
@@ -1679,6 +1761,37 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 			mem::transmute::<
 				Box<dyn '_ + Send + Future<Output = Result<Result<T, T>, T>>>,
 				Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>,
+			>(f)
+		}
+	}
+
+	/// Cheaply creates a [`Future`] that has the effect of [`set_eager`](`Signal::set_eager`) when polled.
+	/// The [`Future`] *does not* hold a strong reference to the [`Signal`].
+	///
+	/// Prefer [`set_async`](`Signal::set_async`) where possible.
+	pub fn set_async_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<(), T>>>
+	where
+		T: 'f + Sized,
+	{
+		let this = self.downgrade();
+		let f = Box::new(async move {
+			if let Some(this) = this.upgrade() {
+				//FIXME: Likely <https://github.com/rust-lang/rust/issues/100013>.
+				this.set_eager_dyn(new_value).conv::<Pin<Box<_>>>().await
+			} else {
+				Err(new_value)
+			}
+		});
+
+		unsafe {
+			//SAFETY: Lifetime extension. The closure cannot be called after `*self.source_cell`
+			//        is dropped, because dropping the `RawSignal` implicitly purges the ID.
+			mem::transmute::<
+				Box<dyn '_ + Send + Future<Output = Result<(), T>>>,
+				Box<dyn 'f + Send + Future<Output = Result<(), T>>>,
 			>(f)
 		}
 	}
@@ -1763,6 +1876,32 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		}
 	}
 
+	/// Iff `new_value` differs from the current value, overwrites it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// [`Ok`], or [`Err(new_value)`](`Err`) iff not replaced.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	pub fn set_if_distinct_eager<'f>(&self, new_value: T) -> S::SetIfDistinctEager<'f>
+	where
+		S: 'f + Sized,
+		T: 'f + Sized + PartialEq,
+	{
+		self._managed().set_if_distinct_eager(new_value)
+	}
+
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Returns
@@ -1781,12 +1920,38 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
-	pub fn change_eager<'f>(&self, new_value: T) -> S::ChangeEager<'f>
+	pub fn replace_if_distinct_eager<'f>(&self, new_value: T) -> S::ReplaceIfDistinctEager<'f>
 	where
 		S: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		self._managed().change_eager(new_value)
+		self._managed().replace_if_distinct_eager(new_value)
+	}
+
+	/// Unconditionally overwrites the current value with `new_value` and signals dependents.
+	///
+	/// # Returns
+	///
+	/// The previous value.
+	///
+	/// # Panics
+	///
+	/// The returned [`Future`] **may** panic if polled in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **must not** block *indefinitely*.  
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
+	///
+	/// Don't `.await` the returned [`Future`] in signal callbacks!
+	pub fn set_eager<'f>(&self, new_value: T) -> S::SetEager<'f>
+	where
+		S: 'f + Sized,
+		T: 'f + Sized,
+	{
+		self._managed().set_eager(new_value)
 	}
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.
@@ -1845,15 +2010,37 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		self._managed().update_eager(update)
 	}
 
-	/// The same as [`change_eager`](`Signal::change_eager`), but dyn-compatible.
-	pub fn change_eager_dyn<'f>(
+	/// The same as [`set_if_distinct_eager`](`Signal::set_if_distinct_eager`), but dyn-compatible.
+	pub fn set_if_distinct_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<Result<(), T>, T>>>
+	where
+		T: 'f + Sized + PartialEq,
+	{
+		self._managed().set_if_distinct_eager_dyn(new_value)
+	}
+
+	/// The same as [`replace_if_distinct_eager`](`Signal::replace_if_distinct_eager`), but dyn-compatible.
+	pub fn replace_if_distinct_eager_dyn<'f>(
 		&self,
 		new_value: T,
 	) -> Box<dyn 'f + Send + Future<Output = Result<Result<T, T>, T>>>
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		self._managed().change_eager_dyn(new_value)
+		self._managed().replace_if_distinct_eager_dyn(new_value)
+	}
+
+	/// The same as [`set_eager`](`Signal::set_eager`), but dyn-compatible.
+	pub fn set_eager_dyn<'f>(
+		&self,
+		new_value: T,
+	) -> Box<dyn 'f + Send + Future<Output = Result<(), T>>>
+	where
+		T: 'f + Sized,
+	{
+		self._managed().set_eager_dyn(new_value)
 	}
 
 	/// The same as [`replace_eager`](`Signal::replace_eager`), but dyn-compatible.
@@ -1882,6 +2069,26 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		self._managed().update_eager_dyn(update)
 	}
 
+	/// Iff `new_value` differs from the current value, overwrites it and signals dependents.
+	///
+	/// # Returns
+	///
+	/// [`Ok`], or [`Err(new_value)`](`Err`) iff not replaced.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	pub fn set_if_distinct_blocking(&self, new_value: T) -> Result<(), T>
+	where
+		T: Sized + PartialEq,
+	{
+		self._managed().set_if_distinct_blocking(new_value)
+	}
+
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Returns
@@ -1895,11 +2102,27 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	/// # Logic
 	///
 	/// This method **may** block *indefinitely* iff called in signal callbacks.
-	pub fn change_blocking(&self, new_value: T) -> Result<T, T>
+	pub fn replace_if_distinct_blocking(&self, new_value: T) -> Result<T, T>
 	where
 		T: Sized + PartialEq,
 	{
-		self._managed().change_blocking(new_value)
+		self._managed().replace_if_distinct_blocking(new_value)
+	}
+
+	/// Unconditionally overwrites the current value with `new_value` and signals dependents.
+	///
+	/// # Panics
+	///
+	/// This method **may** panic if called in signal callbacks.
+	///
+	/// # Logic
+	///
+	/// This method **may** block *indefinitely* iff called in signal callbacks.
+	pub fn set_blocking(&self, new_value: T)
+	where
+		T: Sized,
+	{
+		self._managed().set_blocking(new_value)
 	}
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.

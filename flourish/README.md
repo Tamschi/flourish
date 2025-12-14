@@ -26,7 +26,7 @@ Fixing this doesn't incur API changes, and I don't need it right now, so I haven
 
 *flourish*'s prelude re-exports its unmanaged accessor traits and the `SignalsRuntimeRef` trait. *You need neither to work with managed signals*, but are likely to make use of the traits for custom low-level combinators.
 
-If you can't call `.get()` or `.change(…)` on pinned unmanaged signals, this import is what you're looking for:
+If you can't call `.get()` or `.set_if_distinct(…)` on pinned unmanaged signals, this import is what you're looking for:
 
 ```rust
 use flourish::prelude::*;
@@ -161,18 +161,18 @@ let signal = Signal::computed({
 // To consume it, write `.into_subscription()`, which is more efficient.
 let subscription = signal.to_subscription(); // ""
 
-// Note: `change` and `replace` may be deferred (but are safe to use in callbacks)!
-//       Use the `…_blocking` and `…_async` variants as needed.
-a.replace("a"); b.replace("b"); // nothing
-index.change(1); // "a" ("change" methods don't replace or propagate if the value is equal)
-a.change("aa"); // "aa"
-b.change("bb"); // nothing
-index.change(2); // "bb"
-a.change("a"); // nothing
-b.change("b"); // "b"
+// Note: `set_if_distinct` and `set` may be deferred
+//       (but are safe to use in callbacks)! Use the `…_blocking` and `…_async` variants as needed.
+a.set("a"); b.set("b"); // nothing
+index.set_if_distinct(1); // "a" ("set_if_distinct" methods don't overwrite or propagate if the value is equal)
+a.set_if_distinct("aa"); // "aa"
+b.set_if_distinct("bb"); // nothing
+index.set_if_distinct(2); // "bb"
+a.set_if_distinct("a"); // nothing
+b.set_if_distinct("b"); // "b"
 
 drop(subscription);
-index.change(3); // nothing, even though `signal` still exists
+index.set(3); // nothing, even though `signal` still exists
 
 drop(signal);
 ```

@@ -18,15 +18,15 @@ fn deduplication() {
 
 	validator.expect([]);
 
-	a.replace(());
-	b.replace(());
+	a.set(());
+	b.set(());
 	validator.expect([(), ()]);
 
 	LocalSignalsRuntime.hint_batched_updates(|| {
 		validator.expect([]);
-		a.replace(());
+		a.set(());
 		validator.expect([]);
-		b.replace(());
+		b.set(());
 		validator.expect([]);
 	});
 	validator.expect([()]);
