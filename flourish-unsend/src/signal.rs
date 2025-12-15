@@ -418,7 +418,7 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		SignalArc::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
 
-	/// A lightweight thread-safe value that's signal-compatible.
+	/// A lightweight value that's signal-compatible.
 	///
 	/// It doesn't have a signal-identity and isn't recorded as dependency.
 	///
@@ -448,7 +448,7 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		Self::shared_with_runtime(value, SR::default())
 	}
 
-	/// A lightweight thread-safe value that's signal-compatible.
+	/// A lightweight value that's signal-compatible.
 	///
 	/// It doesn't have a signal-identity and isn't recorded as dependency.
 	///
@@ -482,7 +482,7 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 
 /// Cell constructors.
 impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
-	/// A thread-safe value cell that's mutable through shared references.
+	/// A value cell that's mutable through shared references.
 	///
 	/// Modification of the value can cause dependent signals to update.
 	///
@@ -514,7 +514,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		Self::cell_with_runtime(initial_value, SR::default())
 	}
 
-	/// A thread-safe value cell that's mutable through shared references.
+	/// A value cell that's mutable through shared references.
 	///
 	/// Modification of the value can cause dependent signals to update.
 	///
@@ -545,7 +545,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
-	/// A thread-safe value cell that may reference itself.
+	/// A value cell that may reference itself.
 	///
 	/// Modification of the value can cause dependent signals to update.
 	///
@@ -583,7 +583,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		Self::cell_cyclic_with_runtime(make_initial_value, SR::default())
 	}
 
-	/// A thread-safe value cell that may reference itself.
+	/// A value cell that may reference itself.
 	///
 	/// Modification of the value can cause dependent signals to update.
 	///
@@ -632,7 +632,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
-	/// A thread-safe value cell that can observe subscription status changes.
+	/// A value cell that can observe subscription status changes.
 	///
 	/// Modification of the value can cause dependent signals to update.
 	///
@@ -663,7 +663,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		Self::cell_reactive_with_runtime(initial_value, on_subscribed_change_fn_pin, SR::default())
 	}
 
-	/// A thread-safe value cell that can observe subscription status changes.
+	/// A value cell that can observe subscription status changes.
 	///
 	/// Modification of the value can cause dependent signals to update.
 	///
@@ -699,7 +699,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
-	/// A thread-safe value cell that can observe subscription status changes and may
+	/// A value cell that can observe subscription status changes and may
 	/// reference itself.
 	///
 	/// Modification of the value can cause dependent signals to update.
@@ -741,7 +741,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		)
 	}
 
-	/// A thread-safe value cell that can observe subscription status changes and may
+	/// A value cell that can observe subscription status changes and may
 	/// reference itself.
 	///
 	/// Modification of the value can cause dependent signals to update.
@@ -789,7 +789,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
-	/// A thread-safe value cell that can observe subscription status changes.
+	/// A value cell that can observe subscription status changes.
 	///
 	/// Modification of the value can cause dependent signals to update.
 	///
@@ -830,7 +830,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		)
 	}
 
-	/// A thread-safe value cell that can observe subscription status changes.
+	/// A value cell that can observe subscription status changes.
 	///
 	/// Modification of the value can cause dependent signals to update.
 	///
@@ -872,7 +872,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		}
 	}
 
-	/// A thread-safe value cell that can observe subscription status changes and may
+	/// A value cell that can observe subscription status changes and may
 	/// reference itself.
 	///
 	/// Modification of the value can cause dependent signals to update.
@@ -937,7 +937,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		)
 	}
 
-	/// A thread-safe value cell that can observe subscription status changes and may
+	/// A value cell that can observe subscription status changes and may
 	/// reference itself.
 	///
 	/// Modification of the value can cause dependent signals to update.

@@ -8,10 +8,6 @@
 //!
 //! </details>
 //!
-//! # Threading Notes
-//!
-//! Please note that *none* of the function in this library are guaranteed to produce *any* memory barriers!
-//!
 //! # Safety Notes
 //!
 //! [`impl FnMut`](`FnMut`) closures that appear in parameters with "`fn_pin`" in their name are guaranteed to be [pinned](`core::pin`) when called.

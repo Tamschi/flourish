@@ -27,7 +27,7 @@ local_signals_runtime = [
 	"dep:unwind_safe",
 ]
 # Ensures that `local_signals_runtime` is not enabled.
-forbid_global_signals_runtime = []
+forbid_local_signals_runtime = []
 _test = ["local_signals_runtime", "_doc"] # Internal testing feature.
 _doc = ["local_signals_runtime"] # Internal documentation feature.
 

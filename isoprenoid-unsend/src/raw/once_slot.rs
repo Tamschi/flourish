@@ -1,8 +1,8 @@
-use std::{cell::OnceCell, sync::Mutex};
+use std::cell::{OnceCell, RefCell};
 
 #[derive(Debug)]
 pub(super) struct OnceSlot<T> {
-	critical: Mutex<()>,
+	critical: RefCell<()>,
 	value: OnceCell<T>,
 }
 
@@ -10,7 +10,7 @@ impl<T> OnceSlot<T> {
 	#[must_use]
 	pub(super) const fn new() -> Self {
 		Self {
-			critical: Mutex::new(()),
+			critical: RefCell::new(()),
 			value: OnceCell::new(),
 		}
 	}
@@ -20,7 +20,7 @@ impl<T> OnceSlot<T> {
 		if let Some(value) = self.value.get() {
 			value
 		} else {
-			let _guard = self.critical.lock().unwrap();
+			let _guard = self.critical.borrow_mut();
 			if let Some(value) = self.value.get() {
 				value
 			} else {

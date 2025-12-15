@@ -4,13 +4,16 @@
         "isoprenoid",
         "oneshot",
         "pinnable",
+        "println",
         "Reborrows",
         "restabilised",
         "RPITIT",
         "scopeguard",
         "sptr",
         "uninit",
-        "unsend"
+        "unsend",
+        "unsizing",
+        "upcasting"
     ],
     "rust-analyzer.cargo.features": [
         "_test"

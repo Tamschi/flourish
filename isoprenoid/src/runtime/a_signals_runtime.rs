@@ -2,7 +2,7 @@ use std::{
 	borrow::{Borrow, BorrowMut as _},
 	cell::{RefCell, RefMut},
 	collections::{BTreeMap, BTreeSet, VecDeque},
-	fmt::Debug,
+	fmt::{self, Debug, Formatter},
 	mem,
 	sync::{atomic::Ordering, Arc, Mutex},
 };
@@ -62,7 +62,7 @@ impl PartialEq for Stale {
 }
 
 impl Debug for ASignalsRuntime_ {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("ASignalsRuntime_")
 			.field("context_stack", &self.context_stack)
 			.field("callbacks", &self.callbacks)

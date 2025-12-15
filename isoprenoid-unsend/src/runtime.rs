@@ -5,7 +5,14 @@
 //! Enable the `local_signals_runtime` Cargo feature for [`LocalSignalsRuntime`] to implement [`SignalsRuntimeRef`].
 
 use core::{self};
-use std::{self, fmt::Debug, future::Future, marker::PhantomData, mem, num::NonZeroU64};
+use std::{
+	self,
+	fmt::{self, Debug, Formatter},
+	future::Future,
+	marker::PhantomData,
+	mem,
+	num::NonZeroU64,
+};
 
 /// Embedded in signals to refer to a specific signals runtime.
 ///
@@ -14,19 +21,14 @@ use std::{self, fmt::Debug, future::Future, marker::PhantomData, mem, num::NonZe
 /// [`LocalSignalsRuntime`] provides a usable default.
 ///
 /// # Logic
-/// Callback invocations associated with the same `id` **must** be totally orderable across all threads.
+/// Callback invocations associated with the same `id` **must** be totally orderable.  
+/// (Note: Identical `id`s confined to distinct threads are considered distinct.)
 ///
 /// # Safety
 ///
-/// Callbacks associated with the same `id` **must not** run concurrently but **may** be nested in some cases.  
+/// Callbacks associated with the same `id` **may** be nested in some cases.  
 ///
 /// Please see the 'Safety' sections on this trait's associated items for additional rules.
-///
-/// Iff equivalent [`SignalsRuntimeRef`] instances may be accessed concurrently,
-/// the runtime **must** handle concurrent method calls with the same `id` gracefully.
-///
-/// The runtime **must** behave as if method calls associate with the same `id` were totally orderable.  
-/// The runtime **may** decide the effective order of concurrent calls arbitrarily.
 ///
 /// ## Definition
 ///
@@ -244,14 +246,9 @@ pub unsafe trait SignalsRuntimeRef: Clone {
 
 	/// Runs `f` exclusively for `id` *without* recording dependencies.
 	///
-	/// # Threading
-	///
-	/// This function **may** deadlock when called in any other exclusivity context.  
-	/// (Runtimes **may** limit situations where this can occur in their documentation.)
-	///
 	/// # Panics
 	///
-	/// This function **may** panic when called in any other exclusivity context.  
+	/// This function **should** panic when called in any other exclusivity context.  
 	/// (Runtimes **may** limit situations where this can occur in their documentation.)
 	///
 	/// # Safety
@@ -341,9 +338,8 @@ impl CallbackTableTypes for ACallbackTableTypes {
 ///
 /// # Logic
 ///
-/// This runtime is guaranteed to have settled whenever the *across all threads* last borrow
-/// of it ceases, but only regarding effects originating on the current thread. Effects from
-/// other threads won't necessarily be visible without external synchronisation points.
+/// This runtime is guaranteed to have settled whenever the last thread-local borrow of it ceases,
+/// but only regarding effects originating on the current thread.
 ///
 /// (This means that in addition to transiently borrowing calls, returned [`Future`]s
 /// **may** cause the [`LocalSignalsRuntime`] not to settle until they are dropped.)
@@ -353,12 +349,12 @@ impl CallbackTableTypes for ACallbackTableTypes {
 /// # Panics
 ///
 /// [`SignalsRuntimeRef::Symbol`]s associated with the [`LocalSignalsRuntime`] are ordered.  
-/// Given [`GSRSymbol`]s `a` and `b`, `b` can depend on `a` only iff `a` < `b` (by creation order).
+/// Given [`LSRSymbol`]s `a` and `b`, `b` can depend on `a` only iff `a` < `b` (by creation order).
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LocalSignalsRuntime;
 
 impl Debug for LocalSignalsRuntime {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		if cfg!(feature = "local_signals_runtime") {
 			#[cfg(feature = "local_signals_runtime")]
 			Debug::fmt(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME, f)?;
@@ -366,7 +362,7 @@ impl Debug for LocalSignalsRuntime {
 		} else {
 			struct Unavailable;
 			impl Debug for Unavailable {
-				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+				fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 					write!(
 						f,
 						"(unavailable without `isoprenoid/local_signals_runtime` feature)"
@@ -383,13 +379,13 @@ impl Debug for LocalSignalsRuntime {
 
 /// A [`SignalsRuntimeRef::Symbol`] associated with the [`LocalSignalsRuntime`].
 ///
-/// Given [`GSRSymbol`]s `a` and `b`, `b` can depend on `a` only iff `a` < `b` (by creation order).
+/// Given [`LSRSymbol`]s `a` and `b`, `b` can depend on `a` only iff `a` < `b` (by creation order).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GSRSymbol(pub(crate) ASymbol);
+pub struct LSRSymbol(pub(crate) ASymbol);
 
-impl Debug for GSRSymbol {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_tuple("GSRSymbol").field(&self.0 .0).finish()
+impl Debug for LSRSymbol {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.debug_tuple("LSRSymbol").field(&self.0 .0).finish()
 	}
 }
 
@@ -410,11 +406,11 @@ impl CallbackTableTypes for GlobalCallbackTableTypes {
 #[cfg(feature = "local_signals_runtime")]
 /// **The feature `"local_signals_runtime"` is required to enable this implementation.**
 unsafe impl SignalsRuntimeRef for LocalSignalsRuntime {
-	type Symbol = GSRSymbol;
+	type Symbol = LSRSymbol;
 	type CallbackTableTypes = GlobalCallbackTableTypes;
 
-	fn next_id(&self) -> GSRSymbol {
-		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| GSRSymbol((&gsr).next_id()))
+	fn next_id(&self) -> LSRSymbol {
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| LSRSymbol((&gsr).next_id()))
 	}
 
 	fn record_dependency(&self, id: Self::Symbol) {
@@ -528,7 +524,7 @@ pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
 }
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Debug for CallbackTable<T, CTT> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("CallbackTable")
 			.field("update", &self.update)
 			.field("on_subscribed_change", &self.on_subscribed_change)

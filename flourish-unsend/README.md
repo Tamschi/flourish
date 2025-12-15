@@ -1,30 +1,25 @@
-# *flourish*
+# *flourish-unsend*
 
-Convenient and full-featured signals for Rust.
+Convenient and full-featured signals for Rust (thread-local edition).
 
 The API design emphasises efficient resource management and performance-aware code without compromising on ease of use at near-zero boilerplate.
 
-🚧 This is a(n optimisable) proof of concept! The API is full-featured, but the code is not (much at all) optimised. However, high degrees of optimisation should be possible without breaking changes. 🚧
+*flourish-unsend* is a signals library inspired by [🚦 JavaScript Signals standard proposal🚦](https://github.com/tc39/proposal-signals?tab=readme-ov-file#-javascript-signals-standard-proposal) (but Rust-y).
 
-*flourish* is a signals library inspired by [🚦 JavaScript Signals standard proposal🚦](https://github.com/tc39/proposal-signals?tab=readme-ov-file#-javascript-signals-standard-proposal) (but Rust-y).
+When combined with for example [`Option`](https://doc.rust-lang.org/stable/core/option/enum.Option.html) and [`Future`](https://doc.rust-lang.org/stable/core/future/trait.Future.html), *flourish-unsend* can model asynchronous-and-cancellable resource loads efficiently.
 
-When combined with for example [`Option`](https://doc.rust-lang.org/stable/core/option/enum.Option.html) and [`Future`](https://doc.rust-lang.org/stable/core/future/trait.Future.html), *flourish* can model asynchronous-and-cancellable resource loads efficiently.
+This makes it a suitable replacement for most standard use cases of RxJS-style observables, though *with the included runtime* it **may unify propagation and as such isn't suited for sequences**. (You should probably prefer channels for those. *flourish-unsend* does work well with reference-counted resources, however, and can flush them from stale unsubscribed signals.)
 
-This makes it a suitable replacement for most standard use cases of RxJS-style observables, though *with the included runtime* it **may debounce propagation and as such isn't suited for sequences**. (You should probably prefer channels for those. *flourish* does work well with reference-counted resources, however, and can flush them from stale unsubscribed signals.)
-
-**Distinct major versions of this library are logically cross-compatible**, as long as they use the same version of `isoprenoid`.
+**Distinct major versions of this library are logically cross-compatible**, as long as they use the same version of `isoprenoid-unsend`.
 
 ## Known Issues
-
-⚠️ The update task queue is currently not fair whatsoever, so one thread looping inside signal processing will block all others.  
-(You *can* substitute your own `SignalsRuntimeRef` implementation if you'd like to experiment. All relevant types in this crate are generic over the runtime, so that which you're working with is easy to identify or preset via type alias.)
 
 ⚠️ The panic handling in the included runtime isn't good yet.  
 Fixing this doesn't incur API changes, and I don't need it right now, so I haven't implemented panic routing that would preserve the runtime when callbacks fail.
 
 ## Prelude
 
-*flourish*'s prelude re-exports its unmanaged accessor traits and the `SignalsRuntimeRef` trait. *You need neither to work with managed signals*, but are likely to make use of the traits for custom low-level combinators.
+*flourish-unsend*'s prelude re-exports its unmanaged accessor traits and the `SignalsRuntimeRef` trait. *You need neither to work with managed signals*, but are likely to make use of the traits for custom low-level combinators.
 
 If you can't call `.get()` or `.set_if_distinct(…)` on pinned unmanaged signals, this import is what you're looking for:
 
@@ -37,13 +32,13 @@ use flourish_unsend::prelude::*;
 For libraries (which should be generic over the signals runtime `SR`):
 
 ```sh
-cargo add flourish
+cargo add flourish-unsend
 ```
 
 For applications ("batteries included"):
 
 ```sh
-cargo add flourish --features local_signals_runtime
+cargo add flourish-unsend --features local_signals_runtime
 ```
 
 You can put signals on the heap:
@@ -65,7 +60,7 @@ let _ = Signal::cell_reactive_mut((), |_value, _status| Propagation::Propagate);
 let _ = Signal::cell_cyclic_reactive(|_weak| ((), move |_value, _status| Propagation::Halt));
 let _ = Signal::cell_cyclic_reactive_mut(|_weak| ((), move |_value, _status| Propagation::Propagate));
 
-// Not evaluated unless subscribed.
+// Dependent signals, not evaluated unless subscribed.
 let _ = Signal::computed(|| ());
 let _ = Signal::distinct(|| ());
 let _ = Signal::computed_uncached(|| ()); // `Fn` closure. The others take `FnMut`s.
@@ -126,7 +121,7 @@ Additionally, inside `flourish_unsend::unmanaged`, you can find constructor func
 
 ## Linking signals
 
-*flourish* detects and updates dependencies automatically:
+*flourish-unsend* detects and updates dependencies automatically:
 
 ```rust
 use flourish_unsend::{shadow_clone, LocalSignalsRuntime};
@@ -161,10 +156,10 @@ let signal = Signal::computed({
 // To consume it, write `.into_subscription()`, which is more efficient.
 let subscription = signal.to_subscription(); // ""
 
-// Note: `change` and `replace` may be deferred (but are safe to use in callbacks)!
+// Note: `set_if_distinct` and `set` may be deferred (but are safe to use in callbacks)!
 //       Use the `…_blocking` and `…_async` variants as needed.
 a.set("a"); b.set("b"); // nothing
-index.set_if_distinct(1); // "a" ("change" methods don't replace or propagate if the value is equal)
+index.set_if_distinct(1); // "a" ("set_if_distinct" methods don't overwrite or propagate if the value is equal)
 a.set_if_distinct("aa"); // "aa"
 b.set_if_distinct("bb"); // nothing
 index.set_if_distinct(2); // "bb"
@@ -226,7 +221,7 @@ let dyn_ref: &SignalDyn<_, _> = dyn_cell_ref;
 
 ## Using an instantiated runtime
 
-You can use existing `isoprenoid` runtime instances with the included types and macros (but ideally, still alias these items for your own use):
+You can use existing `isoprenoid-unsend` runtime instances with the included types and macros (but ideally, still alias these items for your own use):
 
 ```rust
 use flourish_unsend::{signals_helper, LocalSignalsRuntime, Propagation, Signal, Subscription};
@@ -274,7 +269,6 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |Dyn-compatibility for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
 |[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of signal cell implementations.|
 |[`impl_trait_in_assoc_type`](https://github.com/rust-lang/rust/issues/63063)|Eliminate several surfaced internal types, resulting in better docs.|
-|[Precise capturing in RPITIT](https://github.com/rust-lang/rust/pull/126746)|This would clean up the API quite a lot, by removing some GATs.|
 |Deref coercions in constant functions|Make several conversions available as `const` methods.|
 |[`arbitrary_self_types`](https://github.com/rust-lang/rust/issues/44874)|Inline-pinning of values (with a clean API).|
 |`Pin<Ptr: ?Sized>`|Type-erasure for the aforementioned clean inline-pinning signals.|

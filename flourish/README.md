@@ -10,7 +10,7 @@ The API design emphasises efficient resource management and performance-aware co
 
 When combined with for example [`Option`](https://doc.rust-lang.org/stable/core/option/enum.Option.html) and [`Future`](https://doc.rust-lang.org/stable/core/future/trait.Future.html), *flourish* can model asynchronous-and-cancellable resource loads efficiently.
 
-This makes it a suitable replacement for most standard use cases of RxJS-style observables, though *with the included runtime* it **may debounce propagation and as such isn't suited for sequences**. (You should probably prefer channels for those. *flourish* does work well with reference-counted resources, however, and can flush them from stale unsubscribed signals.)
+This makes it a suitable replacement for most standard use cases of RxJS-style observables, though *with the included runtime* it **may unify propagation and as such isn't suited for sequences**. (You should probably prefer channels for those. *flourish* does work well with reference-counted resources, however, and can flush them from stale unsubscribed signals.)
 
 **Distinct major versions of this library are logically cross-compatible**, as long as they use the same version of `isoprenoid`.
 
@@ -65,7 +65,7 @@ let _ = Signal::cell_reactive_mut((), |_value, _status| Propagation::Propagate);
 let _ = Signal::cell_cyclic_reactive(|_weak| ((), move |_value, _status| Propagation::Halt));
 let _ = Signal::cell_cyclic_reactive_mut(|_weak| ((), move |_value, _status| Propagation::Propagate));
 
-// Not evaluated unless subscribed.
+// Dependent signals, not evaluated unless subscribed.
 let _ = Signal::computed(|| ());
 let _ = Signal::distinct(|| ());
 let _ = Signal::computed_uncached(|| ()); // `Fn` closure. The others take `FnMut`s.
@@ -274,7 +274,6 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |Dyn-compatibility for `trait Guard: Deref + Borrow<Self::Target> {}` as `dyn Guard<Target = …>`|I think this is caused by use of the associated type as type parameter in any bound (of `Self` or an associated type). It works fine with `Guard<T>`, but that's not ideal since `Guard` is implicitly unique per implementing type (and having the extra generic type parameter complicates some other code).|
 |[`type_alias_impl_trait`](https://github.com/rust-lang/rust/issues/63063)|Eliminate boxing and dynamic dispatch of `Future`s in some static-dispatch methods of signal cell implementations.|
 |[`impl_trait_in_assoc_type`](https://github.com/rust-lang/rust/issues/63063)|Eliminate several surfaced internal types, resulting in better docs.|
-|[Precise capturing in RPITIT](https://github.com/rust-lang/rust/pull/126746)|This would clean up the API quite a lot, by removing some GATs.|
 |Deref coercions in constant functions|Make several conversions available as `const` methods.|
 |[`arbitrary_self_types`](https://github.com/rust-lang/rust/issues/44874)|Inline-pinning of values (with a clean API).|
 |`Pin<Ptr: ?Sized>`|Type-erasure for the aforementioned clean inline-pinning signals.|
