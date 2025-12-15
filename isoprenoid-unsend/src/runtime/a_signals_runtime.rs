@@ -5,6 +5,7 @@ use std::{
 	fmt::{self, Debug, Formatter},
 	marker::PhantomData,
 	mem,
+	rc::Rc,
 	sync::{Arc, Mutex},
 };
 
@@ -22,7 +23,6 @@ pub(crate) struct ASignalsRuntime {
 struct ASignalsRuntime_ {
 	context_stack: Vec<Option<(ASymbol, BTreeSet<ASymbol>)>>,
 	callbacks: BTreeMap<ASymbol, (*const CallbackTable<(), ACallbackTableTypes>, *const ())>,
-	///FIXME: This is not-at-all a fair queue.
 	update_queue: BTreeMap<ASymbol, VecDeque<Box<dyn 'static + FnOnce() -> Propagation>>>,
 	stale_queue: BTreeSet<Stale>,
 	interdependencies: Interdependencies,
@@ -705,22 +705,22 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		id: Self::Symbol,
 		f: F,
 	) -> Self::UpdateEager<'f, T, F> {
-		//TODO: Replace `Arc` with `!Sync` alternative.
-		let f = Arc::new(Mutex::new(Some(f)));
-		let _f_guard = guard(Arc::clone(&f), |f| drop(f.lock().unwrap().take()));
+		let f = Rc::new(Mutex::new(Some(f)));
+		let _f_guard = guard(Rc::clone(&f), |f| drop(f.lock().unwrap().take()));
 
+		//TODO: Replace `Arc` with `!Sync` alternative.
 		let once = Arc::new(
 			async_lock::Mutex::<Mutex<Option<Result<T, Option<F>>>>>::new(Mutex::new(None)),
 		);
-		let setter_lock = Arc::new(Mutex::new(Some(once.try_lock_arc().expect("unreachable"))));
-		let _setter_lock_guard = guard(Arc::clone(&setter_lock), |setter_lock| {
+		let setter_lock = Rc::new(Mutex::new(Some(once.try_lock_arc().expect("unreachable"))));
+		let _setter_lock_guard = guard(Rc::clone(&setter_lock), |setter_lock| {
 			drop(setter_lock.lock().expect("unreachable").take());
 		});
 
 		let update = Box::new({
-			let setter_lock = Arc::clone(&setter_lock);
+			let setter_lock = Rc::clone(&setter_lock);
 			let guard = {
-				let setter_lock = Arc::clone(&setter_lock);
+				let setter_lock = Rc::clone(&setter_lock);
 				guard(f, move |f| {
 					if let Some(mut setter_lock) = setter_lock.lock().expect("unreachable").take() {
 						*setter_lock =
