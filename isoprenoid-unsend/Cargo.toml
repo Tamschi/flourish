@@ -3,7 +3,7 @@ name = "isoprenoid-unsend"
 version = "0.1.2"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2021"
-rust-version = "1.70"
+rust-version = "1.88"
 description = "isoprenoid is the signals runtime framework backing flourish."
 # documentation intentionally defaulted.
 readme = true
