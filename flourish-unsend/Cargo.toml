@@ -4,14 +4,14 @@ version = "0.1.3"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2021"
 rust-version = "1.88"
-description = "Convenient and full-featured signals for Rust."
+description = "Convenient and full-featured signals for Rust (thread-local variant)."
 # documentation intentionally defaulted.
 readme = true
 # homepage
 repository = "https://github.com/Tamschi/flourish"
 license = "MIT OR Apache-2.0"
 keywords = ["async", "framework", "incremental", "runtime", "signals"]
-categories = ["asynchronous", "caching", "concurrency", "gui", "memory-management"]
+categories = ["asynchronous", "caching", "concurrency"]
 publish = false
 
 [package.metadata.docs.rs]

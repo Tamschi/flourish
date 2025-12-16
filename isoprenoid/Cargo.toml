@@ -11,7 +11,7 @@ readme = true
 repository = "https://github.com/Tamschi/flourish"
 license = "MIT OR Apache-2.0"
 keywords = ["async", "sdk", "incremental", "runtime", "signals"]
-categories = ["asynchronous", "caching", "concurrency", "gui", "memory-management"]
+categories = ["asynchronous", "caching", "concurrency"]
 publish = false
 
 [package.metadata.docs.rs]

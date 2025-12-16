@@ -4,14 +4,14 @@ version = "0.1.2"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2021"
 rust-version = "1.88"
-description = "isoprenoid is the signals runtime framework backing flourish."
+description = "isoprenoid-unsend is the signals runtime framework backing flourish-unsend."
 # documentation intentionally defaulted.
 readme = true
 # homepage
 repository = "https://github.com/Tamschi/flourish"
 license = "MIT OR Apache-2.0"
 keywords = ["async", "sdk", "incremental", "runtime", "signals"]
-categories = ["asynchronous", "caching", "concurrency", "gui", "memory-management"]
+categories = ["asynchronous", "caching", "concurrency"]
 publish = false
 
 [package.metadata.docs.rs]
