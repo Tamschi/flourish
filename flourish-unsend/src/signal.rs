@@ -1801,7 +1801,7 @@ impl<T: ?Sized, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRunt
 	///
 	/// # Returns
 	///
-	/// The previous value.
+	/// [`Ok`], or [`Err(new_value)`](`Err`) iff not overwritten.
 	///
 	/// # Panics
 	///

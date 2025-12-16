@@ -1932,7 +1932,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// # Returns
 	///
-	/// The previous value.
+	/// [`Ok`], or [`Err(new_value)`](`Err`) iff not overwritten.
 	///
 	/// # Panics
 	///

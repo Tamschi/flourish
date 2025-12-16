@@ -184,7 +184,7 @@ pub trait UnmanagedSignalCell<T: ?Sized, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Returns
 	///
-	/// The previous value.
+	/// [`Ok`], or [`Err(new_value)`](`Err`) iff not overwritten.
 	///
 	/// # Panics
 	///
@@ -203,7 +203,7 @@ pub trait UnmanagedSignalCell<T: ?Sized, SR: ?Sized + SignalsRuntimeRef>:
 		Self: 'f + Sized,
 		T: 'f + Sized;
 
-	/// Return type of [`replace_eager`](`UnmanagedSignalCell::replace_eager`).
+	/// Return type of [`set_eager`](`UnmanagedSignalCell::set_eager`).
 	type SetEager<'f>: 'f + Future<Output = Result<(), T>>
 	where
 		Self: 'f + Sized,
@@ -313,7 +313,7 @@ pub trait UnmanagedSignalCell<T: ?Sized, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Returns
 	///
-	/// [`Ok`] with the previous value, or [`Err(new_value)`](`Err`) iff not replaced.
+	/// [`Ok`], or [`Err(new_value)`](`Err`) iff not overwritten.
 	///
 	/// # Panics
 	///
@@ -344,10 +344,6 @@ pub trait UnmanagedSignalCell<T: ?Sized, SR: ?Sized + SignalsRuntimeRef>:
 		T: Sized + PartialEq;
 
 	/// Unconditionally overwrites the current value with `new_value` and signals dependents.
-	///
-	/// # Returns
-	///
-	/// The previous value.
 	///
 	/// # Panics
 	///
