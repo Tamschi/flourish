@@ -69,7 +69,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Logic
 	///
-	/// If a call to [`recod_dependency`](`SignalsRuntimeRef::record_dependency`) causes a subscription
+	/// If a call to [`record_dependency`](`SignalsRuntimeRef::record_dependency`) causes a subscription
 	/// change, the runtime **should** call that [`CallbackTable::on_subscribed_change`] callback before
 	/// returning from this function. (This helps to manage on-demand-only resources more efficiently.)
 	///
@@ -312,7 +312,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// # Logic
 	///
 	/// This function **may** act as "exclusivity context" for nested calls to [`update_blocking`](`SignalsRuntimeRef::update_blocking`),
-	/// casing them to deadlock or panic.
+	/// causing them to deadlock or panic.
 	#[inline(always)]
 	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {
 		f()
