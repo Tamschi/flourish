@@ -11,7 +11,7 @@ readme = true
 repository = "https://github.com/Tamschi/flourish"
 license = "MIT OR Apache-2.0"
 keywords = ["async", "sdk", "incremental", "runtime", "signals"]
-categories = ["asynchronous", "caching", "concurrency", "gui", "memory-management"]
+categories = ["asynchronous", "caching", "concurrency"]
 
 [package.metadata.docs.rs]
 features = [ "_doc" ]
@@ -22,7 +22,6 @@ features = [ "_doc" ]
  # Implements `SignalsRuntimeRef` for `GlobalSignalsRuntime`.
 global_signals_runtime = [
 	"dep:async-lock",
-	"dep:event-listener",
 	"dep:lock_api",
 	"dep:parking_lot",
 	"dep:scopeguard",
@@ -35,7 +34,6 @@ _doc = ["global_signals_runtime"] # Internal documentation feature.
 
 [dependencies]
 async-lock = { version = "3.4.0", default-features = false, optional = true, features = ["std"] }
-event-listener = { version = "5.3.0", default-features = false, optional = true } # for `Link: Sync`
 lock_api = { version = "0.4.12", default-features = false, optional = true } # for const `ReentrantMutex::new`
 futures-lite = { version = "2.3.0", default-features = false, features = ["alloc"] }
 parking_lot = { version = "0.12.2", default-features = false, optional = true }

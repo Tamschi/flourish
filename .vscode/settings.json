@@ -2,14 +2,21 @@
     "cSpell.words": [
         "combinators",
         "isoprenoid",
+        "oneshot",
         "pinnable",
+        "println",
         "Reborrows",
         "restabilised",
         "RPITIT",
         "scopeguard",
-        "sptr"
+        "sptr",
+        "uninit",
+        "unsend",
+        "unsizing",
+        "upcasting"
     ],
     "rust-analyzer.cargo.features": [
         "_test"
-    ]
+    ],
+    "cSpell.language": "en,en-GB"
 }

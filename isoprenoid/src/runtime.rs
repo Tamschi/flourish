@@ -5,7 +5,13 @@
 //! Enable the `global_signals_runtime` Cargo feature for [`GlobalSignalsRuntime`] to implement [`SignalsRuntimeRef`].
 
 use core::{self};
-use std::{self, fmt::Debug, future::Future, mem, num::NonZeroU64};
+use std::{
+	self,
+	fmt::{self, Debug, Formatter},
+	future::Future,
+	mem,
+	num::NonZeroU64,
+};
 
 /// Embedded in signals to refer to a specific signals runtime.
 ///
@@ -63,7 +69,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Logic
 	///
-	/// If a call to [`recod_dependency`](`SignalsRuntimeRef::record_dependency`) causes a subscription
+	/// If a call to [`record_dependency`](`SignalsRuntimeRef::record_dependency`) causes a subscription
 	/// change, the runtime **should** call that [`CallbackTable::on_subscribed_change`] callback before
 	/// returning from this function. (This helps to manage on-demand-only resources more efficiently.)
 	///
@@ -306,7 +312,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// # Logic
 	///
 	/// This function **may** act as "exclusivity context" for nested calls to [`update_blocking`](`SignalsRuntimeRef::update_blocking`),
-	/// casing them to deadlock or panic.
+	/// causing them to deadlock or panic.
 	#[inline(always)]
 	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {
 		f()
@@ -356,7 +362,7 @@ impl CallbackTableTypes for ACallbackTableTypes {
 pub struct GlobalSignalsRuntime;
 
 impl Debug for GlobalSignalsRuntime {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		if cfg!(feature = "global_signals_runtime") {
 			#[cfg(feature = "global_signals_runtime")]
 			Debug::fmt(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME, f)?;
@@ -364,7 +370,7 @@ impl Debug for GlobalSignalsRuntime {
 		} else {
 			struct Unavailable;
 			impl Debug for Unavailable {
-				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+				fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 					write!(
 						f,
 						"(unavailable without `isoprenoid/global_signals_runtime` feature)"
@@ -386,7 +392,7 @@ impl Debug for GlobalSignalsRuntime {
 pub struct GSRSymbol(pub(crate) ASymbol);
 
 impl Debug for GSRSymbol {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_tuple("GSRSymbol").field(&self.0 .0).finish()
 	}
 }
@@ -528,7 +534,7 @@ pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
 }
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Debug for CallbackTable<T, CTT> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("CallbackTable")
 			.field("update", &self.update)
 			.field("on_subscribed_change", &self.on_subscribed_change)
@@ -591,7 +597,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
 	///
 	/// Note that the callback functions still may only be called using the originally correct data pointer(s).
 	pub fn into_erased_ptr(this: *const Self) -> *const CallbackTable<(), CTT> {
-		unsafe { mem::transmute(this) }
+		this.cast()
 	}
 
 	/// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()` in the signature.

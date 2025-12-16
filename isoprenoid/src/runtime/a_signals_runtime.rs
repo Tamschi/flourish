@@ -2,7 +2,7 @@ use std::{
 	borrow::{Borrow, BorrowMut as _},
 	cell::{RefCell, RefMut},
 	collections::{BTreeMap, BTreeSet, VecDeque},
-	fmt::Debug,
+	fmt::{self, Debug, Formatter},
 	mem,
 	sync::{atomic::Ordering, Arc, Mutex},
 };
@@ -31,7 +31,7 @@ struct ASignalsRuntime_ {
 	interdependencies: Interdependencies,
 }
 
-#[derive(Debug, Clone, Copy, Eq, Ord)]
+#[derive(Debug, Clone, Copy, Eq)]
 struct Stale {
 	symbol: ASymbol,
 	flush: bool,
@@ -45,7 +45,13 @@ impl Borrow<ASymbol> for Stale {
 
 impl PartialOrd for Stale {
 	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-		self.symbol.partial_cmp(&other.symbol)
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for Stale {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		self.symbol.cmp(&other.symbol)
 	}
 }
 
@@ -56,7 +62,7 @@ impl PartialEq for Stale {
 }
 
 impl Debug for ASignalsRuntime_ {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("ASignalsRuntime_")
 			.field("context_stack", &self.context_stack)
 			.field("callbacks", &self.callbacks)
@@ -244,7 +250,7 @@ impl ASignalsRuntime {
 			subscribers.intrinsic = subscribers
 				.intrinsic
 				.checked_sub(1)
-				.expect("Tried to decrement intrinic subscriber count below 0.");
+				.expect("Tried to decrement intrinsic subscriber count below 0.");
 			true
 		} else {
 			subscribers.extrinsic.remove(&dependent)

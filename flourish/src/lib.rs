@@ -52,7 +52,7 @@ pub mod prelude {
 	};
 }
 
-#[doc(hidden = "macro-only")]
+#[doc(hidden)]
 pub mod __ {
 	pub use super::unmanaged::{
 		raw_effect::new_raw_unsubscribed_effect,
