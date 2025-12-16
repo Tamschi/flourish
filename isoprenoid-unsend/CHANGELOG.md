@@ -1,25 +1,7 @@
 # `isoprenoid` Changelog
 
-## 0.1.2
+## 0.1.3
 
-2025-06-02
-
-- Features:
-  - Added `SignalsRuntimeRef::hint_batched_updates` method with default implementation.
-  - Wasm-compatibility.
-
-- Revisions:
-  - Documentation typo fix.
-
-## 0.1.1
-
-2024-11-22
-
-- Revisions:
-  - Fixed docs.rs build.
-
-## 0.1.0
-
-2024-11-22
+2025-12-16
 
 Initial release.
