@@ -1,7 +1,7 @@
-# *flourish* Changelog
+# *flourish-unsend* Changelog
 
-## 0.1.3
+## 0.2.0
 
-TODO: Date
+2025-12-16
 
 Initial release.

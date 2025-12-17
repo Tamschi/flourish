@@ -1,5 +1,20 @@
 # *flourish* Changelog
 
+## 0.2.0+0.1-compatible
+
+2025-12-16
+
+- Breaking Changes:
+  - Streamlines signal cell API:
+    - "`change`" is now "`replace_if_distinct`" to clarify what it does.
+      - All variants are renamed accordingly.
+    - `replace()` is now `set()`, as it (generally, but without guarantee) overwrite the old value in place.
+
+- Features:
+  - Added "`set`" and "`set_if_distinct`" variant methods that (generally, but without guarantee) overwrite the old value in place.
+
+These changes are reflected on both `UnmanagedSignalCell` and the cell API on `Signal`.
+
 ## 0.1.3
 
 2025-06-02

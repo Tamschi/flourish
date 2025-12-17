@@ -1,5 +1,13 @@
 # `isoprenoid` Changelog
 
+## 0.1.3
+
+2025-12-16
+
+Revisions:
+  - Fixed a logic bug that could potentially have resulted in signals being refreshed twice iff such a refresh was scheduled both due to flushing and non-flushing propagation.  
+    (The behaviour continues to not be guaranteed either way, but now is potentially more efficient in some edge cases.)
+
 ## 0.1.2
 
 2025-06-02

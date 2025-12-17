@@ -72,7 +72,7 @@ dependencies = [
 
 [[package]]
 name = "flourish"
-version = "0.1.3"
+version = "0.2.0+0.1-compatible"
 dependencies = [
  "futures-channel",
  "futures-lite",
@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "flourish-unsend"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "futures-channel",
  "futures-lite",
@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "isoprenoid"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "async-lock",
  "futures-lite",
@@ -131,7 +131,7 @@ dependencies = [
 
 [[package]]
 name = "isoprenoid-unsend"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "async-lock",
  "futures-lite",
