@@ -15,6 +15,9 @@
 
 These changes are reflected on both `UnmanagedSignalCell` and the cell API on `Signal`.
 
+- Revisions:
+  - Simplified `Subscription` future implementations slightly using `futures_channel::oneshot`.
+
 ## 0.1.3
 
 2025-06-02

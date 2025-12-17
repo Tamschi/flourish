@@ -2,8 +2,6 @@ use std::{borrow::Borrow, future::Future, ops::Deref, pin::Pin};
 
 use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 
-//TODO: Revise "# Returns" documentation! Some is mismatched.
-
 /// "Unmanaged" (stack-pinnable) signals that have an accessible value.
 ///
 /// **Combinators should implement this.**
