@@ -26,18 +26,14 @@ pub type SubscriptionDyn<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignal<T
 /// [`Subscription`] after cell-type-erasure.
 pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-/// Intrinsically-subscribing version of [`SignalArc`].  
+/// Intrinsically-subscribing version of [`SignalArc`].\
 /// Can be directly constructed but also converted to and from that type.
 #[must_use = "Subscriptions are undone when dropped."]
-pub struct Subscription<
-	T: ?Sized,
-	S: ?Sized + UnmanagedSignal<T, SR>,
-	SR: ?Sized + SignalsRuntimeRef,
-> {
+pub struct Subscription<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> {
 	pub(crate) subscribed: ManuallyDrop<Strong<T, S, SR>>,
 }
 
-impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Deref
 	for Subscription<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
@@ -47,15 +43,15 @@ impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeR
 	}
 }
 
-impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Borrow<Signal<T, S, SR>> for Subscription<T, S, SR>
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Borrow<Signal<T, S, SR>>
+	for Subscription<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
 		self.subscribed.borrow()
 	}
 }
 
-impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Debug
 	for Subscription<T, S, SR>
 where
 	T: Debug,
@@ -69,7 +65,7 @@ where
 	}
 }
 
-impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Drop
 	for Subscription<T, S, SR>
 {
 	fn drop(&mut self) {
@@ -83,16 +79,16 @@ impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeR
 		if let Some(strong) = weak.upgrade() {
 			// The managed `Signal` wasn't exclusive (so it wasn't purged from the signals runtime),
 			// so decrement its subscription count.
-			strong._managed().unsubscribe();
+			strong.managed().unsubscribe();
 		}
 	}
 }
 
-impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Clone
 	for Subscription<T, S, SR>
 {
 	fn clone(&self) -> Self {
-		self.subscribed._managed().subscribe();
+		self.subscribed.managed().subscribe();
 		Self {
 			subscribed: self.subscribed.clone(),
 		}
@@ -109,7 +105,7 @@ impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Subsc
 	{
 		unmanaged.clone_runtime_ref().run_detached(|| {
 			let strong = Strong::pin(unmanaged);
-			strong._managed().subscribe();
+			strong.managed().subscribe();
 			// Important: Wrap only after subscribing succeeds!
 			//            If there's a panic, we still want to release the `Strong` but without calling `.unsubscribe()`.
 			//            (Technically the `<Self as Drop>::drop` also avoids this, but that's extra work anyway.)
@@ -165,7 +161,7 @@ impl<T: ?Sized, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Subscr
 	}
 }
 
-impl<T: ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {
 	/// Obscures the cell API, allowing only reads and subscriptions.
@@ -184,7 +180,7 @@ impl<T: ?Sized, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRunti
 	}
 }
 
-impl<'a, T: 'a + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SubscriptionDynCell<'a, T, SR> {
+impl<'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> SubscriptionDynCell<'a, T, SR> {
 	/// Obscures the cell API, allowing only reads and subscriptions.
 	///
 	/// Since 0.1.2.
@@ -225,7 +221,7 @@ impl<'a, T: 'a + ?Sized, SR: 'a + ?Sized + SignalsRuntimeRef> SubscriptionDynCel
 /// let sub_distinct = Signal::distinct(|| ()).into_subscription();
 /// # }
 /// ```
-impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
+impl<T: ?Sized, SR: SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// ```
@@ -498,34 +494,32 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// });
 	/// # }
 	/// ```
-	pub fn skipped_while_with_runtime<'f, 'a: 'f>(
+	pub async fn skipped_while_with_runtime<'f, 'a: 'f>(
 		select_fn_pin: impl 'a + FnMut() -> T,
 		mut predicate_fn_pin: impl 'f + FnMut(&T) -> bool,
 		runtime: SR,
-	) -> impl 'f + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
+	) -> Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		async {
-			let sub = Subscription::computed_with_runtime(select_fn_pin, runtime.clone());
-			{
-				let (notify_ready, ready) = oneshot::channel();
-				let mut notify = Some(notify_ready);
-				signals_helper! {
-					let effect = effect_with_runtime!({
-						let sub = &sub;
-						move || {
-							if !predicate_fn_pin(&**sub.read_dyn()) {
-								notify.take().expect("Reached only once.").send(()).expect("Iff cancelled, then together.");
-							}
+		let sub = Subscription::computed_with_runtime(select_fn_pin, runtime.clone());
+		{
+			let (notify_ready, ready) = oneshot::channel();
+			let mut notify = Some(notify_ready);
+			signals_helper! {
+				let effect = effect_with_runtime!({
+					let sub = &sub;
+					move || {
+						if !predicate_fn_pin(&**sub.read_dyn()) {
+							notify.take().expect("Reached only once.").send(()).expect("Iff cancelled, then together.");
 						}
-					}, drop, runtime);
-				}
-				ready.await.expect("Iff cancelled, then together.");
+					}
+				}, drop, runtime);
 			}
-			sub
+			ready.await.expect("Iff cancelled, then together.");
 		}
+		sub
 	}
 
 	/// When awaited, subscribes to its inputs (from both closures) and resolves to a
@@ -587,47 +581,45 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// ```
 	///
 	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
-	pub fn filtered_with_runtime<'a>(
+	pub async fn filtered_with_runtime<'a>(
 		mut fn_pin: impl 'a + FnMut() -> T,
 		mut predicate_fn_pin: impl 'a + FnMut(&T) -> bool,
 		runtime: SR,
-	) -> impl 'a + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
+	) -> Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Copy,
 		SR: 'a,
 	{
-		async {
-			let (notify_initialized, initialized) = oneshot::channel();
-			let mut notify_initialized = Some(notify_initialized);
-			let sub = Subscription::folded_with_runtime(
-				MaybeUninit::uninit(),
-				{
-					move |value| {
-						let next = fn_pin();
-						if predicate_fn_pin(&next) {
-							match notify_initialized.take() {
-								None => {
-									*unsafe { value.assume_init_mut() } = next;
-								}
-								Some(notify_initialized) => {
-									value.write(next);
-									notify_initialized
-										.send(())
-										.expect("Iff cancelled, then together.");
-								}
+		let (notify_initialized, initialized) = oneshot::channel();
+		let mut notify_initialized = Some(notify_initialized);
+		let sub = Subscription::folded_with_runtime(
+			MaybeUninit::uninit(),
+			{
+				move |value| {
+					let next = fn_pin();
+					if predicate_fn_pin(&next) {
+						match notify_initialized.take() {
+							None => {
+								*unsafe { value.assume_init_mut() } = next;
 							}
-							Propagation::Propagate
-						} else {
-							Propagation::Halt
+							Some(notify_initialized) => {
+								value.write(next);
+								notify_initialized
+									.send(())
+									.expect("Iff cancelled, then together.");
+							}
 						}
+						Propagation::Propagate
+					} else {
+						Propagation::Halt
 					}
-				},
-				runtime,
-			);
-			initialized.await.expect("Iff cancelled, then together.");
+				}
+			},
+			runtime,
+		);
+		initialized.await.expect("Iff cancelled, then together.");
 
-			unsafe { assume_init_subscription(sub) }
-		}
+		unsafe { assume_init_subscription(sub) }
 	}
 
 	/// When awaited, subscribes to its inputs and resolves to a [`Subscription`] that
@@ -679,50 +671,48 @@ impl<T: ?Sized, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// ```
 	///
 	/// Note that the constructed [`Signal`] will generally not observe inputs while [`unsubscribe`](`Subscription::unsubscribe`)d!
-	pub fn filter_mapped_with_runtime<'a>(
+	pub async fn filter_mapped_with_runtime<'a>(
 		mut fn_pin: impl 'a + FnMut() -> Option<T>,
 		runtime: SR,
-	) -> impl 'a + Future<Output = Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>>
+	) -> Subscription<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Copy,
 		SR: 'a,
 	{
-		async {
-			let (notify_initialized, initialized) = oneshot::channel();
-			let mut notify_initialized = Some(notify_initialized);
-			let sub = Subscription::folded_with_runtime(
-				MaybeUninit::uninit(),
-				{
-					move |value| {
-						if let Some(next) = fn_pin() {
-							match notify_initialized.take() {
-								None => {
-									*unsafe { value.assume_init_mut() } = next;
-								}
-								Some(notify_initialized) => {
-									value.write(next);
-									notify_initialized
-										.send(())
-										.expect("Iff cancelled, then together.");
-								}
+		let (notify_initialized, initialized) = oneshot::channel();
+		let mut notify_initialized = Some(notify_initialized);
+		let sub = Subscription::folded_with_runtime(
+			MaybeUninit::uninit(),
+			{
+				move |value| {
+					if let Some(next) = fn_pin() {
+						match notify_initialized.take() {
+							None => {
+								*unsafe { value.assume_init_mut() } = next;
 							}
-							Propagation::Propagate
-						} else {
-							Propagation::Halt
+							Some(notify_initialized) => {
+								value.write(next);
+								notify_initialized
+									.send(())
+									.expect("Iff cancelled, then together.");
+							}
 						}
+						Propagation::Propagate
+					} else {
+						Propagation::Halt
 					}
-				},
-				runtime,
-			);
-			initialized.await.expect("Iff cancelled, then together.");
+				}
+			},
+			runtime,
+		);
+		initialized.await.expect("Iff cancelled, then together.");
 
-			unsafe { assume_init_subscription(sub) }
-		}
+		unsafe { assume_init_subscription(sub) }
 	}
 }
 
 unsafe fn assume_init_subscription<
-	T: ?Sized + Copy,
+	T: Copy,
 	S: UnmanagedSignal<MaybeUninit<T>, SR>,
 	SR: SignalsRuntimeRef,
 >(
@@ -736,7 +726,7 @@ unsafe fn assume_init_subscription<
 		UnmanagedSignal<T, SR> for AbiShim<S>
 	{
 		fn touch(self: Pin<&Self>) {
-			self.project_ref().0.touch()
+			self.project_ref().0.touch();
 		}
 
 		fn get(self: Pin<&Self>) -> T
@@ -774,8 +764,10 @@ unsafe fn assume_init_subscription<
 			unsafe {
 				//SAFETY: `MaybeUninit` is ABI-compatible with what it wraps.
 				Box::from_raw(
-					*(&Box::into_raw(self.project_ref().0.read_dyn())
-						as *const *mut dyn Guard<MaybeUninit<T>> as *const *mut dyn Guard<T>),
+					*std::ptr::from_ref::<*mut dyn Guard<MaybeUninit<T>>>(&Box::into_raw(
+						self.project_ref().0.read_dyn(),
+					))
+					.cast::<*mut dyn Guard<T>>(),
 				)
 			}
 		}
@@ -788,17 +780,17 @@ unsafe fn assume_init_subscription<
 		}
 
 		fn subscribe(self: Pin<&Self>) {
-			self.project_ref().0.subscribe()
+			self.project_ref().0.subscribe();
 		}
 
 		fn unsubscribe(self: Pin<&Self>) {
-			self.project_ref().0.unsubscribe()
+			self.project_ref().0.unsubscribe();
 		}
 	}
 
-	impl<T: ?Sized + Copy, G: ?Sized + Guard<MaybeUninit<T>>> Guard<T> for AbiShim<G> {}
+	impl<T: Copy, G: ?Sized + Guard<MaybeUninit<T>>> Guard<T> for AbiShim<G> {}
 
-	impl<T: ?Sized + Copy, G: ?Sized + Deref<Target = MaybeUninit<T>>> Deref for AbiShim<G> {
+	impl<T: Copy, G: ?Sized + Deref<Target = MaybeUninit<T>>> Deref for AbiShim<G> {
 		type Target = T;
 
 		fn deref(&self) -> &Self::Target {
@@ -806,7 +798,7 @@ unsafe fn assume_init_subscription<
 		}
 	}
 
-	impl<T: ?Sized + Copy, G: ?Sized + Borrow<MaybeUninit<T>>> Borrow<T> for AbiShim<G> {
+	impl<T: Copy, G: ?Sized + Borrow<MaybeUninit<T>>> Borrow<T> for AbiShim<G> {
 		fn borrow(&self) -> &T {
 			unsafe { self.0.borrow().assume_init_ref() }
 		}
@@ -815,9 +807,12 @@ unsafe fn assume_init_subscription<
 	unsafe {
 		//SAFETY: This may reinterpret a fat pointer, which skips over the `AbiShim` methods
 		//        entirely, but that's fine since everything is fully ABI-compatible.
-		(*(&(&ManuallyDrop::new(sub) as *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>)
-			as *const *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>
-			as *const *const Subscription<T, AbiShim<S>, SR>))
-			.read()
+		(*std::ptr::from_ref::<*const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>>(
+			&std::ptr::from_ref::<ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>>(
+				&ManuallyDrop::new(sub),
+			),
+		)
+		.cast::<*const Subscription<T, AbiShim<S>, SR>>())
+		.read()
 	}
 }

@@ -12,7 +12,7 @@ use crate::unmanaged::new_raw_unsubscribed_effect;
 ///
 /// The specified `drop_fn_pin` function also runs when the [`Effect`] is dropped.
 #[must_use = "Effects are cancelled when dropped."]
-pub struct Effect<'a, SR: 'a + ?Sized + SignalsRuntimeRef> {
+pub struct Effect<'a, SR: 'a + SignalsRuntimeRef> {
 	_raw_effect: Pin<Box<dyn 'a + DropHandle>>,
 	_phantom: PhantomData<SR>,
 }

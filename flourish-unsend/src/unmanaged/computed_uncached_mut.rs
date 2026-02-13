@@ -38,7 +38,7 @@ impl<T, F: FnMut() -> T, SR: SignalsRuntimeRef> ComputedUncachedMut<T, F, SR> {
 		Self(RawSignal::with_runtime(fn_pin.into(), runtime))
 	}
 
-	pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&RefCell<F>> {
+	pub(crate) fn touch(self: Pin<&Self>) -> Pin<&RefCell<F>> {
 		unsafe {
 			self.project_ref()
 				.0
@@ -117,6 +117,6 @@ impl<T, F: FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR>
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

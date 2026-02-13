@@ -49,7 +49,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
 				.unwrap()
 				.deref_mut()
 				.take()
-				.and_then(|value| Some(drop(value)));
+				.map(|value| drop(value));
 		});
 	}
 }
@@ -114,6 +114,6 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
 					RawEffect::<T, S, D, SR>::init(source, cache)
 				})
 			});
-		})
+		});
 	}
 }

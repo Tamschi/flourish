@@ -40,7 +40,10 @@ fn effect_drop_is_distinct() {
 
 	let a = Signal::cell_reactive((), |_value, _status| Propagation::Propagate);
 	let e = Effect::new(
-		|| constructions.push(a.get()),
+		|| {
+			let () = a.get();
+			constructions.push(())
+		},
 		|value| destructions.push(value),
 	);
 	constructions.expect([()]);

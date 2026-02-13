@@ -67,7 +67,7 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> ComputedUncachedMut
 		))
 	}
 
-	pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&Mutex<F>> {
+	pub(crate) fn touch(self: Pin<&Self>) -> Pin<&Mutex<F>> {
 		unsafe {
 			self.project_ref()
 				.0
@@ -175,6 +175,6 @@ impl<T: Send, F: Send + FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, 
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

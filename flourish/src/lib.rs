@@ -3,6 +3,7 @@
 #![warn(unreachable_pub)]
 #![allow(clippy::tabs_in_doc_comments)]
 #![allow(clippy::unit_arg)]
+#![allow(clippy::type_complexity)]
 // #![warn(clippy::single_call_fn)]
 //! <details><summary>README / Quick Start (click to expand)</summary>
 //!
@@ -45,7 +46,7 @@ pub use traits::Guard;
 pub use isoprenoid::runtime::{GlobalSignalsRuntime, Propagation, SignalsRuntimeRef};
 
 pub mod prelude {
-	//! Unmanaged signal accessors and [`SignalsRuntimeRef`].  
+	//! Unmanaged signal accessors and [`SignalsRuntimeRef`].\
 	//! Not necessary to use managed signals.
 
 	pub use crate::{

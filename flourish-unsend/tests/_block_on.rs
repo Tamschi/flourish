@@ -13,7 +13,7 @@ pub fn assert_ready<T>(f: impl IntoFuture<Output = T>) -> T {
 }
 
 #[track_caller]
-pub fn assert_pending<T>(f: impl IntoFuture<Output = T>) {
+pub fn assert_pending(f: impl IntoFuture) {
 	match pin!(f.into_future()).poll(&mut Context::from_waker(&waker())) {
 		Poll::Ready(_) => panic!("Unexpectedly ready!"),
 		Poll::Pending => (),

@@ -11,13 +11,14 @@ use isoprenoid::runtime::{Propagation, SignalsRuntimeRef};
 /// It's sound to transmute [`dyn UnmanagedSignal<T, SR>`](`UnmanagedSignal`) between different `T`s as long as that's sound and they're ABI-compatible.
 ///
 /// Note that dropping the [`dyn UnmanagedSignal<T, SR>`](`UnmanagedSignal`) dynamically **transmutes back** since it drops the value as the original type.
-pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Send + Sync {
+pub trait UnmanagedSignal<T: ?Sized + Send, SR: SignalsRuntimeRef>: Send + Sync {
 	/// Records `self` as dependency without accessing the value.
 	fn touch(self: Pin<&Self>);
 
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
 	/// Prefer [`touch`](`UnmanagedSignal::touch`) where possible.
+	#[must_use]
 	fn get(self: Pin<&Self>) -> T
 	where
 		T: Sync + Copy,
@@ -35,6 +36,7 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 	/// Records `self` as dependency and retrieves a copy of the value.
 	///
 	/// Prefer [`get`](`UnmanagedSignal::get`) where available.
+	#[must_use]
 	fn get_exclusive(self: Pin<&Self>) -> T
 	where
 		T: Copy,
@@ -114,14 +116,14 @@ pub trait UnmanagedSignal<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>: Sen
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
+pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: SignalsRuntimeRef>:
 	Send + Sync + UnmanagedSignal<T, SR>
 {
 	/// Iff `new_value` differs from the current value, overwrites it and signals dependents.
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
+	/// This method **must not** block *indefinitely*.\
 	/// This method **may** defer its effect.
 	fn set_if_distinct(self: Pin<&Self>, new_value: T)
 	where
@@ -133,7 +135,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
+	/// This method **must not** block *indefinitely*.\
 	/// This method **may** defer its effect.
 	fn set(self: Pin<&Self>, new_value: T)
 	where
@@ -145,7 +147,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
+	/// This method **must not** block *indefinitely*.\
 	/// This method **may** defer its effect.
 	fn update(self: Pin<&Self>, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
@@ -171,9 +173,9 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
-	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.\
+	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -200,9 +202,9 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
-	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.\
+	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -232,9 +234,9 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
-	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.\
+	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -261,9 +263,9 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
-	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.\
+	/// This method's effect **should** be cancelled iff the returned [`Future`] is dropped before it would yield [`Ready`](`core::task::Poll::Ready`).\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -292,8 +294,8 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** apply its effect even if [`Future`] is not polled.  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** apply its effect even if [`Future`] is not polled.\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -441,6 +443,7 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>:
 
 	/// Convenience method to split a pinning reference to this [`UnmanagedSignalCell`]
 	/// into a read-only/writable pair.
+	#[must_use]
 	fn as_source_and_cell(
 		self: Pin<&Self>,
 	) -> (

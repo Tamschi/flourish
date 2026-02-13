@@ -53,6 +53,6 @@ fn pending() {
 	);
 	v.expect([]);
 
-	let _sub = assert_pending(found);
+	assert_pending(found);
 	v.expect(["source", "signal", "test"])
 }

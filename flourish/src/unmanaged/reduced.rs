@@ -31,10 +31,10 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 pub(crate) struct ReducedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 pub(crate) struct ReducedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for ReducedGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for ReducedGuardExclusive<'a, T> {}
+impl<T: ?Sized> Guard<T> for ReducedGuard<'_, T> {}
+impl<T: ?Sized> Guard<T> for ReducedGuardExclusive<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for ReducedGuard<'a, T> {
+impl<T: ?Sized> Deref for ReducedGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -42,7 +42,7 @@ impl<'a, T: ?Sized> Deref for ReducedGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Deref for ReducedGuardExclusive<'a, T> {
+impl<T: ?Sized> Deref for ReducedGuardExclusive<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -50,13 +50,13 @@ impl<'a, T: ?Sized> Deref for ReducedGuardExclusive<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for ReducedGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for ReducedGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for ReducedGuardExclusive<'a, T> {
+impl<T: ?Sized> Borrow<T> for ReducedGuardExclusive<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -247,6 +247,6 @@ impl<
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

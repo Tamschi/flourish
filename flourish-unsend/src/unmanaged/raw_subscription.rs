@@ -22,9 +22,9 @@ pub struct RawSubscription<
 
 pub struct RawSubscriptionGuard<'a, T: ?Sized>(CachedGuard<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuard<'a, T> {}
+impl<T: ?Sized> Guard<T> for RawSubscriptionGuard<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for RawSubscriptionGuard<'a, T> {
+impl<T: ?Sized> Deref for RawSubscriptionGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -32,7 +32,7 @@ impl<'a, T: ?Sized> Deref for RawSubscriptionGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawSubscriptionGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for RawSubscriptionGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -55,13 +55,14 @@ pub fn new_raw_unsubscribed_subscription<
 pub fn pull_new_subscription<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
 	subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
-	subscription.project_ref().0.subscribe()
+	subscription.project_ref().0.subscribe();
 }
 
 #[doc(hidden)]
-pub fn pin_into_pin_impl_source<'a, T: ?Sized, SR: SignalsRuntimeRef>(
-	pin: Pin<&'a impl UnmanagedSignal<T, SR>>,
-) -> Pin<&'a impl UnmanagedSignal<T, SR>> {
+#[must_use]
+pub fn pin_into_pin_impl_source<T: ?Sized, SR: SignalsRuntimeRef>(
+	pin: Pin<&impl UnmanagedSignal<T, SR>>,
+) -> Pin<&impl UnmanagedSignal<T, SR>> {
 	pin
 }
 

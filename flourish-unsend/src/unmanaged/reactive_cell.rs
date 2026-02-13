@@ -51,9 +51,9 @@ where
 
 pub(crate) struct ReactiveCellGuard<'a, T: ?Sized>(Ref<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for ReactiveCellGuard<'a, T> {}
+impl<T: ?Sized> Guard<T> for ReactiveCellGuard<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for ReactiveCellGuard<'a, T> {
+impl<T: ?Sized> Deref for ReactiveCellGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -61,7 +61,7 @@ impl<'a, T: ?Sized> Deref for ReactiveCellGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for ReactiveCellGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for ReactiveCellGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -92,7 +92,7 @@ impl<
 		}
 	}
 
-	pub(crate) fn read<'a>(self: Pin<&'a Self>) -> impl 'a + Guard<T> {
+	pub(crate) fn read(self: Pin<&Self>) -> impl '_ + Guard<T> {
 		let this = &self;
 		ReactiveCellGuard(this.touch().borrow())
 	}
@@ -100,12 +100,12 @@ impl<
 	fn touch(self: Pin<&Self>) -> &RefCell<T> {
 		unsafe {
 			// SAFETY: Doesn't defer memory access.
-			&*(&self
+			&*(&raw const self
 				.project_ref()
 				.signal
 				.project_or_init::<E>(|_, slot| slot.write(()))
 				.0
-				 .1 as *const _)
+				 .1)
 		}
 	}
 }
@@ -199,14 +199,14 @@ impl<
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().signal.unsubscribe()
+		self.project_ref().signal.unsubscribe();
 	}
 }
 
 impl<
 		T: ?Sized,
 		HandlerFnPin: FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
-		SR: ?Sized + SignalsRuntimeRef,
+		SR: SignalsRuntimeRef,
 	> UnmanagedSignalCell<T, SR> for ReactiveCell<T, HandlerFnPin, SR>
 {
 	fn set_if_distinct(self: Pin<&Self>, new_value: T)
@@ -214,11 +214,11 @@ impl<
 		T: 'static + Sized + PartialEq,
 	{
 		self.update(|value| {
-			if *value != new_value {
+			if *value == new_value {
+				Propagation::Halt
+			} else {
 				*value = new_value;
 				Propagation::Propagate
-			} else {
-				Propagation::Halt
 			}
 		});
 	}
@@ -239,7 +239,7 @@ impl<
 			.run_detached(|| self.touch());
 		self.project_ref()
 			.signal
-			.update(|value, _| update(&mut value.1.borrow_mut()))
+			.update(|value, _| update(&mut value.1.borrow_mut()));
 	}
 
 	fn update_dyn(self: Pin<&Self>, update: Box<dyn 'static + FnOnce(&mut T) -> Propagation>)
@@ -251,7 +251,7 @@ impl<
 			.run_detached(|| self.touch());
 		self.project_ref()
 			.signal
-			.update(|value, _| update(&mut value.1.borrow_mut()))
+			.update(|value, _| update(&mut value.1.borrow_mut()));
 	}
 
 	fn set_if_distinct_eager<'f>(
@@ -271,12 +271,12 @@ impl<
 				};
 				let mut r = r.try_lock().unwrap();
 				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
-				if *value != new_value {
-					*r = Some(Ok(Ok(*value = new_value)));
-					(Propagation::Propagate, ())
-				} else {
+				if *value == new_value {
 					*r = Some(Ok(Err(new_value)));
 					(Propagation::Halt, ())
+				} else {
+					*r = Some(Ok(Ok(*value = new_value)));
+					(Propagation::Propagate, ())
 				}
 			}
 		});
@@ -317,12 +317,12 @@ impl<
 				};
 				let mut r = r.try_lock().unwrap();
 				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
-				if *value != new_value {
-					*r = Some(Ok(Ok(mem::replace(value, new_value))));
-					(Propagation::Propagate, ())
-				} else {
+				if *value == new_value {
 					*r = Some(Ok(Err(new_value)));
 					(Propagation::Halt, ())
+				} else {
+					*r = Some(Ok(Ok(mem::replace(value, new_value))));
+					(Propagation::Propagate, ())
 				}
 			}
 		});
@@ -359,7 +359,7 @@ impl<
 					return (Propagation::Halt, ());
 				};
 				let mut r = r.try_lock().unwrap();
-				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+				let new_value = r.take().unwrap().unwrap_err();
 				*r = Some(Ok(*value = new_value));
 				(Propagation::Propagate, ())
 			}
@@ -480,12 +480,12 @@ impl<
 					};
 					let mut r = r.try_lock().unwrap();
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
-					if *value != new_value {
-						*r = Some(Ok(Ok(*value = new_value)));
-						Propagation::Propagate
-					} else {
+					if *value == new_value {
 						*r = Some(Ok(Err(new_value)));
 						Propagation::Halt
+					} else {
+						*r = Some(Ok(Ok(*value = new_value)));
+						Propagation::Propagate
 					}
 				})
 			})
@@ -519,12 +519,12 @@ impl<
 					};
 					let mut r = r.try_lock().unwrap();
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
-					if *value != new_value {
-						*r = Some(Ok(Ok(mem::replace(value, new_value))));
-						Propagation::Propagate
-					} else {
+					if *value == new_value {
 						*r = Some(Ok(Err(new_value)));
 						Propagation::Halt
+					} else {
+						*r = Some(Ok(Ok(mem::replace(value, new_value))));
+						Propagation::Propagate
 					}
 				})
 			})
@@ -557,7 +557,7 @@ impl<
 						return Propagation::Halt;
 					};
 					let mut r = r.try_lock().unwrap();
-					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
+					let new_value = r.take().unwrap().unwrap_err();
 					*r = Some(Ok(*value = new_value));
 					Propagation::Propagate
 				})
@@ -666,10 +666,10 @@ impl<
 		T: Sized + PartialEq,
 	{
 		self.update_blocking(|value| {
-			if *value != new_value {
-				(Propagation::Propagate, Ok(*value = new_value))
-			} else {
+			if *value == new_value {
 				(Propagation::Halt, Err(new_value))
+			} else {
+				(Propagation::Propagate, Ok(*value = new_value))
 			}
 		})
 	}
@@ -679,10 +679,10 @@ impl<
 		T: Sized + PartialEq,
 	{
 		self.update_blocking(|value| {
-			if *value != new_value {
-				(Propagation::Propagate, Ok(mem::replace(value, new_value)))
-			} else {
+			if *value == new_value {
 				(Propagation::Halt, Err(new_value))
+			} else {
+				(Propagation::Propagate, Ok(mem::replace(value, new_value)))
 			}
 		})
 	}
@@ -691,7 +691,7 @@ impl<
 	where
 		T: Sized,
 	{
-		self.update_blocking(|value| (Propagation::Propagate, *value = new_value))
+		self.update_blocking(|value| (Propagation::Propagate, *value = new_value));
 	}
 
 	fn replace_blocking(&self, new_value: T) -> T
@@ -708,7 +708,7 @@ impl<
 
 	fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
 		self.signal
-			.update_blocking(|value, _| (update(&mut value.1.borrow_mut()), ()))
+			.update_blocking(|value, _| (update(&mut value.1.borrow_mut()), ()));
 	}
 }
 

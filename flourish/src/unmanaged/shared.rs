@@ -54,7 +54,7 @@ impl<T: Send + Sync + ?Sized, SR: SignalsRuntimeRef> Shared<T, SR> {
 	where
 		T: Sized,
 	{
-		Self { value, runtime }
+		Self { runtime, value }
 	}
 }
 

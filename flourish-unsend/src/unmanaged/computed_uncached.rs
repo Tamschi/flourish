@@ -38,7 +38,7 @@ impl<T, F: Fn() -> T, SR: SignalsRuntimeRef> ComputedUncached<T, F, SR> {
 		Self(RawSignal::with_runtime(fn_pin, runtime))
 	}
 
-	pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&F> {
+	pub(crate) fn touch(self: Pin<&Self>) -> Pin<&F> {
 		unsafe {
 			self.project_ref()
 				.0
@@ -114,6 +114,6 @@ impl<T, F: Fn() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for Computed
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

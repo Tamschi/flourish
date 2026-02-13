@@ -28,10 +28,10 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 pub(crate) struct FoldedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 pub(crate) struct FoldedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for FoldedGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for FoldedGuardExclusive<'a, T> {}
+impl<T: ?Sized> Guard<T> for FoldedGuard<'_, T> {}
+impl<T: ?Sized> Guard<T> for FoldedGuardExclusive<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for FoldedGuard<'a, T> {
+impl<T: ?Sized> Deref for FoldedGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -39,7 +39,7 @@ impl<'a, T: ?Sized> Deref for FoldedGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Deref for FoldedGuardExclusive<'a, T> {
+impl<T: ?Sized> Deref for FoldedGuardExclusive<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -47,13 +47,13 @@ impl<'a, T: ?Sized> Deref for FoldedGuardExclusive<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for FoldedGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for FoldedGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for FoldedGuardExclusive<'a, T> {
+impl<T: ?Sized> Borrow<T> for FoldedGuardExclusive<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -218,6 +218,6 @@ impl<T: Send, F: Send + FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> Unm
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

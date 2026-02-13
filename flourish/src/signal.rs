@@ -9,7 +9,6 @@ use std::{
 	pin::Pin,
 	process::abort,
 	sync::atomic::{AtomicUsize, Ordering},
-	usize,
 };
 
 use futures_lite::FutureExt as _;
@@ -35,7 +34,7 @@ use crate::{
 ///
 /// - [`SignalArc`] and [`Subscription`] each implement both [`Borrow<Signal<…>>`](`Borrow`) and [`Deref`].
 /// - [`Signal`] implements [`ToOwned<Owned = SignalArc<…>>`](`ToOwned`).
-pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> {
+pub struct Signal<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: SignalsRuntimeRef> {
 	inner: UnsafeCell<Signal_<T, S, SR>>,
 }
 
@@ -44,28 +43,27 @@ pub type SignalDyn<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignal<T, SR>, SR>;
 /// [`Signal`] after cell-type-erasure.
 pub type SignalDynCell<'a, T, SR> = Signal<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
+impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: SignalsRuntimeRef> Signal<T, S, SR> {
 	fn inner(&self) -> &Signal_<T, S, SR> {
 		unsafe { &*self.inner.get().cast_const() }
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Debug
 	for Signal<T, S, SR>
 where
 	S: Debug,
 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_tuple("Signal").field(&&*self._managed()).finish()
+		f.debug_tuple("Signal").field(&&*self.managed()).finish()
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Signal<T, S, SR>
-{
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Signal<T, S, SR> {
 	/// Creates a new [`SignalArc`] from the provided [`UnmanagedSignal`].
 	///
 	/// Convenience wrapper for [`SignalArc::new`].
+	#[allow(clippy::new_ret_no_self)]
 	pub fn new(unmanaged: S) -> SignalArc<T, S, SR>
 	where
 		S: Sized,
@@ -75,7 +73,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 }
 
 /// Secondary constructors.
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
+impl<T: ?Sized + Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// ```
@@ -986,15 +984,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// 	}), GlobalSignalsRuntime);
 	/// # }
 	/// ```
-	pub fn cell_cyclic_reactive_mut_with_runtime<
-		'a,
-		HandlerFnPin: 'a
-			+ Send
-			+ FnMut(
-				&mut T,
-				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
-			) -> Propagation,
-	>(
+	pub fn cell_cyclic_reactive_mut_with_runtime<'a, HandlerFnPin>(
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
 			&SignalWeakDynCell<'a, T, SR>,
 		) -> (T, HandlerFnPin),
@@ -1002,7 +992,12 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
-		HandlerFnPin: 'a,
+		HandlerFnPin: 'a
+			+ Send
+			+ FnMut(
+				&mut T,
+				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
+			) -> Propagation,
 		SR: 'a,
 	{
 		SignalArc {
@@ -1025,8 +1020,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	}
 }
 
-pub(crate) struct Signal_<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef>
-{
+pub(crate) struct Signal_<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: SignalsRuntimeRef> {
 	_phantom: PhantomData<(PhantomData<T>, SR)>,
 	strong: AtomicUsize,
 	weak: AtomicUsize,
@@ -1036,86 +1030,81 @@ pub(crate) struct Signal_<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized 
 pub(crate) struct Strong<
 	T: ?Sized + Send,
 	S: ?Sized + UnmanagedSignal<T, SR>,
-	SR: ?Sized + SignalsRuntimeRef,
+	SR: SignalsRuntimeRef,
 > {
 	strong: *const Signal<T, S, SR>,
 }
 
-pub(crate) struct Weak<
-	T: ?Sized + Send,
-	S: ?Sized + UnmanagedSignal<T, SR>,
-	SR: ?Sized + SignalsRuntimeRef,
-> {
+pub(crate) struct Weak<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
+{
 	weak: *const Signal<T, S, SR>,
 }
 
 /// # Safety
 ///
 /// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Signal<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Send
+	for Signal<T, S, SR>
 {
 }
 
 /// # Safety
 ///
 /// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Signal_<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Send
+	for Signal_<T, S, SR>
 {
 }
 
 /// # Safety
 ///
 /// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Strong<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Send
+	for Strong<T, S, SR>
 {
 }
 
 /// # Safety
 ///
 /// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Weak<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Send
+	for Weak<T, S, SR>
 {
 }
 
 /// # Safety
 ///
 /// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Signal<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Sync
+	for Signal<T, S, SR>
 {
 }
 
 /// # Safety
 ///
 /// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Signal_<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Sync
+	for Signal_<T, S, SR>
 {
 }
 
 /// # Safety
 ///
 /// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Strong<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Sync
+	for Strong<T, S, SR>
 {
 }
 
 /// # Safety
 ///
 /// [`Send`] and [`Sync`] bound on `S` are implied by [`UnmanagedSignal`].
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Weak<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Sync
+	for Weak<T, S, SR>
 {
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Strong<T, S, SR>
-{
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Strong<T, S, SR> {
 	pub(crate) fn pin(managed: S) -> Self
 	where
 		S: Sized,
@@ -1156,7 +1145,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		(*ManuallyDrop::new(Self { strong: weak })).clone()
 	}
 
-	pub(crate) fn _get(&self) -> &Signal<T, S, SR> {
+	pub(crate) fn get(&self) -> &Signal<T, S, SR> {
 		unsafe { &*self.strong }
 	}
 
@@ -1187,7 +1176,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef>
 	Strong<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>
 {
 	pub(crate) fn into_read_only(self) -> Strong<T, dyn 'a + UnmanagedSignal<T, SR>, SR> {
@@ -1198,35 +1187,33 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Deref
 	for Strong<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
 
 	fn deref(&self) -> &Self::Target {
-		self._get()
+		self.get()
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	Borrow<Signal<T, S, SR>> for Strong<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
-		self._get()
+		self.get()
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Weak<T, S, SR>
-{
-	fn _inner(&self) -> &Signal_<T, S, SR> {
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Weak<T, S, SR> {
+	fn inner(&self) -> &Signal_<T, S, SR> {
 		unsafe { &*(*self.weak).inner.get().cast_const() }
 	}
 
 	pub(crate) fn upgrade(&self) -> Option<Strong<T, S, SR>> {
-		let mut strong = self._inner().strong.load(Ordering::Relaxed);
+		let mut strong = self.inner().strong.load(Ordering::Relaxed);
 		while strong > 0 {
-			match self._inner().strong.compare_exchange(
+			match self.inner().strong.compare_exchange(
 				strong,
 				strong + 1,
 				Ordering::Acquire,
@@ -1260,31 +1247,29 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<'a, T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef>
-	Weak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>
-{
+impl<'a, T: ?Sized + Send, SR: SignalsRuntimeRef> Weak<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR> {
 	pub(crate) fn into_read_only(self) -> Weak<T, dyn 'a + UnmanagedSignal<T, SR>, SR> {
 		let this = ManuallyDrop::new(self);
 		Weak { weak: this.weak }
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Drop
 	for Strong<T, S, SR>
 {
 	fn drop(&mut self) {
-		if self._get().inner().strong.fetch_sub(1, Ordering::Release) == 1 {
-			unsafe { ManuallyDrop::drop(&mut *self._get().inner().managed.get()) }
-			drop(Weak { weak: self.strong })
+		if self.get().inner().strong.fetch_sub(1, Ordering::Release) == 1 {
+			unsafe { ManuallyDrop::drop(&mut *self.get().inner().managed.get()) }
+			drop(Weak { weak: self.strong });
 		}
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Drop
 	for Weak<T, S, SR>
 {
 	fn drop(&mut self) {
-		if self._inner().weak.fetch_sub(1, Ordering::Release) == 1 {
+		if self.inner().weak.fetch_sub(1, Ordering::Release) == 1 {
 			unsafe {
 				drop(Box::from_raw(self.weak.cast_mut()));
 			}
@@ -1292,7 +1277,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> ToOwned
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> ToOwned
 	for Signal<T, S, SR>
 {
 	type Owned = SignalArc<T, S, SR>;
@@ -1305,11 +1290,11 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Clone
 	for Strong<T, S, SR>
 {
 	fn clone(&self) -> Self {
-		if self._get().inner().strong.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
+		if self.get().inner().strong.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
 			eprintln!("SignalArc overflow.");
 			abort()
 		}
@@ -1319,11 +1304,11 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Clone
 	for Weak<T, S, SR>
 {
 	fn clone(&self) -> Self {
-		if self._inner().weak.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
+		if self.inner().weak.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
 			eprintln!("SignalWeak overflow.");
 			abort()
 		}
@@ -1332,16 +1317,14 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 }
 
 /// **Most application code should consume this.** Interface for movable signal handles that have an accessible value.
-impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
-	pub(crate) fn _managed(&self) -> Pin<&S> {
+impl<T: ?Sized + Send, S: ?Sized + Send + Sync, SR: SignalsRuntimeRef> Signal<T, S, SR> {
+	pub(crate) fn managed(&self) -> Pin<&S> {
 		unsafe { Pin::new_unchecked(&*self.inner().managed.get()) }
 	}
 }
 
 /// Adapters.
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Signal<T, S, SR>
-{
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Signal<T, S, SR> {
 	/// Creates a new [`Subscription`] for this [`Signal`].
 	///
 	/// Where you consume an owned [`SignalArc`], prefer [`SignalArc::into_subscription`] to avoid some memory barriers.
@@ -1390,7 +1373,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Signal<T, S, SR> {
+impl<T: ?Sized + Send, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Signal<T, S, SR> {
 	/// Reborrows with the [`UnmanagedSignalCell`] `S` replaced by an opaque [`UnmanagedSignal`] in the type signature.
 	pub fn as_read_only<'a>(&self) -> &Signal<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
@@ -1408,7 +1391,7 @@ impl<T: ?Sized + Send, S: UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalDynCell<'a, T, SR> {
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalDynCell<'a, T, SR> {
 	/// Reborrows while upcasting the reference, discarding mutation access.
 	///
 	/// Since 0.1.2.
@@ -1425,12 +1408,10 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalDynCe
 }
 
 /// Value accessors.
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Signal<T, S, SR>
-{
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Signal<T, S, SR> {
 	/// Records `self` as dependency without accessing the value.
 	pub fn touch(&self) {
-		self._managed().touch()
+		self.managed().touch();
 	}
 
 	/// Records `self` as dependency and retrieves a copy of the value.
@@ -1440,7 +1421,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	where
 		T: Sync + Copy,
 	{
-		self._managed().get()
+		self.managed().get()
 	}
 
 	/// Records `self` as dependency and retrieves a clone of the value.
@@ -1450,7 +1431,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	where
 		T: Sync + Clone,
 	{
-		self._managed().get_clone()
+		self.managed().get_clone()
 	}
 
 	/// Records `self` as dependency and retrieves a copy of the value.
@@ -1460,7 +1441,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	where
 		T: Copy,
 	{
-		self._managed().get_clone_exclusive()
+		self.managed().get_clone_exclusive()
 	}
 
 	/// Records `self` as dependency and retrieves a clone of the value.
@@ -1470,7 +1451,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	where
 		T: Clone,
 	{
-		self._managed().get_clone_exclusive()
+		self.managed().get_clone_exclusive()
 	}
 
 	/// Records `self` as dependency and allows borrowing the value.
@@ -1479,7 +1460,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		S: Sized,
 		T: 'r + Sync,
 	{
-		self._managed().read()
+		self.managed().read()
 	}
 
 	/// Records `self` as dependency and allows borrowing the value.
@@ -1490,7 +1471,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		S: Sized,
 		T: 'r,
 	{
-		self._managed().read_exclusive()
+		self.managed().read_exclusive()
 	}
 
 	/// The same as [`Signal::read`], but dyn-compatible.
@@ -1500,7 +1481,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	where
 		T: 'r + Sync,
 	{
-		self._managed().read_dyn()
+		self.managed().read_dyn()
 	}
 
 	/// The same as [`Signal::read_exclusive`], but dyn-compatible.
@@ -1510,7 +1491,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	where
 		T: 'r,
 	{
-		self._managed().read_exclusive_dyn()
+		self.managed().read_exclusive_dyn()
 	}
 
 	/// Clones this [`Signal`]'s [`SignalsRuntimeRef`].
@@ -1518,27 +1499,27 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	where
 		SR: Sized,
 	{
-		self._managed().clone_runtime_ref()
+		self.managed().clone_runtime_ref()
 	}
 }
 
 /// [`Cell`](`core::cell::Cell`)-likes that announce changes to their values to a [`SignalsRuntimeRef`].
 ///
 /// The "update" and "async" methods are non-dispatchable (meaning they can't be called on trait objects).
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntimeRef>
 	Signal<T, S, SR>
 {
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
+	/// This method **must not** block *indefinitely*.\
 	/// This method **may** defer its effect.
 	pub fn set_if_distinct(&self, new_value: T)
 	where
 		T: 'static + Sized + PartialEq,
 	{
-		self._managed().set_if_distinct(new_value)
+		self.managed().set_if_distinct(new_value);
 	}
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.
@@ -1547,13 +1528,13 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
+	/// This method **must not** block *indefinitely*.\
 	/// This method **may** defer its effect.
 	pub fn set(&self, new_value: T)
 	where
 		T: 'static + Sized,
 	{
-		self._managed().set(new_value)
+		self.managed().set(new_value);
 	}
 
 	/// Modifies the current value using the given closure.
@@ -1562,14 +1543,14 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
+	/// This method **must not** block *indefinitely*.\
 	/// This method **may** defer its effect.
 	pub fn update(&self, update: impl 'static + Send + FnOnce(&mut T) -> Propagation)
 	where
 		S: Sized,
 		T: 'static,
 	{
-		self._managed().update(update)
+		self.managed().update(update);
 	}
 
 	/// The same as [`update`](`Signal::update`), but dyn-compatible.
@@ -1577,7 +1558,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: 'static,
 	{
-		self._managed().update_dyn(update)
+		self.managed().update_dyn(update);
 	}
 
 	/// Cheaply creates a [`Future`] that has the effect of [`set_if_distinct_eager`](`Signal::set_if_distinct_eager`) when polled.
@@ -1888,9 +1869,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
-	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.\
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -1899,7 +1880,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		S: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		self._managed().set_if_distinct_eager(new_value)
+		self.managed().set_if_distinct_eager(new_value)
 	}
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -1914,9 +1895,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
-	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.\
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -1925,7 +1906,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		S: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		self._managed().replace_if_distinct_eager(new_value)
+		self.managed().replace_if_distinct_eager(new_value)
 	}
 
 	/// Unconditionally overwrites the current value with `new_value` and signals dependents.
@@ -1940,9 +1921,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
-	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.\
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -1951,7 +1932,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		S: 'f + Sized,
 		T: 'f + Sized,
 	{
-		self._managed().set_eager(new_value)
+		self.managed().set_eager(new_value)
 	}
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.
@@ -1966,9 +1947,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
-	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.\
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -1977,7 +1958,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 		S: 'f + Sized,
 		T: 'f + Sized,
 	{
-		self._managed().replace_eager(new_value)
+		self.managed().replace_eager(new_value)
 	}
 
 	/// Modifies the current value using the given closure.
@@ -1994,9 +1975,9 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	///
 	/// # Logic
 	///
-	/// This method **must not** block *indefinitely*.  
-	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.  
-	/// This method **should** cancel its effect when the returned [`Future`] is dropped.  
+	/// This method **must not** block *indefinitely*.\
+	/// This method **should** schedule its effect even if the returned [`Future`] is not polled.\
+	/// This method **should** cancel its effect when the returned [`Future`] is dropped.\
 	/// The returned [`Future`] **may** return [`Pending`](`core::task::Poll::Pending`) indefinitely iff polled in signal callbacks.
 	///
 	/// Don't `.await` the returned [`Future`] in signal callbacks!
@@ -2007,7 +1988,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		S: 'f + Sized,
 	{
-		self._managed().update_eager(update)
+		self.managed().update_eager(update)
 	}
 
 	/// The same as [`set_if_distinct_eager`](`Signal::set_if_distinct_eager`), but dyn-compatible.
@@ -2018,7 +1999,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		self._managed().set_if_distinct_eager_dyn(new_value)
+		self.managed().set_if_distinct_eager_dyn(new_value)
 	}
 
 	/// The same as [`replace_if_distinct_eager`](`Signal::replace_if_distinct_eager`), but dyn-compatible.
@@ -2029,7 +2010,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		self._managed().replace_if_distinct_eager_dyn(new_value)
+		self.managed().replace_if_distinct_eager_dyn(new_value)
 	}
 
 	/// The same as [`set_eager`](`Signal::set_eager`), but dyn-compatible.
@@ -2040,7 +2021,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: 'f + Sized,
 	{
-		self._managed().set_eager_dyn(new_value)
+		self.managed().set_eager_dyn(new_value)
 	}
 
 	/// The same as [`replace_eager`](`Signal::replace_eager`), but dyn-compatible.
@@ -2051,7 +2032,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: 'f + Sized,
 	{
-		self._managed().replace_eager_dyn(new_value)
+		self.managed().replace_eager_dyn(new_value)
 	}
 
 	/// The same as [`update_eager`](`Signal::update_eager`), but dyn-compatible.
@@ -2066,7 +2047,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: 'f,
 	{
-		self._managed().update_eager_dyn(update)
+		self.managed().update_eager_dyn(update)
 	}
 
 	/// Iff `new_value` differs from the current value, overwrites it and signals dependents.
@@ -2086,7 +2067,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: Sized + PartialEq,
 	{
-		self._managed().set_if_distinct_blocking(new_value)
+		self.managed().set_if_distinct_blocking(new_value)
 	}
 
 	/// Iff `new_value` differs from the current value, replaces it and signals dependents.
@@ -2106,7 +2087,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: Sized + PartialEq,
 	{
-		self._managed().replace_if_distinct_blocking(new_value)
+		self.managed().replace_if_distinct_blocking(new_value)
 	}
 
 	/// Unconditionally overwrites the current value with `new_value` and signals dependents.
@@ -2122,7 +2103,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: Sized,
 	{
-		self._managed().set_blocking(new_value)
+		self.managed().set_blocking(new_value);
 	}
 
 	/// Unconditionally replaces the current value with `new_value` and signals dependents.
@@ -2142,7 +2123,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		T: Sized,
 	{
-		self._managed().replace_blocking(new_value)
+		self.managed().replace_blocking(new_value)
 	}
 
 	/// Modifies the current value using the given closure.
@@ -2164,12 +2145,12 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Sign
 	where
 		S: Sized,
 	{
-		self._managed().update_blocking(update)
+		self.managed().update_blocking(update)
 	}
 
 	/// The same as [`update_blocking`](`Signal::update_blocking`), but dyn-compatible.
 	pub fn update_blocking_dyn(&self, update: Box<dyn '_ + FnOnce(&mut T) -> Propagation>) {
-		self._managed().update_blocking_dyn(update)
+		self.managed().update_blocking_dyn(update);
 	}
 }
 

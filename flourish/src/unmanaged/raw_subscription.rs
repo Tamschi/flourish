@@ -26,10 +26,10 @@ pub struct RawSubscription<
 pub struct RawSubscriptionGuard<'a, T: ?Sized>(CachedGuard<'a, T>);
 pub struct RawSubscriptionGuardExclusive<'a, T: ?Sized>(CachedGuardExclusive<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for RawSubscriptionGuardExclusive<'a, T> {}
+impl<T: ?Sized> Guard<T> for RawSubscriptionGuard<'_, T> {}
+impl<T: ?Sized> Guard<T> for RawSubscriptionGuardExclusive<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for RawSubscriptionGuard<'a, T> {
+impl<T: ?Sized> Deref for RawSubscriptionGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -37,7 +37,7 @@ impl<'a, T: ?Sized> Deref for RawSubscriptionGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Deref for RawSubscriptionGuardExclusive<'a, T> {
+impl<T: ?Sized> Deref for RawSubscriptionGuardExclusive<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -45,13 +45,13 @@ impl<'a, T: ?Sized> Deref for RawSubscriptionGuardExclusive<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawSubscriptionGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for RawSubscriptionGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for RawSubscriptionGuardExclusive<'a, T> {
+impl<T: ?Sized> Borrow<T> for RawSubscriptionGuardExclusive<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -74,13 +74,14 @@ pub fn new_raw_unsubscribed_subscription<
 pub fn pull_new_subscription<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>(
 	subscription: Pin<&RawSubscription<T, S, SR>>,
 ) {
-	subscription.project_ref().0.subscribe()
+	subscription.project_ref().0.subscribe();
 }
 
 #[doc(hidden)]
-pub fn pin_into_pin_impl_source<'a, T: Send + ?Sized, SR: SignalsRuntimeRef>(
-	pin: Pin<&'a impl UnmanagedSignal<T, SR>>,
-) -> Pin<&'a impl UnmanagedSignal<T, SR>> {
+#[must_use]
+pub fn pin_into_pin_impl_source<T: Send + ?Sized, SR: SignalsRuntimeRef>(
+	pin: Pin<&impl UnmanagedSignal<T, SR>>,
+) -> Pin<&impl UnmanagedSignal<T, SR>> {
 	pin
 }
 

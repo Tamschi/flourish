@@ -26,18 +26,15 @@ pub type SubscriptionDyn<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignal<T
 /// [`Subscription`] after cell-type-erasure.
 pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-/// Intrinsically-subscribing version of [`SignalArc`].  
+/// Intrinsically-subscribing version of [`SignalArc`].\
 /// Can be directly constructed but also converted to and from that type.
 #[must_use = "Subscriptions are undone when dropped."]
-pub struct Subscription<
-	T: ?Sized + Send,
-	S: ?Sized + UnmanagedSignal<T, SR>,
-	SR: ?Sized + SignalsRuntimeRef,
-> {
+pub struct Subscription<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
+{
 	pub(crate) subscribed: ManuallyDrop<Strong<T, S, SR>>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Deref
 	for Subscription<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
@@ -47,7 +44,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	Borrow<Signal<T, S, SR>> for Subscription<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
@@ -55,7 +52,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Debug
 	for Subscription<T, S, SR>
 where
 	T: Debug,
@@ -69,16 +66,16 @@ where
 	}
 }
 
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for Subscription<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Send
+	for Subscription<T, S, SR>
 {
 }
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for Subscription<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Sync
+	for Subscription<T, S, SR>
 {
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Drop
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Drop
 	for Subscription<T, S, SR>
 {
 	fn drop(&mut self) {
@@ -92,16 +89,16 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 		if let Some(strong) = weak.upgrade() {
 			// The managed `Signal` wasn't exclusive (so it wasn't purged from the signals runtime),
 			// so decrement its subscription count.
-			strong._managed().unsubscribe();
+			strong.managed().unsubscribe();
 		}
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Clone
 	for Subscription<T, S, SR>
 {
 	fn clone(&self) -> Self {
-		self.subscribed._managed().subscribe();
+		self.subscribed.managed().subscribe();
 		Self {
 			subscribed: self.subscribed.clone(),
 		}
@@ -120,7 +117,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef
 	{
 		unmanaged.clone_runtime_ref().run_detached(|| {
 			let strong = Strong::pin(unmanaged);
-			strong._managed().subscribe();
+			strong.managed().subscribe();
 			// Important: Wrap only after subscribing succeeds!
 			//            If there's a panic, we still want to release the `Strong` but without calling `.unsubscribe()`.
 			//            (Technically the `<Self as Drop>::drop` also avoids this, but that's extra work anyway.)
@@ -178,7 +175,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	}
 }
 
-impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntimeRef>
 	Subscription<T, S, SR>
 {
 	/// Obscures the cell API, allowing only reads and subscriptions.
@@ -197,9 +194,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
-	SubscriptionDynCell<'a, T, SR>
-{
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SubscriptionDynCell<'a, T, SR> {
 	/// Obscures the cell API, allowing only reads and subscriptions.
 	///
 	/// Since 0.1.2.
@@ -240,7 +235,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef>
 /// let sub_distinct = Signal::distinct(|| ()).into_subscription();
 /// # }
 /// ```
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, SR> {
+impl<T: ?Sized + Send, SR: SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// A simple cached computation.
 	///
 	/// ```
@@ -737,12 +732,14 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Subscription<T, Opaque, S
 }
 
 unsafe fn assume_init_subscription<
-	T: ?Sized + Send + Copy,
+	T: Send + Copy,
 	S: UnmanagedSignal<MaybeUninit<T>, SR>,
 	SR: SignalsRuntimeRef,
 >(
 	sub: Subscription<MaybeUninit<T>, S, SR>,
 ) -> Subscription<T, impl UnmanagedSignal<T, SR>, SR> {
+	#![allow(clippy::too_many_lines)]
+
 	#[pin_project]
 	#[repr(transparent)]
 	struct AbiShim<T: ?Sized>(#[pin] T);
@@ -751,7 +748,7 @@ unsafe fn assume_init_subscription<
 		UnmanagedSignal<T, SR> for AbiShim<S>
 	{
 		fn touch(self: Pin<&Self>) {
-			self.project_ref().0.touch()
+			self.project_ref().0.touch();
 		}
 
 		fn get(self: Pin<&Self>) -> T
@@ -817,8 +814,9 @@ unsafe fn assume_init_subscription<
 			unsafe {
 				//SAFETY: `MaybeUninit` is ABI-compatible with what it wraps.
 				Box::from_raw(
-					*(&Box::into_raw(self.project_ref().0.read_exclusive_dyn())
-						as *const *mut dyn Guard<MaybeUninit<T>> as *const *mut dyn Guard<T>),
+					*(std::ptr::from_ref::<*mut dyn Guard<MaybeUninit<T>>>(&Box::into_raw(
+						self.project_ref().0.read_exclusive_dyn(),
+					)) as *const *mut dyn Guard<T>),
 				)
 			}
 		}
@@ -830,8 +828,9 @@ unsafe fn assume_init_subscription<
 			unsafe {
 				//SAFETY: `MaybeUninit` is ABI-compatible with what it wraps.
 				Box::from_raw(
-					*(&Box::into_raw(self.project_ref().0.read_exclusive_dyn())
-						as *const *mut dyn Guard<MaybeUninit<T>> as *const *mut dyn Guard<T>),
+					*(std::ptr::from_ref::<*mut dyn Guard<MaybeUninit<T>>>(&Box::into_raw(
+						self.project_ref().0.read_exclusive_dyn(),
+					)) as *const *mut dyn Guard<T>),
 				)
 			}
 		}
@@ -844,17 +843,17 @@ unsafe fn assume_init_subscription<
 		}
 
 		fn subscribe(self: Pin<&Self>) {
-			self.project_ref().0.subscribe()
+			self.project_ref().0.subscribe();
 		}
 
 		fn unsubscribe(self: Pin<&Self>) {
-			self.project_ref().0.unsubscribe()
+			self.project_ref().0.unsubscribe();
 		}
 	}
 
-	impl<T: ?Sized + Send + Copy, G: ?Sized + Guard<MaybeUninit<T>>> Guard<T> for AbiShim<G> {}
+	impl<T: Send + Copy, G: ?Sized + Guard<MaybeUninit<T>>> Guard<T> for AbiShim<G> {}
 
-	impl<T: ?Sized + Send + Copy, G: ?Sized + Deref<Target = MaybeUninit<T>>> Deref for AbiShim<G> {
+	impl<T: Send + Copy, G: ?Sized + Deref<Target = MaybeUninit<T>>> Deref for AbiShim<G> {
 		type Target = T;
 
 		fn deref(&self) -> &Self::Target {
@@ -862,7 +861,7 @@ unsafe fn assume_init_subscription<
 		}
 	}
 
-	impl<T: ?Sized + Send + Copy, G: ?Sized + Borrow<MaybeUninit<T>>> Borrow<T> for AbiShim<G> {
+	impl<T: Send + Copy, G: ?Sized + Borrow<MaybeUninit<T>>> Borrow<T> for AbiShim<G> {
 		fn borrow(&self) -> &T {
 			unsafe { self.0.borrow().assume_init_ref() }
 		}
@@ -871,8 +870,9 @@ unsafe fn assume_init_subscription<
 	unsafe {
 		//SAFETY: This may reinterpret a fat pointer, which skips over the `AbiShim` methods
 		//        entirely, but that's fine since everything is fully ABI-compatible.
-		(*(&(&ManuallyDrop::new(sub) as *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>)
-			as *const *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>
+		(*(&std::ptr::from_ref::<ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>>(
+			&ManuallyDrop::new(sub),
+		) as *const *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>
 			as *const *const Subscription<T, AbiShim<S>, SR>))
 			.read()
 	}

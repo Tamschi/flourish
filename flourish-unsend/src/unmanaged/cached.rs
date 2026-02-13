@@ -22,9 +22,9 @@ pub(crate) struct Cached<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntime
 
 pub(crate) struct CachedGuard<'a, T: ?Sized>(Ref<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for CachedGuard<'a, T> {}
+impl<T: ?Sized> Guard<T> for CachedGuard<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for CachedGuard<'a, T> {
+impl<T: ?Sized> Deref for CachedGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -32,7 +32,7 @@ impl<'a, T: ?Sized> Deref for CachedGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for CachedGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for CachedGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -41,7 +41,7 @@ impl<'a, T: ?Sized> Borrow<T> for CachedGuard<'a, T> {
 impl<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
 	pub(crate) fn new(source: S) -> Self {
 		let runtime = source.clone_runtime_ref();
-		Self(RawSignal::with_runtime(source.into(), runtime))
+		Self(RawSignal::with_runtime(source, runtime))
 	}
 
 	pub(crate) fn touch(self: Pin<&Self>) -> Pin<&RefCell<T>> {
@@ -142,6 +142,6 @@ impl<T: Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> UnmanagedSignal
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

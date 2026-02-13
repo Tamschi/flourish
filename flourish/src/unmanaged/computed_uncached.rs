@@ -61,13 +61,10 @@ unsafe impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef + Sync> S
 
 impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> ComputedUncached<T, F, SR> {
 	pub(crate) fn new(fn_pin: F, runtime: SR) -> Self {
-		Self(RawSignal::with_runtime(
-			ForceSyncUnpin(fn_pin.into()),
-			runtime,
-		))
+		Self(RawSignal::with_runtime(ForceSyncUnpin(fn_pin), runtime))
 	}
 
-	pub(crate) fn touch<'a>(self: Pin<&Self>) -> Pin<&F> {
+	pub(crate) fn touch(self: Pin<&Self>) -> Pin<&F> {
 		unsafe {
 			self.project_ref()
 				.0
@@ -174,6 +171,6 @@ impl<T: Send, F: Send + Sync + Fn() -> T, SR: SignalsRuntimeRef> UnmanagedSignal
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

@@ -22,9 +22,9 @@ pub(crate) struct Computed<T, F: FnMut() -> T, SR: SignalsRuntimeRef>(
 
 pub(crate) struct ComputedGuard<'a, T: ?Sized>(Ref<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for ComputedGuard<'a, T> {}
+impl<T: ?Sized> Guard<T> for ComputedGuard<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for ComputedGuard<'a, T> {
+impl<T: ?Sized> Deref for ComputedGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -32,7 +32,7 @@ impl<'a, T: ?Sized> Deref for ComputedGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for ComputedGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for ComputedGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -141,6 +141,6 @@ impl<T, F: FnMut() -> T, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for Compu
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

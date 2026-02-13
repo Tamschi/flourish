@@ -30,15 +30,11 @@ pub type SignalWeakDynCell<'a, T, SR> = SignalWeak<T, dyn 'a + UnmanagedSignalCe
 /// These weak references prevent deallocation, but otherwise do allow a managed [`Signal`]
 /// to be destroyed.
 #[repr(transparent)]
-pub struct SignalWeak<
-	T: ?Sized + Send,
-	S: ?Sized + UnmanagedSignal<T, SR>,
-	SR: ?Sized + SignalsRuntimeRef,
-> {
+pub struct SignalWeak<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> {
 	pub(crate) weak: Weak<T, S, SR>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	SignalWeak<T, S, SR>
 {
 	/// Tries to obtain a [`SignalArc`] from this [`SignalWeak`].
@@ -49,6 +45,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 
 	/// Erases the (generally opaque) type parameter `S`, allowing the weak signal handle
 	/// to be stored easily.
+	#[must_use]
 	pub fn into_dyn<'a>(self) -> SignalWeakDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
@@ -61,6 +58,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 
 	/// Erases the (generally opaque) type parameter `S`, allowing the weak signal cell
 	/// handle to be stored easily.
+	#[must_use]
 	pub fn into_dyn_cell<'a>(self) -> SignalWeakDynCell<'a, T, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
@@ -79,15 +77,11 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 /// Note that [`Signal`] implements [`ToOwned<Owned = SignalArc>`](`ToOwned`),
 /// so in cases where ownership is not always required, prefer [`&Signal`](`&`) as function parameter type!
 #[must_use = "Signals are generally inert unless subscribed to."]
-pub struct SignalArc<
-	T: ?Sized + Send,
-	S: ?Sized + UnmanagedSignal<T, SR>,
-	SR: ?Sized + SignalsRuntimeRef,
-> {
+pub struct SignalArc<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> {
 	pub(super) strong: Strong<T, S, SR>,
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Clone
 	for SignalArc<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -97,7 +91,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Clone
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Clone
 	for SignalWeak<T, S, SR>
 {
 	fn clone(&self) -> Self {
@@ -107,7 +101,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Debug
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Debug
 	for SignalArc<T, S, SR>
 where
 	T: Debug,
@@ -121,7 +115,7 @@ where
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef> Deref
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Deref
 	for SignalArc<T, S, SR>
 {
 	type Target = Signal<T, S, SR>;
@@ -131,7 +125,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	Borrow<Signal<T, S, SR>> for SignalArc<T, S, SR>
 {
 	fn borrow(&self) -> &Signal<T, S, SR> {
@@ -139,16 +133,16 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	}
 }
 
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Send for SignalArc<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Send
+	for SignalArc<T, S, SR>
 {
 }
-unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
-	Sync for SignalArc<T, S, SR>
+unsafe impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Sync
+	for SignalArc<T, S, SR>
 {
 }
 
-impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
 	SignalArc<T, S, SR>
 {
 	/// Creates a new [`SignalArc`] from the provided [`UnmanagedSignal`].
@@ -191,14 +185,14 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: ?Sized + SignalsR
 	///
 	/// Compared to [`Signal::to_subscription`], this avoids some memory barriers.
 	pub fn into_subscription(self) -> Subscription<T, S, SR> {
-		self.strong._managed().subscribe();
+		self.strong.managed().subscribe();
 		Subscription {
 			subscribed: ManuallyDrop::new(self.strong),
 		}
 	}
 }
 
-impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntimeRef>
 	SignalArc<T, S, SR>
 {
 	/// Obscures the cell API, allowing only reads and subscriptions.
@@ -232,7 +226,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalArcDynCell<'a, T, SR> {
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalArcDynCell<'a, T, SR> {
 	/// Obscures the cell API, allowing only reads and subscriptions.
 	///
 	/// Since 0.1.2.
@@ -249,10 +243,11 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalArcDy
 	}
 }
 
-impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + SignalsRuntimeRef>
+impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: SignalsRuntimeRef>
 	SignalWeak<T, S, SR>
 {
 	/// Obscures the cell API, allowing only reads and subscriptions.
+	#[must_use]
 	pub fn into_read_only<'a>(self) -> SignalWeak<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a,
@@ -268,6 +263,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 
 	/// Equivalent to a getter/setter splitter.
+	#[must_use]
 	pub fn into_read_only_and_self<'a>(
 		self,
 	) -> (SignalWeak<T, impl 'a + UnmanagedSignal<T, SR>, SR>, Self)
@@ -279,6 +275,7 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 
 	/// A getter/setter splitter like [`.into_read_only_and_self()`](`SignalWeak::into_read_only_and_self`),
 	/// but additionally type-erases the type parameter `S` for easy storage.
+	#[must_use]
 	pub fn into_dyn_read_only_and_self<'a>(
 		self,
 	) -> (SignalWeakDyn<'a, T, SR>, SignalWeakDynCell<'a, T, SR>)
@@ -289,10 +286,11 @@ impl<T: ?Sized + Send, S: Sized + UnmanagedSignalCell<T, SR>, SR: ?Sized + Signa
 	}
 }
 
-impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalWeakDynCell<'a, T, SR> {
+impl<'a, T: 'a + ?Sized + Send, SR: 'a + SignalsRuntimeRef> SignalWeakDynCell<'a, T, SR> {
 	/// Obscures the cell API, allowing only reads and subscriptions.
 	///
 	/// Since 0.1.2.
+	#[must_use]
 	pub fn into_read_only(self) -> SignalWeakDyn<'a, T, SR> {
 		unsafe {
 			//SAFETY: Prevents dropping of the original `Weak`,
@@ -307,6 +305,7 @@ impl<'a, T: 'a + ?Sized + Send, SR: 'a + ?Sized + SignalsRuntimeRef> SignalWeakD
 	/// Equivalent to a getter/setter splitter.
 	///
 	/// Since 0.1.2.
+	#[must_use]
 	pub fn into_read_only_and_self(self) -> (SignalWeakDyn<'a, T, SR>, Self) {
 		(self.clone().into_read_only(), self)
 	}

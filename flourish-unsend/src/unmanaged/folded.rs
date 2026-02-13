@@ -22,9 +22,9 @@ pub(crate) struct Folded<T, F: FnMut(&mut T) -> Propagation, SR: SignalsRuntimeR
 
 pub(crate) struct FoldedGuard<'a, T: ?Sized>(Ref<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for FoldedGuard<'a, T> {}
+impl<T: ?Sized> Guard<T> for FoldedGuard<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for FoldedGuard<'a, T> {
+impl<T: ?Sized> Deref for FoldedGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -32,7 +32,7 @@ impl<'a, T: ?Sized> Deref for FoldedGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for FoldedGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for FoldedGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -156,6 +156,6 @@ impl<T, F: FnMut(&mut T) -> Propagation, SR: SignalsRuntimeRef> UnmanagedSignal<
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

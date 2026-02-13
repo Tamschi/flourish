@@ -13,7 +13,7 @@ use crate::traits::{Guard, UnmanagedSignal, UnmanagedSignalCell};
 
 pub enum Opaque {}
 
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> for Opaque {
+impl<T: ?Sized + Send, SR: SignalsRuntimeRef> UnmanagedSignal<T, SR> for Opaque {
 	fn touch(self: Pin<&Self>) {
 		match *self {}
 	}
@@ -90,7 +90,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignal<T, SR> fo
 	}
 }
 
-impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for Opaque {
+impl<T: ?Sized + Send, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for Opaque {
 	fn set_if_distinct(self: Pin<&Self>, _: T)
 	where
 		T: 'static + Sized + PartialEq,
@@ -262,7 +262,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 		match *self {}
 	}
 
-	fn set_blocking(&self, _: T) -> ()
+	fn set_blocking(&self, _: T)
 	where
 		T: Sized,
 	{
@@ -290,7 +290,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> UnmanagedSignalCell<T, SR
 
 pub struct OpaqueFuture<T> {
 	_phantom: (PhantomData<T>, PhantomPinned),
-	_vacant: Opaque,
+	vacant: Opaque,
 }
 
 /// # Safety
@@ -302,13 +302,13 @@ impl<T> Future for OpaqueFuture<T> {
 	type Output = T;
 
 	fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-		match self._vacant {}
+		match self.vacant {}
 	}
 }
 
 pub struct OpaqueGuard<T: ?Sized> {
 	pub(crate) _phantom: PhantomData<T>,
-	pub(crate) _vacant: Opaque,
+	pub(crate) vacant: Opaque,
 }
 
 impl<T: ?Sized> Guard<T> for OpaqueGuard<T> {}
@@ -317,12 +317,12 @@ impl<T: ?Sized> Deref for OpaqueGuard<T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		match self._vacant {}
+		match self.vacant {}
 	}
 }
 
 impl<T: ?Sized> Borrow<T> for OpaqueGuard<T> {
 	fn borrow(&self) -> &T {
-		match self._vacant {}
+		match self.vacant {}
 	}
 }

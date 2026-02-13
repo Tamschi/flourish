@@ -224,11 +224,11 @@ pub fn distinct<'a, T: 'a + PartialEq, F: 'a + FnMut() -> T, SR: 'a + SignalsRun
 	Reduced::<T, _, _, SR>::new(
 		fn_pin,
 		|value, new_value| {
-			if *value != new_value {
+			if *value == new_value {
+				Propagation::Halt
+			} else {
 				*value = new_value;
 				Propagation::Propagate
-			} else {
-				Propagation::Halt
 			}
 		},
 		runtime,
@@ -396,7 +396,7 @@ macro_rules! effect_with_runtime {
 #[doc(hidden)]
 pub use crate::effect_with_runtime;
 
-/// A helper to pin [`unmanaged`](`self`) signals on the stack.  
+/// A helper to pin [`unmanaged`](`self`) signals on the stack.\
 /// Canonically [`unmanaged::signals_helper`](`signals_helper`).
 ///
 /// See [`unmanaged`#functions](`self`#functions) for help on individual patterns.

@@ -33,7 +33,7 @@ impl<T, S: FnMut() -> T, D: FnMut(T), SR: SignalsRuntimeRef> Drop for RawEffect<
 		raw_signal.purge_and_deinit_with(|eager, lazy| {
 			let drop = &mut eager.borrow_mut().1;
 			if let Some(value) = lazy.borrow_mut().take() {
-				drop(value)
+				drop(value);
 			}
 		});
 	}
@@ -92,6 +92,6 @@ impl<T, S: FnMut() -> T, D: FnMut(T), SR: SignalsRuntimeRef> RawEffect<T, S, D, 
 					RawEffect::<T, S, D, SR>::init(source, cache)
 				})
 			});
-		})
+		});
 	}
 }

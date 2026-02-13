@@ -25,9 +25,9 @@ pub(crate) struct Reduced<
 
 pub(crate) struct ReducedGuard<'a, T: ?Sized>(Ref<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for ReducedGuard<'a, T> {}
+impl<T: ?Sized> Guard<T> for ReducedGuard<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for ReducedGuard<'a, T> {
+impl<T: ?Sized> Deref for ReducedGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -35,7 +35,7 @@ impl<'a, T: ?Sized> Deref for ReducedGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for ReducedGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for ReducedGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -161,6 +161,6 @@ impl<T, S: FnMut() -> T, M: FnMut(&mut T, T) -> Propagation, SR: SignalsRuntimeR
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }

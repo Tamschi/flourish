@@ -5,6 +5,7 @@ use std::{collections::VecDeque, fmt::Debug, sync::Mutex};
 pub struct Validator<T>(Mutex<VecDeque<T>>);
 
 impl<T> Validator<T> {
+	#[allow(clippy::new_without_default)]
 	pub const fn new() -> Self {
 		Self(Mutex::new(VecDeque::new()))
 	}

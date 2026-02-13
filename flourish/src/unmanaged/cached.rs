@@ -27,10 +27,10 @@ unsafe impl<T: ?Sized> Sync for ForceSyncUnpin<T> {}
 pub(crate) struct CachedGuard<'a, T: ?Sized>(RwLockReadGuard<'a, T>);
 pub(crate) struct CachedGuardExclusive<'a, T: ?Sized>(RwLockWriteGuard<'a, T>);
 
-impl<'a, T: ?Sized> Guard<T> for CachedGuard<'a, T> {}
-impl<'a, T: ?Sized> Guard<T> for CachedGuardExclusive<'a, T> {}
+impl<T: ?Sized> Guard<T> for CachedGuard<'_, T> {}
+impl<T: ?Sized> Guard<T> for CachedGuardExclusive<'_, T> {}
 
-impl<'a, T: ?Sized> Deref for CachedGuard<'a, T> {
+impl<T: ?Sized> Deref for CachedGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -38,7 +38,7 @@ impl<'a, T: ?Sized> Deref for CachedGuard<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Deref for CachedGuardExclusive<'a, T> {
+impl<T: ?Sized> Deref for CachedGuardExclusive<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -46,13 +46,13 @@ impl<'a, T: ?Sized> Deref for CachedGuardExclusive<'a, T> {
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for CachedGuard<'a, T> {
+impl<T: ?Sized> Borrow<T> for CachedGuard<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
 }
 
-impl<'a, T: ?Sized> Borrow<T> for CachedGuardExclusive<'a, T> {
+impl<T: ?Sized> Borrow<T> for CachedGuardExclusive<'_, T> {
 	fn borrow(&self) -> &T {
 		self.0.borrow()
 	}
@@ -67,10 +67,7 @@ unsafe impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef + 
 impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Cached<T, S, SR> {
 	pub(crate) fn new(source: S) -> Self {
 		let runtime = source.clone_runtime_ref();
-		Self(RawSignal::with_runtime(
-			ForceSyncUnpin(source.into()),
-			runtime,
-		))
+		Self(RawSignal::with_runtime(ForceSyncUnpin(source), runtime))
 	}
 
 	pub(crate) fn touch(self: Pin<&Self>) -> Pin<&RwLock<T>> {
@@ -211,6 +208,6 @@ impl<T: Send + Clone, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Unmanage
 	}
 
 	fn unsubscribe(self: Pin<&Self>) {
-		self.project_ref().0.unsubscribe()
+		self.project_ref().0.unsubscribe();
 	}
 }
