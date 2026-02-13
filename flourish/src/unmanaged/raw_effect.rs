@@ -44,12 +44,7 @@ impl<T: Send, S: Send + FnMut() -> T, D: Send + FnMut(T), SR: SignalsRuntimeRef>
 		let raw_signal = unsafe { Pin::new_unchecked(&mut self.0) };
 		raw_signal.purge_and_deinit_with(|eager, lazy| {
 			let drop = &mut eager.0.try_lock().unwrap().1;
-			lazy.0
-				.try_lock()
-				.unwrap()
-				.deref_mut()
-				.take()
-				.map(|value| drop(value));
+			lazy.0.try_lock().unwrap().deref_mut().take().map(drop);
 		});
 	}
 }

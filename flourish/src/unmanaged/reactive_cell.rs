@@ -471,7 +471,7 @@ impl<
 					return (Propagation::Halt, ());
 				};
 				let mut r = r.try_lock().unwrap();
-				let new_value = r.take().unwrap().map(|()| ()).unwrap_err();
+				let new_value = r.take().unwrap().unwrap_err();
 				*r = Some(Ok(*value = new_value));
 				(Propagation::Propagate, ())
 			}
@@ -669,7 +669,7 @@ impl<
 						return Propagation::Halt;
 					};
 					let mut r = r.try_lock().unwrap();
-					let new_value = r.take().unwrap().map(|()| ()).unwrap_err();
+					let new_value = r.take().unwrap().unwrap_err();
 					*r = Some(Ok(*value = new_value));
 					Propagation::Propagate
 				})

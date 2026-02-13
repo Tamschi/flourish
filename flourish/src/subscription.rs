@@ -814,9 +814,10 @@ unsafe fn assume_init_subscription<
 			unsafe {
 				//SAFETY: `MaybeUninit` is ABI-compatible with what it wraps.
 				Box::from_raw(
-					*(std::ptr::from_ref::<*mut dyn Guard<MaybeUninit<T>>>(&Box::into_raw(
+					*std::ptr::from_ref::<*mut dyn Guard<MaybeUninit<T>>>(&Box::into_raw(
 						self.project_ref().0.read_exclusive_dyn(),
-					)) as *const *mut dyn Guard<T>),
+					))
+					.cast::<*mut dyn Guard<T>>(),
 				)
 			}
 		}
@@ -828,9 +829,10 @@ unsafe fn assume_init_subscription<
 			unsafe {
 				//SAFETY: `MaybeUninit` is ABI-compatible with what it wraps.
 				Box::from_raw(
-					*(std::ptr::from_ref::<*mut dyn Guard<MaybeUninit<T>>>(&Box::into_raw(
+					*std::ptr::from_ref::<*mut dyn Guard<MaybeUninit<T>>>(&Box::into_raw(
 						self.project_ref().0.read_exclusive_dyn(),
-					)) as *const *mut dyn Guard<T>),
+					))
+					.cast::<*mut dyn Guard<T>>(),
 				)
 			}
 		}
@@ -870,10 +872,11 @@ unsafe fn assume_init_subscription<
 	unsafe {
 		//SAFETY: This may reinterpret a fat pointer, which skips over the `AbiShim` methods
 		//        entirely, but that's fine since everything is fully ABI-compatible.
-		(*(&std::ptr::from_ref::<ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>>(
-			&ManuallyDrop::new(sub),
-		) as *const *const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>
-			as *const *const Subscription<T, AbiShim<S>, SR>))
+		(*(std::ptr::from_ref::<*const ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>>(
+			&std::ptr::from_ref::<ManuallyDrop<Subscription<MaybeUninit<T>, S, SR>>>(
+				&ManuallyDrop::new(sub),
+			),
+		) as *const *const Subscription<T, AbiShim<S>, SR>))
 			.read()
 	}
 }
