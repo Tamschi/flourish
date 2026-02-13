@@ -69,11 +69,11 @@ impl<SR: SignalsRuntimeRef> SignalId<SR> {
 	}
 
 	fn subscribe(&self) {
-		self.runtime.subscribe(self.id)
+		self.runtime.subscribe(self.id);
 	}
 
 	fn unsubscribe(&self) {
-		self.runtime.unsubscribe(self.id)
+		self.runtime.unsubscribe(self.id);
 	}
 
 	/// # Safety Notes
@@ -103,11 +103,11 @@ impl<SR: SignalsRuntimeRef> SignalId<SR> {
 	}
 
 	fn stop(&self) {
-		self.runtime.stop(self.id)
+		self.runtime.stop(self.id);
 	}
 
 	fn purge(&self) {
-		self.runtime.purge(self.id)
+		self.runtime.purge(self.id);
 	}
 }
 
@@ -115,7 +115,7 @@ mod once_slot;
 
 /// A mid-level signal primitive that safely encapsulates most signal lifecycles.
 ///
-/// Conceptually, this type resembles a lazy cell but with a persistent `Eager` slot.  
+/// Conceptually, this type resembles a lazy cell but with a persistent `Eager` slot.\
 /// You can borrow the pin-projected `Eager` and `Lazy` values by initialising the
 /// pinned [`RawSignal`] with an `init` function and static [`Callbacks`] through
 /// the [`project_or_init`](`RawSignal::project_or_init`) method, with various
@@ -243,9 +243,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 						) {
 							Entry::Vacant(v) => {
 								let table = v.key().clone();
-								&**v.insert(Box::pin(table)) as *const _
+								std::ptr::addr_of!(**v.insert(Box::pin(table)))
 							}
-							Entry::Occupied(o) => &**o.get() as *const _,
+							Entry::Occupied(o) => std::ptr::addr_of!(**o.get()),
 						}
 					},
 					(Pin::into_inner_unchecked(self) as *const Self).cast(),
@@ -291,7 +291,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 
 	/// Increases this [`RawSignal`]'s intrinsic subscription count.
 	pub fn subscribe(&self) {
-		self.handle.subscribe()
+		self.handle.subscribe();
 	}
 
 	/// Decreases this [`RawSignal`]'s intrinsic subscription count.
@@ -306,7 +306,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 	/// Attempting to decrease the net number of intrinsic subscriptions below zero
 	/// **may** panic.
 	pub fn unsubscribe(&self) {
-		self.handle.unsubscribe()
+		self.handle.unsubscribe();
 	}
 
 	/// Schedules access to the pinned `Eager` and `Lazy` without waiting for completion.
@@ -364,7 +364,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		Lazy: 'f,
 	{
 		let eager = &self.eager;
-		let lazy = AssertSend(&self.lazy as *const OnceSlot<Lazy>);
+		let lazy = AssertSend(std::ptr::addr_of!(self.lazy));
 		let f = Arc::new(Mutex::new(Some(f)));
 
 		struct AssertSend<T: ?Sized>(*const T);
@@ -425,8 +425,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		Eager: 'f,
 		Lazy: 'f,
 	{
-		let eager = AssertSend(&self.eager as *const Eager);
-		let lazy = AssertSend(&self.lazy as *const OnceSlot<Lazy>);
+		let eager = AssertSend(std::ptr::addr_of!(self.eager));
+		let lazy = AssertSend(std::ptr::addr_of!(self.lazy));
 		let f = Arc::new(Mutex::new(Some(f)));
 
 		struct AssertSend<T: ?Sized>(*const T);
@@ -575,7 +575,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
 	fn drop(&mut self) {
 		if self.lazy.get().is_some() {
-			self.handle.purge()
+			self.handle.purge();
 		}
 	}
 }
@@ -604,8 +604,8 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
 	///
 	/// # Logic
 	///
-	/// The runtime **must** consider transitive subscriptions.  
-	/// The runtime **must** consider a signal's own intrinsic subscriptions.  
+	/// The runtime **must** consider transitive subscriptions.\
+	/// The runtime **must** consider a signal's own intrinsic subscriptions.\
 	/// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
 	///
 	/// # Safety
@@ -621,7 +621,7 @@ pub trait Callbacks<Eager: ?Sized + Sync, Lazy: Sync, SR: SignalsRuntimeRef> {
 	>;
 }
 
-/// A vacant [`Callbacks`] implementation that specifies [`None`] for all callbacks.  
+/// A vacant [`Callbacks`] implementation that specifies [`None`] for all callbacks.\
 /// (Callbacks are called dynamically by the [`SignalsRuntimeRef`], so [`None`] helps to skip locks in some circumstances.)
 ///
 /// When using this [`Callbacks`] implementation, updates (implicitly) **should** still propagate to dependent signals.

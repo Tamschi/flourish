@@ -31,7 +31,7 @@ use std::{
 /// Iff equivalent [`SignalsRuntimeRef`] instances may be accessed concurrently,
 /// the runtime **must** handle concurrent method calls with the same `id` gracefully.
 ///
-/// The runtime **must** behave as if method calls associate with the same `id` were totally orderable.  
+/// The runtime **must** behave as if method calls associate with the same `id` were totally orderable.\
 /// The runtime **may** decide the effective order of concurrent calls arbitrarily.
 ///
 /// ## Definition
@@ -54,7 +54,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 
 	/// Creates a fresh unique [`SignalsRuntimeRef::Symbol`] for this instance.
 	///
-	/// Symbols are usually not interchangeable between different instances of a runtime!  
+	/// Symbols are usually not interchangeable between different instances of a runtime!\
 	/// Runtimes **should** detect and panic on misuse when debug-assertions are enabled.
 	///
 	/// # Safety
@@ -131,7 +131,7 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Panics
 	///
-	/// This method **should** panic if called in `id`'s context.  
+	/// This method **should** panic if called in `id`'s context.\
 	/// (The call **may** instead deadlock.)
 	///
 	/// # See also
@@ -142,14 +142,14 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// Executes `f` while recording dependencies for `id`,
 	/// updating the recorded dependencies for `id` to the new set.
 	///
-	/// This process **may** cause subscription notification callbacks to be called.  
+	/// This process **may** cause subscription notification callbacks to be called.\
 	/// Those callbacks **may or may not** happen before this method returns.
 	///
 	/// # Logic
 	///
 	/// Whenever calling this method causes removed dependencies to decome unsubscribed,
 	/// their [`CallbackTable::on_subscribed_change`] callback **should** be invoked semantically
-	/// *after* they have been removed as dependency of the signal identified by `id`.  
+	/// *after* they have been removed as dependency of the signal identified by `id`.\
 	/// (This avoids unnecessary invalidation of the latter.)
 	///
 	/// # Panics
@@ -230,12 +230,12 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	/// The runtime **should** run `f` eventually, but **may** instead cancel and return it inside
 	/// [`Err`] in response to a [`stop`](`SignalsRuntimeRef::stop`) call with the same `id`.
 	///
-	/// This method **must not** block indefinitely *as long as `f` doesn't*, regardless of context.  
+	/// This method **must not** block indefinitely *as long as `f` doesn't*, regardless of context.\
 	/// Calling [`stop`](`SignalsRuntimeRef::stop`) with matching `id` **should** cancel the update and return the [`Err`] variant.
 	///
 	/// # Safety
 	///
-	/// `f` **must not** run or be dropped after the next matching [`stop`](`SignalsRuntimeRef::stop`) call returns.  
+	/// `f` **must not** run or be dropped after the next matching [`stop`](`SignalsRuntimeRef::stop`) call returns.\
 	/// `f` **must not** run or be dropped after the [`Future`] returned by this function is dropped.
 	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
 		&self,
@@ -252,12 +252,12 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Threading
 	///
-	/// This function **may** deadlock when called in any other exclusivity context.  
+	/// This function **may** deadlock when called in any other exclusivity context.\
 	/// (Runtimes **may** limit situations where this can occur in their documentation.)
 	///
 	/// # Panics
 	///
-	/// This function **may** panic when called in any other exclusivity context.  
+	/// This function **may** panic when called in any other exclusivity context.\
 	/// (Runtimes **may** limit situations where this can occur in their documentation.)
 	///
 	/// # Safety
@@ -284,16 +284,16 @@ pub unsafe trait SignalsRuntimeRef: Send + Sync + Clone {
 	///
 	/// # Logic
 	///
-	/// The runtime **should** remove callbacks *after* processing dependency changes.  
+	/// The runtime **should** remove callbacks *after* processing dependency changes.\
 	/// The runtime **should** remove callbacks *before* cancelling pending updates.
 	///
-	/// This method **should** be called last when ceasing use of a particular `id`.  
+	/// This method **should** be called last when ceasing use of a particular `id`.\
 	/// The runtime **may** indefinitely hold onto resources associated with `id` if this
 	/// method isn't called.
 	///
 	/// The runtime **must** process resulting subscription changes appropriately. This
 	/// includes notifying `id` of the subscription change from its intrinsic
-	/// subscriptions being removed, where applicable.  
+	/// subscriptions being removed, where applicable.\
 	/// The runtime **must not** indefinitely hold onto resources associated with `id`
 	/// after this method returns.
 	///
@@ -356,7 +356,7 @@ impl CallbackTableTypes for ACallbackTableTypes {
 ///
 /// # Panics
 ///
-/// [`SignalsRuntimeRef::Symbol`]s associated with the [`GlobalSignalsRuntime`] are ordered.  
+/// [`SignalsRuntimeRef::Symbol`]s associated with the [`GlobalSignalsRuntime`] are ordered.\
 /// Given [`GSRSymbol`]s `a` and `b`, `b` can depend on `a` only iff `a` < `b` (by creation order).
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GlobalSignalsRuntime;
@@ -510,9 +510,9 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
 	/// A callback used to refresh stale signals.
 	///
-	/// Signals that are not currently subscribed **should** *outside of explicit flushing* **not** be refreshed *by the runtime*.  
-	/// Signals **should** return only fresh values.  
-	/// Signals **may** remain stale indefinitely.  
+	/// Signals that are not currently subscribed **should** *outside of explicit flushing* **not** be refreshed *by the runtime*.\
+	/// Signals **should** return only fresh values.\
+	/// Signals **may** remain stale indefinitely.\
 	/// Signals **may** be destroyed while stale.
 	///
 	/// # Logic
@@ -526,8 +526,8 @@ pub struct CallbackTable<T: ?Sized, CTT: ?Sized + CallbackTableTypes> {
 	///
 	/// # Logic
 	///
-	/// The runtime **must** consider transitive subscriptions.  
-	/// The runtime **must** consider a signal's own intrinsic subscriptions.  
+	/// The runtime **must** consider transitive subscriptions.\
+	/// The runtime **must** consider a signal's own intrinsic subscriptions.\
 	/// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
 	pub on_subscribed_change:
 		Option<unsafe fn(*const T, status: CTT::SubscribedStatus) -> Propagation>,
@@ -545,8 +545,8 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Debug for CallbackTable<T, CTT
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Clone for CallbackTable<T, CTT> {
 	fn clone(&self) -> Self {
 		Self {
-			update: self.update.clone(),
-			on_subscribed_change: self.on_subscribed_change.clone(),
+			update: self.update,
+			on_subscribed_change: self.on_subscribed_change,
 		}
 	}
 }
@@ -596,6 +596,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
 	/// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()` in the signature.
 	///
 	/// Note that the callback functions still may only be called using the originally correct data pointer(s).
+	#[must_use] 
 	pub fn into_erased_ptr(this: *const Self) -> *const CallbackTable<(), CTT> {
 		this.cast()
 	}
@@ -603,6 +604,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
 	/// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()` in the signature.
 	///
 	/// Note that the callback functions still may only be called using the originally correct data pointer(s).
+	#[must_use] 
 	pub fn into_erased(self) -> CallbackTable<(), CTT> {
 		unsafe { mem::transmute(self) }
 	}
@@ -613,14 +615,14 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[must_use = "The runtime should propagate notifications to dependents only when requested."]
 pub enum Propagation {
-	/// Mark at least directly dependent signals as stale.  
+	/// Mark at least directly dependent signals as stale.\
 	/// The runtime decides whether and when to refresh them.
 	Propagate,
 	/// Do not mark dependent signals as stale because of this [`Propagation`].
 	Halt,
 	/// Asks the runtime to refresh dependencies, even those that are not subscribed.
 	///
-	/// This **should** be transitive through [`Propagate`](`Propagation::Propagate`) of dependents,  
+	/// This **should** be transitive through [`Propagate`](`Propagation::Propagate`) of dependents,\
 	/// but **should not** be transitive through [`Halt`](`Propagation::Halt`).
 	///
 	/// > **Hint**

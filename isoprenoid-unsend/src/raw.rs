@@ -67,11 +67,11 @@ impl<SR: SignalsRuntimeRef> SignalId<SR> {
 	}
 
 	fn subscribe(&self) {
-		self.runtime.subscribe(self.id)
+		self.runtime.subscribe(self.id);
 	}
 
 	fn unsubscribe(&self) {
-		self.runtime.unsubscribe(self.id)
+		self.runtime.unsubscribe(self.id);
 	}
 
 	/// # Safety Notes
@@ -101,11 +101,11 @@ impl<SR: SignalsRuntimeRef> SignalId<SR> {
 	}
 
 	fn stop(&self) {
-		self.runtime.stop(self.id)
+		self.runtime.stop(self.id);
 	}
 
 	fn purge(&self) {
-		self.runtime.purge(self.id)
+		self.runtime.purge(self.id);
 	}
 }
 
@@ -113,7 +113,7 @@ mod once_slot;
 
 /// A mid-level signal primitive that safely encapsulates most signal lifecycles.
 ///
-/// Conceptually, this type resembles a lazy cell but with a persistent `Eager` slot.  
+/// Conceptually, this type resembles a lazy cell but with a persistent `Eager` slot.\
 /// You can borrow the pin-projected `Eager` and `Lazy` values by initialising the
 /// pinned [`RawSignal`] with an `init` function and static [`Callbacks`] through
 /// the [`project_or_init`](`RawSignal::project_or_init`) method, with various
@@ -207,14 +207,13 @@ impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 						let guard = &mut ISOPRENOID_CALLBACK_TABLES.lock().expect("unreachable");
 						match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
 							Entry::Vacant(vacant) => vacant.insert(AssertSend(
-								(Box::leak(Box::new(BTreeMap::<
-									CallbackTable<(), SR::CallbackTableTypes>,
-									Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
-								>::new()))
-									as *mut BTreeMap<
+								std::ptr::from_mut::<BTreeMap<
 										CallbackTable<(), SR::CallbackTableTypes>,
 										Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
-									>)
+									>>(Box::leak(Box::new(BTreeMap::<
+									CallbackTable<(), SR::CallbackTableTypes>,
+									Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
+								>::new())))
 									.cast::<()>(),
 							)),
 							Entry::Occupied(cached) => cached.into_mut(),
@@ -235,12 +234,12 @@ impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 						) {
 							Entry::Vacant(v) => {
 								let table = v.key().clone();
-								&**v.insert(Box::pin(table)) as *const _
+								&raw const **v.insert(Box::pin(table))
 							}
-							Entry::Occupied(o) => &**o.get() as *const _,
+							Entry::Occupied(o) => &raw const **o.get(),
 						}
 					},
-					(Pin::into_inner_unchecked(self) as *const Self).cast(),
+					std::ptr::from_ref::<Self>(Pin::into_inner_unchecked(self)).cast(),
 				);
 
 				unsafe fn update<
@@ -283,7 +282,7 @@ impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 
 	/// Increases this [`RawSignal`]'s intrinsic subscription count.
 	pub fn subscribe(&self) {
-		self.handle.subscribe()
+		self.handle.subscribe();
 	}
 
 	/// Decreases this [`RawSignal`]'s intrinsic subscription count.
@@ -298,7 +297,7 @@ impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 	/// Attempting to decrease the net number of intrinsic subscriptions below zero
 	/// **may** panic.
 	pub fn unsubscribe(&self) {
-		self.handle.unsubscribe()
+		self.handle.unsubscribe();
 	}
 
 	/// Schedules access to the pinned `Eager` and `Lazy` without waiting for completion.
@@ -351,7 +350,7 @@ impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 		Lazy: 'f,
 	{
 		let eager = &self.eager;
-		let lazy = &self.lazy as *const OnceSlot<Lazy>;
+		let lazy = &raw const self.lazy;
 		let f = Arc::new(Mutex::new(Some(f)));
 
 		let future = self.handle.update_eager({
@@ -404,8 +403,8 @@ impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 		Eager: 'f,
 		Lazy: 'f,
 	{
-		let eager = &self.eager as *const Eager;
-		let lazy = &self.lazy as *const OnceSlot<Lazy>;
+		let eager = &raw const self.eager;
+		let lazy = &raw const self.lazy;
 		let f = Arc::new(Mutex::new(Some(f)));
 
 		let future = self.handle.update_eager({
@@ -546,7 +545,7 @@ impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> Drop for RawSignal<Eager, Lazy, SR> {
 	fn drop(&mut self) {
 		if self.lazy.get().is_some() {
-			self.handle.purge()
+			self.handle.purge();
 		}
 	}
 }
@@ -575,8 +574,8 @@ pub trait Callbacks<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> {
 	///
 	/// # Logic
 	///
-	/// The runtime **must** consider transitive subscriptions.  
-	/// The runtime **must** consider a signal's own intrinsic subscriptions.  
+	/// The runtime **must** consider transitive subscriptions.\
+	/// The runtime **must** consider a signal's own intrinsic subscriptions.\
 	/// The runtime **must not** run this function while recording dependencies (but may start a nested recording in response to the callback).
 	///
 	/// # Safety
@@ -592,7 +591,7 @@ pub trait Callbacks<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> {
 	>;
 }
 
-/// A vacant [`Callbacks`] implementation that specifies [`None`] for all callbacks.  
+/// A vacant [`Callbacks`] implementation that specifies [`None`] for all callbacks.\
 /// (Callbacks are called dynamically by the [`SignalsRuntimeRef`], so [`None`] helps to skip locks in some circumstances.)
 ///
 /// When using this [`Callbacks`] implementation, updates (implicitly) **should** still propagate to dependent signals.
