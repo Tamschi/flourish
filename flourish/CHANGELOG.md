@@ -1,5 +1,13 @@
 # *flourish* Changelog
 
+## next
+
+//TODO: Date.
+
+Features:
+
+- Relaxed unneeded `Default` bounds on `…_with_runtime` constructors.
+
 ## 0.2.0+0.1-compatible
 
 2025-12-16

@@ -473,7 +473,7 @@ impl<T: ?Sized + Send, SR: ?Sized + SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized + Sync,
-		SR: 'a + Default,
+		SR: 'a,
 	{
 		SignalArc {
 			strong: Strong::pin(Shared::with_runtime(value, runtime)),
@@ -539,7 +539,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
-		SR: 'a + Default,
+		SR: 'a,
 	{
 		SignalArc {
 			strong: Strong::pin(InertCell::with_runtime(initial_value, runtime)),
@@ -619,7 +619,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
-		SR: 'a + Default,
+		SR: 'a,
 	{
 		SignalArc {
 			strong: Strong::pin_cyclic(|weak: &Weak<T, InertCell<T, SR>, SR>| {
@@ -691,7 +691,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
-		SR: 'a + Default,
+		SR: 'a,
 	{
 		SignalArc {
 			strong: Strong::pin(ReactiveCell::with_runtime(
@@ -779,7 +779,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
-		SR: 'a + Default,
+		SR: 'a,
 	{
 		SignalArc {
 			strong: Strong::pin_cyclic(|weak: &Weak<T, ReactiveCell<T, HandlerFnPin, SR>, SR>| {
@@ -868,7 +868,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
-		SR: 'a + Default,
+		SR: 'a,
 	{
 		SignalArc {
 			strong: Strong::pin(ReactiveCellMut::with_runtime(
@@ -1003,7 +1003,7 @@ impl<T: Send, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	where
 		T: 'a,
 		HandlerFnPin: 'a,
-		SR: 'a + Default,
+		SR: 'a,
 	{
 		SignalArc {
 			strong: Strong::pin_cyclic(
