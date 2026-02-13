@@ -315,7 +315,7 @@ mod a_signals_runtime;
 
 #[cfg(feature = "local_signals_runtime")]
 thread_local! {
-	static ISOPRENOID_GLOBAL_SIGNALS_RUNTIME: a_signals_runtime::ASignalsRuntime = a_signals_runtime::ASignalsRuntime::new();
+	static ISOPRENOID_GLOBAL_SIGNALS_RUNTIME: a_signals_runtime::ASignalsRuntime = const { a_signals_runtime::ASignalsRuntime::new() };
 }
 
 /// `!Send` and `!Sync`!
@@ -414,7 +414,7 @@ unsafe impl SignalsRuntimeRef for LocalSignalsRuntime {
 	}
 
 	fn record_dependency(&self, id: Self::Symbol) {
-		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).record_dependency(id.0))
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).record_dependency(id.0));
 	}
 
 	unsafe fn start<T, D: ?Sized>(
@@ -439,7 +439,7 @@ unsafe impl SignalsRuntimeRef for LocalSignalsRuntime {
 	}
 
 	fn stop(&self, id: Self::Symbol) {
-		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).stop(id.0))
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).stop(id.0));
 	}
 
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
@@ -447,15 +447,15 @@ unsafe impl SignalsRuntimeRef for LocalSignalsRuntime {
 	}
 
 	fn subscribe(&self, id: Self::Symbol) {
-		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).subscribe(id.0))
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).subscribe(id.0));
 	}
 
 	fn unsubscribe(&self, id: Self::Symbol) {
-		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).unsubscribe(id.0))
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).unsubscribe(id.0));
 	}
 
 	fn update_or_enqueue(&self, id: Self::Symbol, f: impl 'static + FnOnce() -> Propagation) {
-		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).update_or_enqueue(id.0, f))
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).update_or_enqueue(id.0, f));
 	}
 
 	fn update_eager<'f, T: 'f, F: 'f + FnOnce() -> (Propagation, T)>(
@@ -477,11 +477,11 @@ unsafe impl SignalsRuntimeRef for LocalSignalsRuntime {
 	}
 
 	fn refresh(&self, id: Self::Symbol) {
-		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).refresh(id.0))
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).refresh(id.0));
 	}
 
 	fn purge(&self, id: Self::Symbol) {
-		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).purge(id.0))
+		ISOPRENOID_GLOBAL_SIGNALS_RUNTIME.with(|gsr| (&gsr).purge(id.0));
 	}
 
 	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {

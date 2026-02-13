@@ -422,7 +422,7 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 	}
 
 	fn record_dependency(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).record_dependency(id.0)
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).record_dependency(id.0);
 	}
 
 	unsafe fn start<T, D: ?Sized>(
@@ -445,7 +445,7 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 	}
 
 	fn stop(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).stop(id.0)
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).stop(id.0);
 	}
 
 	fn update_dependency_set<T>(&self, id: Self::Symbol, f: impl FnOnce() -> T) -> T {
@@ -453,11 +453,11 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 	}
 
 	fn subscribe(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).subscribe(id.0)
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).subscribe(id.0);
 	}
 
 	fn unsubscribe(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).unsubscribe(id.0)
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).unsubscribe(id.0);
 	}
 
 	fn update_or_enqueue(
@@ -465,7 +465,7 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 		id: Self::Symbol,
 		f: impl 'static + Send + FnOnce() -> Propagation,
 	) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).update_or_enqueue(id.0, f)
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).update_or_enqueue(id.0, f);
 	}
 
 	fn update_eager<'f, T: 'f + Send, F: 'f + Send + FnOnce() -> (Propagation, T)>(
@@ -487,11 +487,11 @@ unsafe impl SignalsRuntimeRef for GlobalSignalsRuntime {
 	}
 
 	fn refresh(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).refresh(id.0)
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).refresh(id.0);
 	}
 
 	fn purge(&self, id: Self::Symbol) {
-		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).purge(id.0)
+		(&ISOPRENOID_GLOBAL_SIGNALS_RUNTIME).purge(id.0);
 	}
 
 	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {

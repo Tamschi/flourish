@@ -221,10 +221,10 @@ impl ASignalsRuntime {
 						borrow = match propagation {
 							Propagation::Halt => borrow,
 							Propagation::Propagate => {
-								self.mark_dependencies_stale(dependency, &lock, borrow, false)
+								self.mark_dependencies_stale(dependency, lock, borrow, false)
 							}
 							Propagation::FlushOut => {
-								self.mark_dependencies_stale(dependency, &lock, borrow, true)
+								self.mark_dependencies_stale(dependency, lock, borrow, true)
 							}
 						}
 					}
@@ -300,10 +300,10 @@ impl ASignalsRuntime {
 						borrow = match propagation {
 							Propagation::Halt => borrow,
 							Propagation::Propagate => {
-								self.mark_dependencies_stale(dependency, &lock, borrow, false)
+								self.mark_dependencies_stale(dependency, lock, borrow, false)
 							}
 							Propagation::FlushOut => {
-								self.mark_dependencies_stale(dependency, &lock, borrow, true)
+								self.mark_dependencies_stale(dependency, lock, borrow, true)
 							}
 						}
 					}
@@ -342,11 +342,11 @@ impl ASignalsRuntime {
 				borrow = (**lock).borrow_mut();
 				match propagation {
 					Propagation::Propagate => {
-						borrow = self.mark_dependencies_stale(symbol, &lock, borrow, false)
+						borrow = self.mark_dependencies_stale(symbol, lock, borrow, false);
 					}
 					Propagation::Halt => (),
 					Propagation::FlushOut => {
-						borrow = self.mark_dependencies_stale(symbol, &lock, borrow, true)
+						borrow = self.mark_dependencies_stale(symbol, lock, borrow, true);
 					}
 				}
 			}
@@ -357,7 +357,7 @@ impl ASignalsRuntime {
 				try_eval(|| {
 					borrow.context_stack.push(None);
 					drop(borrow);
-					self.refresh(symbol)
+					self.refresh(symbol);
 				})
 				.finally(|()| {
 					let mut borrow = (**lock).borrow_mut();
@@ -383,9 +383,8 @@ impl ASignalsRuntime {
 		while let Some(mut first_group) = borrow.update_queue.first_entry() {
 			if let Some(update) = first_group.get_mut().pop_front() {
 				return (Some((*first_group.key(), update)), borrow);
-			} else {
-				drop(first_group.remove())
 			}
+   				drop(first_group.remove());
 		}
 		(None, borrow)
 	}
@@ -470,7 +469,7 @@ impl ASignalsRuntime {
 				.all_by_dependency
 				.get_mut(removed_dependency)
 				.expect("These lists should always be symmetrical at rest.")
-				.remove(&id))
+				.remove(&id));
 		}
 
 		let is_subscribed = borrow
@@ -480,7 +479,7 @@ impl ASignalsRuntime {
 			.is_some_and(|subs| !subs.is_empty());
 		if is_subscribed {
 			for removed_dependency in removed_dependencies {
-				borrow = self.unsubscribe_from_with(removed_dependency, id, lock, borrow)
+				borrow = self.unsubscribe_from_with(removed_dependency, id, lock, borrow);
 			}
 		}
 
@@ -509,9 +508,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		{
 			let context_id = *context_id;
 
-			if id >= context_id {
-				panic!("Tried to depend on later-created signal. To prevent loops, this isn't possible for now.");
-			}
+			assert!(id < context_id, "Tried to depend on later-created signal. To prevent loops, this isn't possible for now.");
 			recorded_dependencies.insert(id);
 
 			if !borrow
@@ -557,9 +554,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		let lock = self.critical_mutex.lock();
 		let mut borrow = (*lock).borrow_mut();
 
-		if borrow.callbacks.contains_key(&id) {
-			panic!("Tried to `start` `id` twice.")
-		}
+		assert!(!borrow.callbacks.contains_key(&id), "Tried to `start` `id` twice.");
 
 		let t = try_eval(|| {
 			borrow.context_stack.push(Some((id, BTreeSet::new())));
@@ -608,8 +603,8 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 						..
 					} = &*callback_table
 					{
-						let propagation = on_subscribed_change(callback_data, true);
-						propagation
+						
+						on_subscribed_change(callback_data, true)
 					} else {
 						Propagation::Halt
 					}
@@ -781,12 +776,12 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 				.borrow_mut()
 				.take()
 			{
-				Some(Ok(t)) => return Ok(t),
+				Some(Ok(t)) => Ok(t),
 				Some(Err(f)) => {
-					return Err(f.expect("`_f_guard` didn't destroy `f` yet at this point."))
+					Err(f.expect("`_f_guard` didn't destroy `f` yet at this point."))
 				}
 				None => unreachable!(),
-			};
+			}
 		}))
 	}
 
@@ -807,9 +802,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			let (stale, mut borrow) = this.peek_stale(borrow);
 			let has_stale = stale.is_some();
 
-			if !(borrow.context_stack.is_empty() && !has_stale) {
-				panic!("Called `update_blocking` (via `change_blocking` or `replace_blocking`?) while propagating another update. This would deadlock with a better queue.");
-			}
+			assert!(borrow.context_stack.is_empty() && !has_stale, "Called `update_blocking` (via `change_blocking` or `replace_blocking`?) while propagating another update. This would deadlock with a better queue.");
 
 			let (propagation, t) = f();
 			borrow = match propagation {
@@ -862,11 +855,11 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 					borrow = (*lock).borrow_mut();
 					match propagation {
 						Propagation::Propagate => {
-							borrow = self.mark_dependencies_stale(id, &lock, borrow, flush)
+							borrow = self.mark_dependencies_stale(id, &lock, borrow, flush);
 						}
 						Propagation::Halt => (),
 						Propagation::FlushOut => {
-							borrow = self.mark_dependencies_stale(id, &lock, borrow, true)
+							borrow = self.mark_dependencies_stale(id, &lock, borrow, true);
 						}
 					}
 				} else {
@@ -943,7 +936,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 		] {
 			assert!(!collection
 				.remove(&id)
-				.is_some_and(|linked| !linked.is_empty()))
+				.is_some_and(|linked| !linked.is_empty()));
 		}
 
 		assert!(!interdependencies
