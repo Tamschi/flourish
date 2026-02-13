@@ -19,7 +19,7 @@ fn stack() {
 			signals_helper! {
 				let _e = effect!(
 					move || {
-						a.get();
+						let () = a.get();
 						v.push("f")
 					},
 					|()| v.push("drop"),
