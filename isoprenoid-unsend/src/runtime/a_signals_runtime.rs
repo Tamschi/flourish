@@ -376,7 +376,7 @@ impl ASignalsRuntime {
 			if let Some(update) = first_group.get_mut().pop_front() {
 				return (Some((*first_group.key(), update)), borrow);
 			}
-   				drop(first_group.remove());
+			drop(first_group.remove());
 		}
 		(None, borrow)
 	}
@@ -547,7 +547,10 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 	) -> T {
 		let mut borrow = self.state.borrow_mut();
 
-		assert!(!borrow.callbacks.contains_key(&id), "Tried to `start` `id` twice.");
+		assert!(
+			!borrow.callbacks.contains_key(&id),
+			"Tried to `start` `id` twice."
+		);
 
 		let t = try_eval(|| {
 			borrow.context_stack.push(Some((id, BTreeSet::new())));
@@ -596,7 +599,6 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 						..
 					} = &*callback_table
 					{
-						
 						on_subscribed_change(callback_data, true)
 					} else {
 						Propagation::Halt
@@ -761,9 +763,7 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 				.take()
 			{
 				Some(Ok(t)) => Ok(t),
-				Some(Err(f)) => {
-					Err(f.expect("`_f_guard` didn't destroy `f` yet at this point."))
-				}
+				Some(Err(f)) => Err(f.expect("`_f_guard` didn't destroy `f` yet at this point.")),
 				None => unreachable!(),
 			}
 		}))
@@ -914,12 +914,14 @@ unsafe impl SignalsRuntimeRef for &ASignalsRuntime {
 			&mut interdependencies.all_by_dependent,
 		] {
 			assert!(collection
-				.remove(&id).is_none_or(|linked| linked.is_empty()));
+				.remove(&id)
+				.is_none_or(|linked| linked.is_empty()));
 		}
 
 		assert!(interdependencies
 			.subscribers_by_dependency
-			.remove(&id).is_none_or(|subscribers| subscribers.is_empty()));
+			.remove(&id)
+			.is_none_or(|subscribers| subscribers.is_empty()));
 
 		borrow.stale_queue.remove(&id);
 
