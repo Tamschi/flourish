@@ -1,6 +1,6 @@
 # `isoprenoid`
 
-`isoprenoid` is the signals runtime framework backing *flourish*.  
+`isoprenoid` is the signals runtime framework backing *flourish*.\
 (See also `isoprenoid-unsend` and *flourish-unsend* for a thread-local alternative.)
 
 Distinct major versions of *flourish* are compatible as long as they use the same version of `isoprenoid`.
