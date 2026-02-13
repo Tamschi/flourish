@@ -23,6 +23,7 @@ use std::{
 	collections::{btree_map::Entry, BTreeMap},
 	future::Future,
 	mem::{self, MaybeUninit},
+	ptr::addr_of,
 	sync::{Arc, Mutex},
 };
 
@@ -243,9 +244,9 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 						) {
 							Entry::Vacant(v) => {
 								let table = v.key().clone();
-								std::ptr::addr_of!(**v.insert(Box::pin(table)))
+								addr_of!(**v.insert(Box::pin(table)))
 							}
-							Entry::Occupied(o) => std::ptr::addr_of!(**o.get()),
+							Entry::Occupied(o) => addr_of!(**o.get()),
 						}
 					},
 					(Pin::into_inner_unchecked(self) as *const Self).cast(),
@@ -364,7 +365,7 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		Lazy: 'f,
 	{
 		let eager = &self.eager;
-		let lazy = AssertSend(std::ptr::addr_of!(self.lazy));
+		let lazy = AssertSend(addr_of!(self.lazy));
 		let f = Arc::new(Mutex::new(Some(f)));
 
 		struct AssertSend<T: ?Sized>(*const T);
@@ -425,8 +426,8 @@ impl<Eager: Sync + ?Sized, Lazy: Sync, SR: SignalsRuntimeRef> RawSignal<Eager, L
 		Eager: 'f,
 		Lazy: 'f,
 	{
-		let eager = AssertSend(std::ptr::addr_of!(self.eager));
-		let lazy = AssertSend(std::ptr::addr_of!(self.lazy));
+		let eager = AssertSend(addr_of!(self.eager));
+		let lazy = AssertSend(addr_of!(self.lazy));
 		let f = Arc::new(Mutex::new(Some(f)));
 
 		struct AssertSend<T: ?Sized>(*const T);
