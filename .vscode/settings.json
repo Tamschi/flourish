@@ -18,5 +18,9 @@
     "rust-analyzer.cargo.features": [
         "_test"
     ],
-    "cSpell.language": "en,en-GB"
+    "cSpell.language": "en,en-GB",
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.check.features": [
+        "_test"
+    ]
 }

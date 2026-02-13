@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 #![allow(clippy::tabs_in_doc_comments)]
+#![allow(clippy::unit_arg)]
 // #![warn(clippy::single_call_fn)]
 //! <details><summary>README / Quick Start (click to expand)</summary>
 //!

@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 #![warn(unreachable_pub)]
 #![allow(clippy::tabs_in_doc_comments)]
+#![allow(clippy::unit_arg)]
 #![cfg_attr(feature = "_doc", doc = include_str!("../README.md"))]
 
 #[cfg(all(
