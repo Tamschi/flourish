@@ -306,6 +306,7 @@ pub unsafe trait SignalsRuntimeRef: Clone {
 	/// causing them to deadlock or panic.
 	#[inline(always)]
 	fn hint_batched_updates<T>(&self, f: impl FnOnce() -> T) -> T {
+		#![allow(clippy::inline_always)]
 		f()
 	}
 }
@@ -429,6 +430,10 @@ unsafe impl SignalsRuntimeRef for LocalSignalsRuntime {
 				id.0,
 				f,
 				//SAFETY: `GlobalCallbackTableTypes` is deeply transmute-compatible and ABI-compatible to `ACallbackTableTypes`.
+				#[expect(
+					clippy::transmute_ptr_to_ptr,
+					reason = "to make the types more visible"
+				)]
 				mem::transmute::<
 					*const CallbackTable<D, GlobalCallbackTableTypes>,
 					*const CallbackTable<D, ACallbackTableTypes>,
@@ -551,14 +556,8 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialEq for CallbackTable<T,
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Eq for CallbackTable<T, CTT> {}
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialOrd for CallbackTable<T, CTT> {
-	#[allow(unpredictable_function_pointer_comparisons)] // Used only for interning.
 	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-		match self.update.partial_cmp(&other.update) {
-			Some(core::cmp::Ordering::Equal) => {}
-			ord => return ord,
-		}
-		self.on_subscribed_change
-			.partial_cmp(&other.on_subscribed_change)
+		Some(self.cmp(other))
 	}
 }
 

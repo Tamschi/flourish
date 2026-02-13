@@ -7,10 +7,10 @@
 use core::{marker::PhantomData, mem::MaybeUninit};
 
 /// Must be written to to create one matching [`Token`].
-pub struct Slot<'a, T>(&'a mut MaybeUninit<T>, PhantomData<&'a mut &'a mut ()>);
+pub struct Slot<'a, T>(&'a mut MaybeUninit<T>, PhantomData<&'a mut &'a ()>);
 
 /// Proof that one matching [`Slot`] was written to.
-pub struct Token<'a>(PhantomData<&'a mut &'a mut ()>);
+pub struct Token<'a>(PhantomData<&'a mut &'a ()>);
 
 impl<'a, T> Slot<'a, T> {
 	pub(crate) fn new(target: &'a mut MaybeUninit<T>) -> Self {

@@ -145,10 +145,9 @@ where
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("RawSignal")
 			.field("handle", &self.handle)
-			.field("_pinned", &self._pinned)
 			.field("lazy", &self.lazy)
 			.field("eager", &&self.eager)
-			.finish()
+			.finish_non_exhaustive()
 	}
 }
 impl<SR: SignalsRuntimeRef + Unpin> Unpin for RawSignal<(), (), SR> {}
