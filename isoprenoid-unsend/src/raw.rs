@@ -207,14 +207,16 @@ impl<Eager: ?Sized, Lazy, SR: SignalsRuntimeRef> RawSignal<Eager, Lazy, SR> {
 						let guard = &mut ISOPRENOID_CALLBACK_TABLES.lock().expect("unreachable");
 						match match match guard.entry(TypeId::of::<SR::CallbackTableTypes>()) {
 							Entry::Vacant(vacant) => vacant.insert(AssertSend(
-								std::ptr::from_mut::<BTreeMap<
+								std::ptr::from_mut::<
+									BTreeMap<
 										CallbackTable<(), SR::CallbackTableTypes>,
 										Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
-									>>(Box::leak(Box::new(BTreeMap::<
+									>,
+								>(Box::leak(Box::new(BTreeMap::<
 									CallbackTable<(), SR::CallbackTableTypes>,
 									Pin<Box<CallbackTable<(), SR::CallbackTableTypes>>>,
 								>::new())))
-									.cast::<()>(),
+								.cast::<()>(),
 							)),
 							Entry::Occupied(cached) => cached.into_mut(),
 						} {

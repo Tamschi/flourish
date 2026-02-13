@@ -586,7 +586,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
 	/// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()` in the signature.
 	///
 	/// Note that the callback functions still may only be called using the originally correct data pointer(s).
-	#[must_use] 
+	#[must_use]
 	pub fn into_erased_ptr(this: *const Self) -> *const CallbackTable<(), CTT> {
 		this.cast()
 	}
@@ -594,7 +594,7 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> CallbackTable<T, CTT> {
 	/// "Type-erases" the pointed-to callback table against the data type `T` by replacing it with `()` in the signature.
 	///
 	/// Note that the callback functions still may only be called using the originally correct data pointer(s).
-	#[must_use] 
+	#[must_use]
 	pub fn into_erased(self) -> CallbackTable<(), CTT> {
 		unsafe { mem::transmute(self) }
 	}

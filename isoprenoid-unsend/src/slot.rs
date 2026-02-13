@@ -33,7 +33,7 @@ impl<'a, T> Slot<'a, T> {
 	/// # Safety
 	///
 	/// The memory this [`Slot`] points to **must** have been initialised with a valid `T`.
-	#[must_use] 
+	#[must_use]
 	pub unsafe fn assume_init(self) -> Token<'a> {
 		Token(PhantomData)
 	}
