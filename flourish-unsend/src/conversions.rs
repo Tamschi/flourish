@@ -5,12 +5,12 @@
 //!
 //! ## with [`UnmanagedSignalCell`]
 //!
-//! | from ↓ \ into →           | [`&`]‌[`Signal`] ([cell]) | [`&`]‌[`SignalDynCell`]                | [`SignalArc`] ([cell])   | [`SignalArcDynCell`]                          | [`SignalWeak`] ([cell]) | [`SignalWeakDynCell`]                      | [`Subscription`] ([cell])                   | [`SubscriptionDynCell`]                                               |
+//! | from ↓ \ into →           | [`&`]‌[`Signal`] ([cell]) | [`&`]‌[`SignalDynCell`]                | [`SignalRc`] ([cell])   | [`SignalRcDynCell`]                          | [`SignalWeak`] ([cell]) | [`SignalWeakDynCell`]                      | [`Subscription`] ([cell])                   | [`SubscriptionDynCell`]                                               |
 //! |---------------------------|--------------------------|---------------------------------------|--------------------------|-----------------------------------------------|-------------------------|--------------------------------------------|---------------------------------------------|-----------------------------------------------------------------------|
 //! | [`&`]‌[`Signal`] ([cell])  | [identity] + [`Copy`]    | [`.as_dyn_cell()`]                    | [`ToOwned`]              | [`.to_dyn_cell()`]                            | [`.downgrade()`]        | [`.downgrade()`]‌[`.into_dyn_cell()`][idc2] | [`.to_subscription()`]                      | [`.to_subscription()`]‌[`.into_dyn_cell()`][idc3]                      |
 //! | [`&`]‌[`SignalDynCell`]    | [identity] + [`Copy`]    | [identity] + [`Copy`]                 | [`ToOwned`]              | [`ToOwned`]                                   | [`.downgrade()`]        | [`.downgrade()`]                           | [`.to_subscription()`]                      | [`.to_subscription()`]                                                |
-//! | [`SignalArc`] ([cell])    | [`Deref`] + [`Borrow`]   | [`.as_dyn_cell()`]                    | [identity] + [`Clone`]   | [`.into_dyn_cell()`][idc1]                    | [`.downgrade()`]        | [`.downgrade()`]‌[`.into_dyn_cell()`][idc2] | [`.into_subscription()`]                    | [`.into_subscription()`]‌[`.into_dyn_cell()`][idc3]                    |
-//! | [`SignalArcDynCell`]      | [`Deref`] + [`Borrow`]   | [`Deref`] + [`Borrow`]                | [identity] + [`Clone`]   | [identity] + [`Clone`]                        | [`.downgrade()`]        | [`.downgrade()`]                           | [`.into_subscription()`]                    | [`.into_subscription()`]                                              |
+//! | [`SignalRc`] ([cell])    | [`Deref`] + [`Borrow`]   | [`.as_dyn_cell()`]                    | [identity] + [`Clone`]   | [`.into_dyn_cell()`][idc1]                    | [`.downgrade()`]        | [`.downgrade()`]‌[`.into_dyn_cell()`][idc2] | [`.into_subscription()`]                    | [`.into_subscription()`]‌[`.into_dyn_cell()`][idc3]                    |
+//! | [`SignalRcDynCell`]      | [`Deref`] + [`Borrow`]   | [`Deref`] + [`Borrow`]                | [identity] + [`Clone`]   | [identity] + [`Clone`]                        | [`.downgrade()`]        | [`.downgrade()`]                           | [`.into_subscription()`]                    | [`.into_subscription()`]                                              |
 //! | [`SignalWeak`] ([cell])   | [`.upgrade()`]‌[`?`]‌      | [`.upgrade()`]‌[`?`]‌[`.as_dyn_cell()`] | [`.upgrade()`]           | [`.upgrade()`]‌[`?`]‌[`.into_dyn_cell()`][idc1] | [identity] + [`Clone`]  | [`.into_dyn_cell()`][idc2]                 | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`] | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[`.into_dyn_cell()`][idc3] |
 //! | [`SignalWeakDynCell`]     | [`.upgrade()`]‌[`?`]‌      | [`.upgrade()`]‌[`?`]‌                   | [`.upgrade()`]           | [`.upgrade()`]                                | [identity] + [`Clone`]  | [identity] + [`Clone`]                     | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`] | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]                           |
 //! | [`Subscription`] ([cell]) | [`Deref`] + [`Borrow`]   | [`.as_dyn_cell()`]                    | [`.unsubscribe()`]       | [`.unsubscribe()`]‌[`.into_dyn_cell()`][idc1]  | [`.downgrade()`]        | [`.downgrade()`]‌[`.into_dyn_cell()`][idc2] | [identity] + [`Clone`]                      | [`.into_dyn_cell()`][idc3]                                            |
@@ -20,12 +20,12 @@
 //!
 //! ## with [`UnmanagedSignal`]
 //!
-//! | from ↓ \ into →             | [`&`]‌[`Signal`] ([signal]) | [`&`]‌[`SignalDyn`]                 | [`SignalArc`] ([signal]) | [`SignalArcDyn`]                        | [`SignalWeak`] ([signal]) | [`SignalWeakDyn`]                    | [`Subscription`] ([signal])                 | [`SubscriptionDyn`]                                             |
+//! | from ↓ \ into →             | [`&`]‌[`Signal`] ([signal]) | [`&`]‌[`SignalDyn`]                 | [`SignalRc`] ([signal]) | [`SignalRcDyn`]                        | [`SignalWeak`] ([signal]) | [`SignalWeakDyn`]                    | [`Subscription`] ([signal])                 | [`SubscriptionDyn`]                                             |
 //! |-----------------------------|----------------------------|------------------------------------|--------------------------|-----------------------------------------|---------------------------|--------------------------------------|---------------------------------------------|-----------------------------------------------------------------|
 //! | [`&`]‌[`Signal`] ([signal])  | [identity] + [`Copy`]      | [`.as_dyn()`]                      | [`ToOwned`]              | [`.to_dyn()`]                           | [`.downgrade()`]          | [`.downgrade()`]‌[`.into_dyn()`][id2] | [`.to_subscription()`]                      | [`.to_subscription()`]‌[`.into_dyn()`][id3]                      |
 //! | [`&`]‌[`SignalDyn`]          | [identity] + [`Copy`]      | [identity] + [`Copy`]              | [`ToOwned`]              | [`ToOwned`]                             | [`.downgrade()`]          | [`.downgrade()`]                     | [`.to_subscription()`]                      | [`.to_subscription()`]                                          |
-//! | [`SignalArc`] ([signal])    | [`Deref`] + [`Borrow`]     | [`.as_dyn()`]                      | [identity] + [`Clone`]   | [`.into_dyn()`][id1]                    | [`.downgrade()`]          | [`.downgrade()`]‌[`.into_dyn()`][id2] | [`.into_subscription()`]                    | [`.into_subscription()`]‌[`.into_dyn()`][id3]                    |
-//! | [`SignalArcDyn`]            | [`Deref`] + [`Borrow`]     | [`Deref`] + [`Borrow`]             | [identity] + [`Clone`]   | [identity] + [`Clone`]                  | [`.downgrade()`]          | [`.downgrade()`]                     | [`.into_subscription()`]                    | [`.into_subscription()`]                                        |
+//! | [`SignalRc`] ([signal])    | [`Deref`] + [`Borrow`]     | [`.as_dyn()`]                      | [identity] + [`Clone`]   | [`.into_dyn()`][id1]                    | [`.downgrade()`]          | [`.downgrade()`]‌[`.into_dyn()`][id2] | [`.into_subscription()`]                    | [`.into_subscription()`]‌[`.into_dyn()`][id3]                    |
+//! | [`SignalRcDyn`]            | [`Deref`] + [`Borrow`]     | [`Deref`] + [`Borrow`]             | [identity] + [`Clone`]   | [identity] + [`Clone`]                  | [`.downgrade()`]          | [`.downgrade()`]                     | [`.into_subscription()`]                    | [`.into_subscription()`]                                        |
 //! | [`SignalWeak`] ([signal])   | [`.upgrade()`]‌[`?`]‌        | [`.upgrade()`]‌[`?`]‌[`.as_dyn()`]   | [`.upgrade()`]           | [`.upgrade()`]‌[`?`]‌[`.into_dyn()`][id1] | [identity] + [`Clone`]    | [`.into_dyn()`][id2]                 | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`] | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[`.into_dyn()`][id3] |
 //! | [`SignalWeakDyn`]           | [`.upgrade()`]‌[`?`]‌        | [`.upgrade()`]‌[`?`]‌                | [`.upgrade()`]           | [`.upgrade()`]                          | [identity] + [`Clone`]    | [identity] + [`Clone`]               | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`] | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]                     |
 //! | [`Subscription`] ([signal]) | [`Deref`] + [`Borrow`]     | [`.as_dyn()`]                      | [`.unsubscribe()`]       | [`.unsubscribe()`]‌[`.into_dyn()`][id1]  | [`.downgrade()`]          | [`.downgrade()`]‌[`.into_dyn()`][id2] | [identity] + [`Clone`]                      | [`.into_dyn()`][id3]                                            |
@@ -35,10 +35,10 @@
 //!
 //! ## with [`UnmanagedSignalCell`] (static dispatch read-write) to with [`UnmanagedSignal`] (read-only)
 //!
-//! | from ↓ \ into →           | [`&`]‌[`Signal`] ([signal])                   | [`&`]‌[`SignalDyn`]               | [`SignalArc`] ([signal])                       | [`SignalArcDyn`]                        | [`SignalWeak`] ([signal])                   | [`SignalWeakDyn`]                  | [`Subscription`] ([signal])                                              | [`SubscriptionDyn`]                                             |
+//! | from ↓ \ into →           | [`&`]‌[`Signal`] ([signal])                   | [`&`]‌[`SignalDyn`]               | [`SignalRc`] ([signal])                       | [`SignalRcDyn`]                        | [`SignalWeak`] ([signal])                   | [`SignalWeakDyn`]                  | [`Subscription`] ([signal])                                              | [`SubscriptionDyn`]                                             |
 //! |---------------------------|----------------------------------------------|----------------------------------|------------------------------------------------|-----------------------------------------|---------------------------------------------|------------------------------------|--------------------------------------------------------------------------|-----------------------------------------------------------------|
 //! | [`&`]‌[`Signal`] ([cell])  | [`.as_read_only()`][aro1]                    | [`.as_dyn()`]                    | [`.to_read_only()`][tro1]                      | [`.to_dyn()`]                           | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[`.into_dyn()`][id2] | [`.to_subscription()`]‌[`.into_read_only()`][iro3]                      | [`.to_subscription()`]‌[`.into_dyn`][id3]                        |
-//! | [`SignalArc`] ([cell])    | [`.as_read_only()`][aro1]                    | [`.as_dyn()`]                    | [`.into_read_only()`][iro1]                    | [`.into_dyn()`][id1]                    | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[`.into_dyn()`][id2] | [`.into_subscription()`]‌[`.into_read_only()`][iro3]                    | [`.into_subscription()`]‌[`.into_dyn`][id3]                      |
+//! | [`SignalRc`] ([cell])    | [`.as_read_only()`][aro1]                    | [`.as_dyn()`]                    | [`.into_read_only()`][iro1]                    | [`.into_dyn()`][id1]                    | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[`.into_dyn()`][id2] | [`.into_subscription()`]‌[`.into_read_only()`][iro3]                    | [`.into_subscription()`]‌[`.into_dyn`][id3]                      |
 //! | [`SignalWeak`] ([cell])   | [`.upgrade()`]‌[`?`]‌[`.as_read_only()`][aro1] | [`.upgrade()`]‌[`?`]‌[`.as_dyn()`] | [`.upgrade()`]‌[`?`]‌[`.into_read_only()`][iro1] | [`.upgrade()`]‌[`?`]‌[`.into_dyn()`][id1] | [`.into_read_only()`][iro2]                 | [`.into_dyn()`][id2]                 | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[`.into_read_only()`][iro3] | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[`.into_dyn()`][id3] |
 //! | [`Subscription`] ([cell]) | [`.as_read_only()`][aro1]                    | [`.as_dyn()`]                    | [`.unsubscribe()`]‌[`.into_read_only()`][iro1]  | [`.unsubscribe()`]‌[`.into_dyn()`][id1]  | [`.downgrade()`]‌[`.into_read_only()`][iro2] | [`.downgrade()`]‌[`.into_dyn()`][id2] | [`.into_read_only()`][iro3]                                            | [`.into_dyn()`][id3]                                            |
 //!
@@ -46,10 +46,10 @@
 //!
 //! ## with `dyn `[`UnmanagedSignalCell`] (read-write) to with `dyn `[`UnmanagedSignal`] (read-only)
 //!
-//! | from ↓ \ into →         | [`&`]‌[`SignalDyn`]                           | [`SignalArcDyn`]                               | [`SignalWeakDyn`]                           | [`SubscriptionDyn`]                                                    |
+//! | from ↓ \ into →         | [`&`]‌[`SignalDyn`]                           | [`SignalRcDyn`]                               | [`SignalWeakDyn`]                           | [`SubscriptionDyn`]                                                    |
 //! |-------------------------|----------------------------------------------|------------------------------------------------|---------------------------------------------|------------------------------------------------------------------------|
 //! | [`&`]‌[`SignalDynCell`]  | [`.as_read_only()`][aro2]                    | [`.to_read_only()`][tro2]                      | [`.downgrade()`]‌[`.into_read_only()`][iro5] | [`.to_subscription()`]‌[`.into_read_only()`][iro6]                      |
-//! | [`SignalArcDynCell`]    | [`.as_read_only()`][aro2]                    | [`.into_read_only()`][iro4]                    | [`.downgrade()`]‌[`.into_read_only()`][iro5] | [`.into_subscription()`]‌[`.into_read_only()`][iro6]                    |
+//! | [`SignalRcDynCell`]    | [`.as_read_only()`][aro2]                    | [`.into_read_only()`][iro4]                    | [`.downgrade()`]‌[`.into_read_only()`][iro5] | [`.into_subscription()`]‌[`.into_read_only()`][iro6]                    |
 //! | [`SignalWeakDynCell`]   | [`.upgrade()`]‌[`?`]‌[`.as_read_only()`][aro2] | [`.upgrade()`]‌[`?`]‌[`.into_read_only()`][iro4] | [`.into_read_only()`][iro5]                 | [`.upgrade()`]‌[`?`]‌[`.into_subscription()`]‌[`.into_read_only()`][iro6] |
 //! | [`SubscriptionDynCell`] | [`.as_read_only()`][aro2]                    | [`.unsubscribe()`]‌[`.into_read_only()`][iro4]  | [`.downgrade()`]‌[`.into_read_only()`][iro5] | [`.into_read_only()`][iro6]                                            |
 //!
@@ -76,7 +76,7 @@
 //!
 //! [`TryFrom`] and [`TryInto`] are available for *side effect free* fallible conversions. These are:
 //!
-//! - [`.upgrade()`] (with [`Result`]`<`[`SignalArc`]`, `[`SignalWeak`]`>` as output)
+//! - [`.upgrade()`] (with [`Result`]`<`[`SignalRc`]`, `[`SignalWeak`]`>` as output)
 //! - **combinations of the above with unsizing / type-erasure and/or upcasting**
 //!
 //! [cell]: `UnmanagedSignalCell`
@@ -84,10 +84,10 @@
 //! [`.as_dyn_cell()`]: `Signal::as_dyn_cell`
 //! [`.to_dyn_cell()`]: `Signal::to_dyn_cell`
 //! [`.downgrade()`]: `Signal::downgrade`
-//! [idc1]: `SignalArc::into_dyn_cell`
+//! [idc1]: `SignalRc::into_dyn_cell`
 //! [idc2]: `SignalWeak::into_dyn_cell`
 //! [idc3]: `Subscription::into_dyn_cell`
-//! [`.into_subscription()`]: `SignalArc::into_subscription`
+//! [`.into_subscription()`]: `SignalRc::into_subscription`
 //! [`.to_subscription()`]: `Signal::to_subscription`
 //! [`.unsubscribe()`]: `Subscription::unsubscribe`
 //! [`.upgrade()`]: `SignalWeak::upgrade`
@@ -96,19 +96,19 @@
 //! [signal]: `UnmanagedSignal`
 //! [`.as_dyn()`]: `Signal::as_dyn`
 //! [`.to_dyn()`]: `Signal::to_dyn`
-//! [id1]: `SignalArc::into_dyn`
+//! [id1]: `SignalRc::into_dyn`
 //! [id2]: `SignalWeak::into_dyn`
 //! [id3]: `Subscription::into_dyn`
 //!
 //! [aro1]: `Signal::as_read_only`
 //! [tro1]: `Signal::to_read_only`
-//! [iro1]: `SignalArc::into_read_only`
+//! [iro1]: `SignalRc::into_read_only`
 //! [iro2]: `SignalWeak::into_read_only`
 //! [iro3]: `Subscription::into_read_only`
 //!
 //! [aro2]: ../struct.Signal.html#method.as_read_only-1
 //! [tro2]: ../struct.Signal.html#method.to_read_only-1
-//! [iro4]: ../struct.SignalArc.html#method.into_read_only-1`
+//! [iro4]: ../struct.SignalRc.html#method.into_read_only-1`
 //! [iro5]: ../struct.SignalWeak.html#method.into_read_only-1`
 //! [iro6]: ../struct.Subscription.html#method.into_read_only-1`
 
@@ -119,8 +119,8 @@ use std::{borrow::Borrow, ops::Deref};
 use isoprenoid_unsend::runtime::SignalsRuntimeRef;
 
 use crate::{
-	signal_arc::SignalArcDynCell, traits::UnmanagedSignalCell, unmanaged::UnmanagedSignal, Effect,
-	Signal, SignalArc, SignalArcDyn, SignalDyn, SignalDynCell, SignalWeak, SignalWeakDyn,
+	signal_rc::SignalRcDynCell, traits::UnmanagedSignalCell, unmanaged::UnmanagedSignal, Effect,
+	Signal, SignalDyn, SignalDynCell, SignalRc, SignalRcDyn, SignalWeak, SignalWeakDyn,
 	SignalWeakDynCell, Subscription, SubscriptionDyn, SubscriptionDynCell,
 };
 
@@ -187,9 +187,9 @@ impl<'r, 'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> From<&'r SignalDynCell<
 }
 
 impl<'a, T: 'a + ?Sized, S: 'a + Sized + UnmanagedSignal<T, SR>, SR: 'a + SignalsRuntimeRef>
-	From<SignalArc<T, S, SR>> for SignalArcDyn<'a, T, SR>
+	From<SignalRc<T, S, SR>> for SignalRcDyn<'a, T, SR>
 {
-	fn from(value: SignalArc<T, S, SR>) -> Self {
+	fn from(value: SignalRc<T, S, SR>) -> Self {
 		value.into_dyn()
 	}
 }
@@ -199,18 +199,18 @@ impl<
 		T: 'a + ?Sized,
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + SignalsRuntimeRef,
-	> From<SignalArc<T, S, SR>> for SignalArcDynCell<'a, T, SR>
+	> From<SignalRc<T, S, SR>> for SignalRcDynCell<'a, T, SR>
 {
-	fn from(value: SignalArc<T, S, SR>) -> Self {
+	fn from(value: SignalRc<T, S, SR>) -> Self {
 		value.into_dyn_cell()
 	}
 }
 
 /// Since 0.1.2.
-impl<'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> From<SignalArcDynCell<'a, T, SR>>
-	for SignalArcDyn<'a, T, SR>
+impl<'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> From<SignalRcDynCell<'a, T, SR>>
+	for SignalRcDyn<'a, T, SR>
 {
-	fn from(value: SignalArcDynCell<'a, T, SR>) -> Self {
+	fn from(value: SignalRcDynCell<'a, T, SR>) -> Self {
 		value.into_read_only()
 	}
 }
@@ -274,7 +274,7 @@ impl<'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> From<SubscriptionDynCell<'a
 }
 
 impl<T: ?Sized, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> From<S>
-	for SignalArc<T, S, SR>
+	for SignalRc<T, S, SR>
 {
 	fn from(value: S) -> Self {
 		Self::new(value)
@@ -282,7 +282,7 @@ impl<T: ?Sized, S: Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> From<S
 }
 
 impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> From<&Signal<T, S, SR>>
-	for SignalArc<T, S, SR>
+	for SignalRc<T, S, SR>
 {
 	fn from(value: &Signal<T, S, SR>) -> Self {
 		value.to_owned()
@@ -294,7 +294,7 @@ impl<
 		T: 'a + ?Sized,
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + SignalsRuntimeRef,
-	> From<&Signal<T, S, SR>> for SignalArcDyn<'a, T, SR>
+	> From<&Signal<T, S, SR>> for SignalRcDyn<'a, T, SR>
 {
 	fn from(value: &Signal<T, S, SR>) -> Self {
 		value.to_dyn()
@@ -306,7 +306,7 @@ impl<
 		T: 'a + ?Sized,
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + SignalsRuntimeRef,
-	> From<&Signal<T, S, SR>> for SignalArcDynCell<'a, T, SR>
+	> From<&Signal<T, S, SR>> for SignalRcDynCell<'a, T, SR>
 {
 	fn from(value: &Signal<T, S, SR>) -> Self {
 		value.to_dyn_cell()
@@ -315,7 +315,7 @@ impl<
 
 /// Since 0.1.2.
 impl<'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> From<&SignalDynCell<'a, T, SR>>
-	for SignalArcDyn<'a, T, SR>
+	for SignalRcDyn<'a, T, SR>
 {
 	fn from(value: &SignalDynCell<'a, T, SR>) -> Self {
 		value.to_read_only()
@@ -364,7 +364,7 @@ impl<'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> From<&SignalDynCell<'a, T, 
 }
 
 impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef>
-	TryFrom<SignalWeak<T, S, SR>> for SignalArc<T, S, SR>
+	TryFrom<SignalWeak<T, S, SR>> for SignalRc<T, S, SR>
 {
 	type Error = SignalWeak<T, S, SR>;
 
@@ -381,7 +381,7 @@ impl<
 		T: 'a + ?Sized,
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + SignalsRuntimeRef,
-	> TryFrom<SignalWeak<T, S, SR>> for SignalArcDyn<'a, T, SR>
+	> TryFrom<SignalWeak<T, S, SR>> for SignalRcDyn<'a, T, SR>
 {
 	type Error = SignalWeak<T, S, SR>;
 
@@ -398,7 +398,7 @@ impl<
 		T: 'a + ?Sized,
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 		SR: 'a + SignalsRuntimeRef,
-	> TryFrom<SignalWeak<T, S, SR>> for SignalArcDynCell<'a, T, SR>
+	> TryFrom<SignalWeak<T, S, SR>> for SignalRcDynCell<'a, T, SR>
 {
 	type Error = SignalWeak<T, S, SR>;
 
@@ -412,7 +412,7 @@ impl<
 
 /// Since 0.1.2.
 impl<'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> TryFrom<SignalWeakDynCell<'a, T, SR>>
-	for SignalArcDyn<'a, T, SR>
+	for SignalRcDyn<'a, T, SR>
 {
 	type Error = SignalWeakDynCell<'a, T, SR>;
 

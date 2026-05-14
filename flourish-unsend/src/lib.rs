@@ -25,9 +25,9 @@ pub mod unmanaged;
 
 //TODO: Inter-runtime signals (i.e. takes two signals runtimes as parameters, acts as source for one and dynamic subscriber for the other).
 
-mod signal_arc;
-pub use signal_arc::{
-	SignalArc, SignalArcDyn, SignalArcDynCell, SignalWeak, SignalWeakDyn, SignalWeakDynCell,
+mod signal_rc;
+pub use signal_rc::{
+	SignalRc, SignalRcDyn, SignalRcDynCell, SignalWeak, SignalWeakDyn, SignalWeakDynCell,
 };
 
 mod subscription;
@@ -99,12 +99,12 @@ macro_rules! shadow_clone {
 ///
 /// ```
 /// use std::ops::Add;
-/// use flourish_unsend::{prelude::*, shadow_ref_to_owned, Signal, SignalArc, SignalDyn};
+/// use flourish_unsend::{prelude::*, shadow_ref_to_owned, Signal, SignalRc, SignalDyn};
 ///
 /// fn live_sum<'a, SR: 'a + SignalsRuntimeRef>(
 /// 	a: &SignalDyn<'a, u64, SR>,
 /// 	b: &SignalDyn<'a, u64, SR>,
-/// ) -> SignalArc<u64, impl 'a + UnmanagedSignal<u64, SR>, SR> {
+/// ) -> SignalRc<u64, impl 'a + UnmanagedSignal<u64, SR>, SR> {
 /// 	Signal::computed_with_runtime({
 /// 		shadow_ref_to_owned!(a, b);
 /// 		move || a.get() + b.get()

@@ -11,9 +11,9 @@ fn test() {
 	type Signal<T, S> = flourish_unsend::Signal<T, S, LocalSignalsRuntime>;
 	type SignalDyn<'a, T> = flourish_unsend::SignalDyn<'a, T, LocalSignalsRuntime>;
 	// type SignalDynCell<'a, T> = flourish_unsend::SignalDynCell<'a, T, LocalSignalsRuntime>;
-	// type SignalArc<T, S> = flourish_unsend::SignalArc<T, S, LocalSignalsRuntime>;
-	type SignalArcDyn<'a, T> = flourish_unsend::SignalArcDyn<'a, T, LocalSignalsRuntime>;
-	// type SignalArcDynCell<'a, T> = flourish_unsend::SignalArcDynCell<'a, T, LocalSignalsRuntime>;
+	// type SignalRc<T, S> = flourish_unsend::SignalRc<T, S, LocalSignalsRuntime>;
+	type SignalRcDyn<'a, T> = flourish_unsend::SignalRcDyn<'a, T, LocalSignalsRuntime>;
+	// type SignalRcDynCell<'a, T> = flourish_unsend::SignalRcDynCell<'a, T, LocalSignalsRuntime>;
 	type Subscription<T, S> = flourish_unsend::Subscription<T, S, LocalSignalsRuntime>;
 	type SubscriptionDyn<'a, T> = flourish_unsend::SubscriptionDyn<'a, T, LocalSignalsRuntime>;
 	// type SubscriptionDynCell<'a, T> = flourish_unsend::SubscriptionDynCell<'a, T, LocalSignalsRuntime>;
@@ -60,21 +60,21 @@ fn test() {
 
 	// Erase the closure type, at cost of dynamic dispatch through such handles:
 	sum.as_dyn();
-	let _ = sum.to_dyn(); // Clones the handle (like `Arc`).
+	let _ = sum.to_dyn(); // Clones the handle (like `Rc`).
 	let sum = sum.into_dyn();
 
 	// Type-erased signals can be stored easily.
-	struct LiveSum(SignalArcDyn<'static, i32>);
+	struct LiveSum(SignalRcDyn<'static, i32>);
 	let sum = LiveSum(sum).0;
 
 	// Pass by heap reference without indirection…
 	let _ = dyn_to_shared(&sum);
-	fn dyn_to_shared<'a, T: ?Sized>(signal: &SignalDyn<'a, T>) -> SignalArcDyn<'a, T> {
+	fn dyn_to_shared<'a, T: ?Sized>(signal: &SignalDyn<'a, T>) -> SignalRcDyn<'a, T> {
 		if true {
 			// …and derive an owned handle:
 			signal.to_owned()
 		} else {
-			// If you always call `.to_owned()`, then it's better to use a `SignalArc` parameter instead.
+			// If you always call `.to_owned()`, then it's better to use a `SignalRc` parameter instead.
 			unreachable!()
 		}
 	}

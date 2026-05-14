@@ -16,23 +16,23 @@ use tap::Conv;
 
 use crate::{
 	opaque::Opaque,
-	signal_arc::SignalWeakDynCell,
+	signal_rc::SignalWeakDynCell,
 	traits::{UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{
 		computed, computed_uncached, computed_uncached_mut, distinct, folded, reduced, InertCell,
 		ReactiveCell, ReactiveCellMut, Shared,
 	},
-	Guard, SignalArc, SignalArcDyn, SignalArcDynCell, SignalWeak, Subscription,
+	Guard, SignalRc, SignalRcDyn, SignalRcDynCell, SignalWeak, Subscription,
 };
 
 /// A reference-counted signal.
 ///
 /// Instances of this type can only be accessed by reference in user code.
 ///
-/// The matching handles are [`SignalArc`], [`SignalWeak`] and [`Subscription`]:
+/// The matching handles are [`SignalRc`], [`SignalWeak`] and [`Subscription`]:
 ///
-/// - [`SignalArc`] and [`Subscription`] each implement both [`Borrow<Signal<…>>`](`Borrow`) and [`Deref`].
-/// - [`Signal`] implements [`ToOwned<Owned = SignalArc<…>>`](`ToOwned`).
+/// - [`SignalRc`] and [`Subscription`] each implement both [`Borrow<Signal<…>>`](`Borrow`) and [`Deref`].
+/// - [`Signal`] implements [`ToOwned<Owned = SignalRc<…>>`](`ToOwned`).
 pub struct Signal<T: ?Sized, S: ?Sized, SR: SignalsRuntimeRef> {
 	inner: UnsafeCell<Signal_<T, S, SR>>,
 }
@@ -59,15 +59,15 @@ where
 }
 
 impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Signal<T, S, SR> {
-	/// Creates a new [`SignalArc`] from the provided [`UnmanagedSignal`].
+	/// Creates a new [`SignalRc`] from the provided [`UnmanagedSignal`].
 	///
-	/// Convenience wrapper for [`SignalArc::new`].
+	/// Convenience wrapper for [`SignalRc::new`].
 	#[allow(clippy::new_ret_no_self)]
-	pub fn new(unmanaged: S) -> SignalArc<T, S, SR>
+	pub fn new(unmanaged: S) -> SignalRc<T, S, SR>
 	where
 		S: Sized,
 	{
-		SignalArc::new(unmanaged)
+		SignalRc::new(unmanaged)
 	}
 }
 
@@ -89,7 +89,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`computed`](`computed()`).
 	pub fn computed<'a>(
 		fn_pin: impl 'a + FnMut() -> T,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -112,12 +112,12 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn computed_with_runtime<'a>(
 		fn_pin: impl 'a + FnMut() -> T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalArc::new(computed(fn_pin, runtime))
+		SignalRc::new(computed(fn_pin, runtime))
 	}
 
 	/// A simple cached computation.
@@ -141,7 +141,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`distinct`](`distinct()`).
 	pub fn distinct<'a>(
 		fn_pin: impl 'a + FnMut() -> T,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized + PartialEq,
 		SR: 'a + Default,
@@ -169,12 +169,12 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn distinct_with_runtime<'a>(
 		fn_pin: impl 'a + FnMut() -> T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized + PartialEq,
 		SR: 'a,
 	{
-		SignalArc::new(distinct(fn_pin, runtime))
+		SignalRc::new(distinct(fn_pin, runtime))
 	}
 
 	/// A simple **uncached** computation.
@@ -193,7 +193,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`computed_uncached`](`computed_uncached()`).
 	pub fn computed_uncached<'a>(
 		fn_pin: impl 'a + Fn() -> T,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -216,12 +216,12 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn computed_uncached_with_runtime<'a>(
 		fn_pin: impl 'a + Fn() -> T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalArc::new(computed_uncached(fn_pin, runtime))
+		SignalRc::new(computed_uncached(fn_pin, runtime))
 	}
 
 	/// A simple **stateful uncached** computation.
@@ -247,7 +247,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// Wraps [`computed_uncached_mut`](`computed_uncached_mut()`).
 	pub fn computed_uncached_mut<'a>(
 		fn_pin: impl 'a + FnMut() -> T,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -277,12 +277,12 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn computed_uncached_mut_with_runtime<'a>(
 		fn_pin: impl 'a + FnMut() -> T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalArc::new(computed_uncached_mut(fn_pin, runtime))
+		SignalRc::new(computed_uncached_mut(fn_pin, runtime))
 	}
 
 	/// The closure mutates the value and returns a [`Propagation`].
@@ -308,7 +308,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn folded<'a>(
 		init: T,
 		fold_fn_pin: impl 'a + FnMut(&mut T) -> Propagation,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -338,12 +338,12 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		init: T,
 		fold_fn_pin: impl 'a + FnMut(&mut T) -> Propagation,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalArc::new(folded(init, fold_fn_pin, runtime))
+		SignalRc::new(folded(init, fold_fn_pin, runtime))
 	}
 
 	/// `select_fn_pin` computes each value.
@@ -373,7 +373,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn reduced<'a>(
 		select_fn_pin: impl 'a + FnMut() -> T,
 		reduce_fn_pin: impl 'a + FnMut(&mut T, T) -> Propagation,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -408,12 +408,12 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		select_fn_pin: impl 'a + FnMut() -> T,
 		reduce_fn_pin: impl 'a + FnMut(&mut T, T) -> Propagation,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalArc::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
+		SignalRc::new(reduced(select_fn_pin, reduce_fn_pin, runtime))
 	}
 
 	/// A lightweight value that's signal-compatible.
@@ -438,7 +438,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	///
 	/// Since 0.1.2.
-	pub fn shared<'a>(value: T) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	pub fn shared<'a>(value: T) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a + Default,
@@ -467,12 +467,12 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn shared_with_runtime<'a>(
 		value: T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignal<T, SR>, SR>
 	where
 		T: 'a + Sized,
 		SR: 'a,
 	{
-		SignalArc {
+		SignalRc {
 			strong: Strong::pin(Shared::with_runtime(value, runtime)),
 		}
 	}
@@ -504,7 +504,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	pub fn cell<'a>(
 		initial_value: T,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -533,12 +533,12 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_with_runtime<'a>(
 		initial_value: T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a,
 	{
-		SignalArc {
+		SignalRc {
 			strong: Strong::pin(InertCell::with_runtime(initial_value, runtime)),
 		}
 	}
@@ -573,7 +573,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	pub fn cell_cyclic<'a>(
 		make_initial_value: impl 'a + FnOnce(&SignalWeakDynCell<'a, T, SR>) -> T,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -613,12 +613,12 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	pub fn cell_cyclic_with_runtime<'a>(
 		make_initial_value: impl 'a + FnOnce(&SignalWeakDynCell<'a, T, SR>) -> T,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a,
 	{
-		SignalArc {
+		SignalRc {
 			strong: Strong::pin_cyclic(|weak: &Weak<T, InertCell<T, SR>, SR>| {
 				InertCell::with_runtime(
 					make_initial_value(&*ManuallyDrop::new(SignalWeakDynCell {
@@ -653,7 +653,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 				&T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -683,12 +683,12 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a,
 	{
-		SignalArc {
+		SignalRc {
 			strong: Strong::pin(ReactiveCell::with_runtime(
 				initial_value,
 				on_subscribed_change_fn_pin,
@@ -728,7 +728,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
 			&SignalWeakDynCell<'a, T, SR>,
 		) -> (T, HandlerFnPin),
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -769,12 +769,12 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 			&SignalWeakDynCell<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a,
 	{
-		SignalArc {
+		SignalRc {
 			strong: Strong::pin_cyclic(|weak: &Weak<T, ReactiveCell<T, HandlerFnPin, SR>, SR>| {
 				let (initial_value, on_subscribed_change_fn_pin) =
 					make_initial_value_and_on_subscribed_change_fn_pin(&*ManuallyDrop::new(
@@ -816,7 +816,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 				&mut T,
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -856,12 +856,12 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 				<SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 			) -> Propagation,
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a,
 	{
-		SignalArc {
+		SignalRc {
 			strong: Strong::pin(ReactiveCellMut::with_runtime(
 				initial_value,
 				on_subscribed_change_fn_pin,
@@ -878,10 +878,10 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
-	/// # use flourish_unsend::{shadow_ref_to_owned, LocalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalArcDynCell};
+	/// # use flourish_unsend::{shadow_ref_to_owned, LocalSignalsRuntime, Propagation, SignalsRuntimeRef, SignalRcDynCell};
 	/// type Signal<T, S> = flourish_unsend::Signal<T, S, LocalSignalsRuntime>;
 	///
-	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalArcDynCell<'_, (usize, Resource<()>), SR>) {}
+	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalRcDynCell<'_, (usize, Resource<()>), SR>) {}
 	/// enum Resource<T> {
 	/// 	Offline,
 	/// 	Pending,
@@ -924,7 +924,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 		make_initial_value_and_on_subscribed_change_fn_pin: impl FnOnce(
 			&SignalWeakDynCell<'a, T, SR>,
 		) -> (T, HandlerFnPin),
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		SR: 'a + Default,
@@ -943,8 +943,8 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 	/// ```
 	/// # {
 	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
-	/// # use flourish_unsend::{shadow_ref_to_owned, LocalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalArcDynCell};
-	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalArcDynCell<'_, (usize, Resource<()>), SR>) {}
+	/// # use flourish_unsend::{shadow_ref_to_owned, LocalSignalsRuntime, Propagation, Signal, SignalsRuntimeRef, SignalRcDynCell};
+	/// # fn start_loading<SR: SignalsRuntimeRef>(name: &str, generation: usize, target: SignalRcDynCell<'_, (usize, Resource<()>), SR>) {}
 	/// enum Resource<T> {
 	/// 	Offline,
 	/// 	Pending,
@@ -981,7 +981,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 			&SignalWeakDynCell<'a, T, SR>,
 		) -> (T, HandlerFnPin),
 		runtime: SR,
-	) -> SignalArc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
+	) -> SignalRc<T, impl 'a + Sized + UnmanagedSignalCell<T, SR>, SR>
 	where
 		T: 'a,
 		HandlerFnPin: 'a
@@ -991,7 +991,7 @@ impl<T, SR: SignalsRuntimeRef> Signal<T, Opaque, SR> {
 			) -> Propagation,
 		SR: 'a,
 	{
-		SignalArc {
+		SignalRc {
 			strong: Strong::pin_cyclic(
 				|weak: &Weak<T, ReactiveCellMut<T, HandlerFnPin, SR>, SR>| {
 					let (initial_value, on_subscribed_change_fn_pin) =
@@ -1196,10 +1196,10 @@ impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Drop 
 impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> ToOwned
 	for Signal<T, S, SR>
 {
-	type Owned = SignalArc<T, S, SR>;
+	type Owned = SignalRc<T, S, SR>;
 
 	fn to_owned(&self) -> Self::Owned {
-		(*ManuallyDrop::new(SignalArc {
+		(*ManuallyDrop::new(SignalRc {
 			strong: Strong { strong: self },
 		}))
 		.clone()
@@ -1212,7 +1212,7 @@ impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Clone
 	fn clone(&self) -> Self {
 		let strong = &self.get().inner().strong;
 		if strong.get() > usize::MAX / 2 {
-			eprintln!("SignalArc overflow.");
+			eprintln!("SignalRc overflow.");
 			abort()
 		}
 		strong.update(|strong| strong + 1);
@@ -1247,7 +1247,7 @@ impl<T: ?Sized, S: ?Sized, SR: SignalsRuntimeRef> Signal<T, S, SR> {
 impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Signal<T, S, SR> {
 	/// Creates a new [`Subscription`] for this [`Signal`].
 	///
-	/// Where you consume an owned [`SignalArc`], prefer [`SignalArc::into_subscription`] to avoid some memory barriers.
+	/// Where you consume an owned [`SignalRc`], prefer [`SignalRc::into_subscription`] to avoid some memory barriers.
 	pub fn to_subscription(&self) -> Subscription<T, S, SR> {
 		self.to_owned().into_subscription()
 	}
@@ -1276,16 +1276,16 @@ impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Signa
 		self
 	}
 
-	/// Creates a new [`SignalArcDyn`] for this [`Signal`], without the [`UnmanagedSignal`] `S` in the type signature.
-	pub fn to_dyn<'a>(&self) -> SignalArcDyn<'a, T, SR>
+	/// Creates a new [`SignalRcDyn`] for this [`Signal`], without the [`UnmanagedSignal`] `S` in the type signature.
+	pub fn to_dyn<'a>(&self) -> SignalRcDyn<'a, T, SR>
 	where
 		S: 'a + Sized,
 	{
 		self.to_owned().into_dyn()
 	}
 
-	/// Creates a new [`SignalArcDynCell`] for this [`Signal`], without the [`UnmanagedSignalCell`] `S` in the type signature.
-	pub fn to_dyn_cell<'a>(&self) -> SignalArcDynCell<'a, T, SR>
+	/// Creates a new [`SignalRcDynCell`] for this [`Signal`], without the [`UnmanagedSignalCell`] `S` in the type signature.
+	pub fn to_dyn_cell<'a>(&self) -> SignalRcDynCell<'a, T, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 	{
@@ -1302,8 +1302,8 @@ impl<T: ?Sized, S: UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Signal<T, S, S
 		self
 	}
 
-	/// Creates a new [`SignalArc`] for this [`Signal`], with the [`UnmanagedSignalCell`] `S` replaced by an opaque [`UnmanagedSignal`] in the type signature.
-	pub fn to_read_only<'a>(&self) -> SignalArc<T, impl 'a + UnmanagedSignal<T, SR>, SR>
+	/// Creates a new [`SignalRc`] for this [`Signal`], with the [`UnmanagedSignalCell`] `S` replaced by an opaque [`UnmanagedSignal`] in the type signature.
+	pub fn to_read_only<'a>(&self) -> SignalRc<T, impl 'a + UnmanagedSignal<T, SR>, SR>
 	where
 		S: 'a + Sized + UnmanagedSignalCell<T, SR>,
 	{
@@ -1319,10 +1319,10 @@ impl<'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> SignalDynCell<'a, T, SR> {
 		self
 	}
 
-	/// Creates a new [`SignalArcDyn`] for this [`SignalDynCell`], discarding mutation access.
+	/// Creates a new [`SignalRcDyn`] for this [`SignalDynCell`], discarding mutation access.
 	///
 	/// Since 0.1.2.
-	pub fn to_read_only(&self) -> SignalArcDyn<'a, T, SR> {
+	pub fn to_read_only(&self) -> SignalRcDyn<'a, T, SR> {
 		self.as_read_only().to_owned()
 	}
 }

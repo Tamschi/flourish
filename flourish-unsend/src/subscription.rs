@@ -17,7 +17,7 @@ use crate::{
 	signals_helper,
 	traits::{UnmanagedSignal, UnmanagedSignalCell},
 	unmanaged::{computed, folded, reduced},
-	Guard, Signal, SignalArc,
+	Guard, Signal, SignalRc,
 };
 
 /// [`Subscription`] after type-erasure.
@@ -26,7 +26,7 @@ pub type SubscriptionDyn<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignal<T
 /// [`Subscription`] after cell-type-erasure.
 pub type SubscriptionDynCell<'a, T, SR> = Subscription<T, dyn 'a + UnmanagedSignalCell<T, SR>, SR>;
 
-/// Intrinsically-subscribing version of [`SignalArc`].\
+/// Intrinsically-subscribing version of [`SignalRc`].\
 /// Can be directly constructed but also converted to and from that type.
 #[must_use = "Subscriptions are undone when dropped."]
 pub struct Subscription<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> {
@@ -115,13 +115,13 @@ impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Subsc
 		})
 	}
 
-	/// Unsubscribes the [`Subscription`], turning it into a [`SignalArc`] in the process.
+	/// Unsubscribes the [`Subscription`], turning it into a [`SignalRc`] in the process.
 	///
 	/// The underlying [`Signal`] may remain subscribed-to due to other subscriptions.
 	#[must_use = "Use `drop(self)` instead of converting first. Dropping directly can skip signal refreshes caused by `Propagation::FlushOut`."]
-	pub fn unsubscribe(self) -> SignalArc<T, S, SR> {
+	pub fn unsubscribe(self) -> SignalRc<T, S, SR> {
 		//FIXME: This could avoid refcounting up and down and at least some of the associated memory barriers.
-		SignalArc {
+		SignalRc {
 			strong: (*self.subscribed).clone(),
 		}
 	} // Implicit drop(self) unsubscribes.
@@ -203,7 +203,7 @@ impl<'a, T: 'a + ?Sized, SR: 'a + SignalsRuntimeRef> SubscriptionDynCell<'a, T, 
 /// The "uncached" and "distinct" versions of [`computed`](`computed()`) are
 /// intentionally not wrapped here, as their behaviour may be unexpected at first glance.
 ///
-/// You can still easily construct them as [`SignalArc`] and subscribe afterwards:
+/// You can still easily construct them as [`SignalRc`] and subscribe afterwards:
 ///
 /// ```
 /// # {
@@ -435,11 +435,11 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// # use flourish_unsend::LocalSignalsRuntime;
 	/// # type Signal<T, S> = flourish_unsend::Signal<T, S, LocalSignalsRuntime>;
 	/// type Subscription<T, S> = flourish_unsend::Subscription<T, S, LocalSignalsRuntime>;
-	/// type SignalArcDyn<'a, T> = flourish_unsend::SignalArcDyn<'a, T, LocalSignalsRuntime>;
+	/// type SignalRcDyn<'a, T> = flourish_unsend::SignalRcDyn<'a, T, LocalSignalsRuntime>;
 	///
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
-	/// let f: Pin<&dyn Future<Output = SignalArcDyn<_>>> = pin!(async {
+	/// let f: Pin<&dyn Future<Output = SignalRcDyn<_>>> = pin!(async {
 	/// 	Subscription::skipped_while(|| input.get(), |_| true).await.unsubscribe().into_dyn()
 	/// });
 	/// # }
@@ -484,11 +484,11 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> Subscription<T, Opaque, SR> {
 	/// # {
 	/// # #![cfg(feature = "local_signals_runtime")] // flourish feature
 	/// # use std::{future::Future, pin::{pin, Pin}};
-	/// # use flourish_unsend::{LocalSignalsRuntime, Subscription, SignalArcDyn};
+	/// # use flourish_unsend::{LocalSignalsRuntime, Subscription, SignalRcDyn};
 	/// # type Signal<T, S> = flourish_unsend::Signal<T, S, LocalSignalsRuntime>;
 	/// # #[derive(Default, Clone, Copy)] struct Value;
 	/// # let input = Signal::cell(Value);
-	/// let f: Pin<&dyn Future<Output = SignalArcDyn<_, _>>> = pin!(async {
+	/// let f: Pin<&dyn Future<Output = SignalRcDyn<_, _>>> = pin!(async {
 	/// 	Subscription::skipped_while_with_runtime(|| input.get(), |_| true, LocalSignalsRuntime)
 	/// 		.await.unsubscribe().into_dyn()
 	/// });

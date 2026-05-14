@@ -44,14 +44,14 @@ cargo add flourish-unsend --features local_signals_runtime
 You can put signals on the heap:
 
 ```rust
-use flourish_unsend::{Propagation, LocalSignalsRuntime, SignalArcDynCell, SignalArcDyn};
+use flourish_unsend::{Propagation, LocalSignalsRuntime, SignalRcDynCell, SignalRcDyn};
 
 // Choose a runtime:
 type Effect<'a> = flourish_unsend::Effect<'a, LocalSignalsRuntime>;
 type Signal<T, S> = flourish_unsend::Signal<T, S, LocalSignalsRuntime>;
 type Subscription<T, S> = flourish_unsend::Subscription<T, S, LocalSignalsRuntime>;
 
-// `Signal` is a ref-only type like `Path`, so its constructors return a `SignalArc`.
+// `Signal` is a ref-only type like `Path`, so its constructors return a `SignalRc`.
 let _ = Signal::shared(()); // Untracked `T`-wrapper.
 let _ = Signal::cell(());
 let _ = Signal::cell_cyclic(|_weak| ());
@@ -68,7 +68,7 @@ let _ = Signal::computed_uncached_mut(|| ());
 let _ = Signal::folded((), |_value| Propagation::Propagate);
 let _ = Signal::reduced(|| (), |_value, _next| Propagation::Propagate);
 
-// `Subscription` is the subscribed form of `SignalArc`.
+// `Subscription` is the subscribed form of `SignalRc`.
 let _ = Subscription::computed(|| ());
 let _ = Subscription::folded((), |_value| Propagation::Propagate);
 let _ = Subscription::reduced(|| (), |_value, _next| Propagation::Propagate);
@@ -81,8 +81,8 @@ let _ = Effect::new(|| (), drop);
 let (_signal, _cell) = Signal::cell(()).into_read_only_and_self();
 
 // Erase the unmanaged/closure type:
-let _: SignalArcDynCell<(), LocalSignalsRuntime> = Signal::cell(()).into_dyn_cell();
-let _: SignalArcDyn<(), LocalSignalsRuntime> = Signal::computed(|| ()).into_dyn();
+let _: SignalRcDynCell<(), LocalSignalsRuntime> = Signal::cell(()).into_dyn_cell();
+let _: SignalRcDyn<(), LocalSignalsRuntime> = Signal::computed(|| ()).into_dyn();
 let (_signal_dyn, _cell_dyn) = Signal::cell(()).into_dyn_read_only_and_self();
 ```
 
@@ -152,7 +152,7 @@ let signal = Signal::computed({
   })
 }); // nothing
 
-// For demo purposes, the original `SignalArc` is preserved here.
+// For demo purposes, the original `SignalRc` is preserved here.
 // To consume it, write `.into_subscription()`, which is more efficient.
 let subscription = signal.to_subscription(); // ""
 
@@ -211,9 +211,9 @@ Upcasting conversions from `…DynCell` to read-only `…Dyn` handles and refere
 In particular, references and pointers to `SignalDynCell` can be coerced directly into those to `SignalDyn`:
 
 ```rust
-use flourish_unsend::{LocalSignalsRuntime, Signal, SignalArc, SignalDyn, SignalDynCell};
+use flourish_unsend::{LocalSignalsRuntime, Signal, SignalRc, SignalDyn, SignalDynCell};
 
-let cell: SignalArc<_, _, _> = Signal::<_, _, LocalSignalsRuntime>::cell(());
+let cell: SignalRc<_, _, _> = Signal::<_, _, LocalSignalsRuntime>::cell(());
 
 let dyn_cell_ref: &SignalDynCell<_, _> = cell.as_dyn_cell();
 let dyn_ref: &SignalDyn<_, _> = dyn_cell_ref;

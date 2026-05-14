@@ -4,8 +4,8 @@ use flourish_unsend::LocalSignalsRuntime;
 mod _validator;
 
 type Signal<T, S> = flourish_unsend::Signal<T, S, LocalSignalsRuntime>;
-type SignalArcDyn<'a, T> = flourish_unsend::SignalArcDyn<'a, T, LocalSignalsRuntime>;
-type SignalArcDynCell<'a, T> = flourish_unsend::SignalArcDynCell<'a, T, LocalSignalsRuntime>;
+type SignalRcDyn<'a, T> = flourish_unsend::SignalRcDyn<'a, T, LocalSignalsRuntime>;
+type SignalRcDynCell<'a, T> = flourish_unsend::SignalRcDynCell<'a, T, LocalSignalsRuntime>;
 type SignalWeakDyn<'a, T> = flourish_unsend::SignalWeakDyn<'a, T, LocalSignalsRuntime>;
 type SignalWeakDynCell<'a, T> = flourish_unsend::SignalWeakDynCell<'a, T, LocalSignalsRuntime>;
 type SubscriptionDyn<'a, T> = flourish_unsend::SubscriptionDyn<'a, T, LocalSignalsRuntime>;
@@ -30,11 +30,11 @@ fn methods() {
 #[test]
 fn via_into() {
 	// Unsizing.
-	let arc: SignalArcDynCell<_> = Signal::cell(0).into();
+	let arc: SignalRcDynCell<_> = Signal::cell(0).into();
 	let weak: SignalWeakDynCell<_> = Signal::cell(0).downgrade().into();
 	let sub: SubscriptionDynCell<_> = Signal::cell(0).to_subscription().into();
 
-	let _: SignalArcDyn<_> = arc.into();
+	let _: SignalRcDyn<_> = arc.into();
 	let _: SignalWeakDyn<_> = weak.into();
 	let _: SubscriptionDyn<_> = sub.into();
 }

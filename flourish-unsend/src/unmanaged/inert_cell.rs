@@ -6,7 +6,8 @@ use std::{
 	mem,
 	ops::Deref,
 	pin::Pin,
-	sync::{Arc, Mutex},
+	rc::Rc,
+	sync::Mutex,
 };
 
 use isoprenoid_unsend::{
@@ -186,9 +187,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(Mutex::new(Some(Err(new_value))));
 		let f = self.update_eager({
-			let r = Arc::downgrade(&r);
+			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
@@ -209,9 +210,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
 			use futures_lite::FutureExt;
 			f.boxed_local().await.ok();
-			Arc::try_unwrap(r)
+			Rc::try_unwrap(r)
 				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
@@ -232,9 +233,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(Mutex::new(Some(Err(new_value))));
 		let f = self.update_eager({
-			let r = Arc::downgrade(&r);
+			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
@@ -255,9 +256,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
 			use futures_lite::FutureExt;
 			f.boxed_local().await.ok();
-			Arc::try_unwrap(r)
+			Rc::try_unwrap(r)
 				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
@@ -275,9 +276,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(Mutex::new(Some(Err(new_value))));
 		let f = self.update_eager({
-			let r = Arc::downgrade(&r);
+			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
@@ -293,9 +294,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
 			use futures_lite::FutureExt;
 			f.boxed_local().await.ok();
-			Arc::try_unwrap(r)
+			Rc::try_unwrap(r)
 				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
@@ -316,9 +317,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(Mutex::new(Some(Err(new_value))));
 		let f = self.update_eager({
-			let r = Arc::downgrade(&r);
+			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
@@ -334,9 +335,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
 			use futures_lite::FutureExt;
 			f.boxed_local().await.ok();
-			Arc::try_unwrap(r)
+			Rc::try_unwrap(r)
 				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
@@ -356,7 +357,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		Self: 'f + Sized,
 	{
-		let update = Arc::new(Mutex::new(Some(update)));
+		let update = Rc::new(Mutex::new(Some(update)));
 		let f = self.project_ref().signal.update_eager_pin({
 			shadow_clone!(update);
 			move |value, _| {
@@ -372,9 +373,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 			//FIXME: Boxing seems to be currently required because of <https://github.com/rust-lang/rust/issues/100013>?
 			use futures_lite::FutureExt;
 			f.boxed_local().await.map_err(|_| {
-				Arc::try_unwrap(update)
+				Rc::try_unwrap(update)
 					.map_err(|_| ())
-					.expect("The `Arc`'s clone is dropped in the previous line.")
+					.expect("The `Rc`'s clone is dropped in the previous line.")
 					.into_inner()
 					.expect("unreachable")
 					.expect("unreachable")
@@ -394,10 +395,10 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(Mutex::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
-				let r = Arc::downgrade(&r);
+				let r = Rc::downgrade(&r);
 				Box::new(move |value: &mut T| {
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
@@ -417,9 +418,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 
 		Box::new(async move {
 			f.await.ok();
-			Arc::try_unwrap(r)
+			Rc::try_unwrap(r)
 				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
@@ -433,10 +434,10 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(Mutex::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
-				let r = Arc::downgrade(&r);
+				let r = Rc::downgrade(&r);
 				Box::new(move |value: &mut T| {
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
@@ -456,9 +457,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 
 		Box::new(async move {
 			f.await.ok();
-			Arc::try_unwrap(r)
+			Rc::try_unwrap(r)
 				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
@@ -472,10 +473,10 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f + Sized,
 	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(Mutex::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
-				let r = Arc::downgrade(&r);
+				let r = Rc::downgrade(&r);
 				Box::new(move |value: &mut T| {
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
@@ -490,9 +491,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 
 		Box::new(async move {
 			f.await.ok();
-			Arc::try_unwrap(r)
+			Rc::try_unwrap(r)
 				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
@@ -506,10 +507,10 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f + Sized,
 	{
-		let r = Arc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(Mutex::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
-				let r = Arc::downgrade(&r);
+				let r = Rc::downgrade(&r);
 				Box::new(move |value: &mut T| {
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
@@ -524,9 +525,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 
 		Box::new(async move {
 			f.await.ok();
-			Arc::try_unwrap(r)
+			Rc::try_unwrap(r)
 				.map_err(|_| ())
-				.expect("The `Arc`'s clone is dropped in the previous line.")
+				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
 				.expect("unreachable")
@@ -540,9 +541,9 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f,
 	{
-		let update = Arc::new(Mutex::new(Some(update)));
+		let update = Rc::new(Mutex::new(Some(update)));
 		let f = self.project_ref().signal.update_eager_pin({
-			let update = Arc::downgrade(&update);
+			let update = Rc::downgrade(&update);
 			move |value, _| {
 				(
 					if let Some(update) = update.upgrade() {
@@ -561,7 +562,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 		});
 		Box::new(async move {
 			f.await.map_err(|_| {
-				Arc::into_inner(update)
+				Rc::into_inner(update)
 					.expect("unreachable")
 					.into_inner()
 					.expect("unreachable")
