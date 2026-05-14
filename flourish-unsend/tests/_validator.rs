@@ -1,17 +1,17 @@
 #![allow(dead_code)]
 
-use std::{collections::VecDeque, fmt::Debug, sync::Mutex};
+use std::{cell::RefCell, collections::VecDeque, fmt::Debug};
 
-pub struct Validator<T>(Mutex<VecDeque<T>>);
+pub struct Validator<T>(RefCell<VecDeque<T>>);
 
 impl<T> Validator<T> {
 	#[allow(clippy::new_without_default)]
 	pub const fn new() -> Self {
-		Self(Mutex::new(VecDeque::new()))
+		Self(RefCell::new(VecDeque::new()))
 	}
 
 	pub fn push(&self, value: T) {
-		self.0.lock().unwrap().push_back(value);
+		self.0.try_borrow_mut().unwrap().push_back(value);
 	}
 
 	#[track_caller]
@@ -19,7 +19,7 @@ impl<T> Validator<T> {
 	where
 		T: Debug + Eq,
 	{
-		let mut binding = self.0.lock().unwrap();
+		let mut binding = self.0.try_borrow_mut().unwrap();
 		let mut a = binding.drain(..);
 		let mut b = expected.into_iter();
 		loop {

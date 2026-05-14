@@ -7,7 +7,6 @@ use std::{
 	ops::Deref,
 	pin::Pin,
 	rc::Rc,
-	sync::Mutex,
 };
 
 use isoprenoid_unsend::{
@@ -28,7 +27,7 @@ pub(crate) struct ReactiveCell<
 	SR: SignalsRuntimeRef,
 > {
 	#[pin]
-	signal: RawSignal<(Mutex<HandlerFnPin>, RefCell<T>), (), SR>,
+	signal: RawSignal<(RefCell<HandlerFnPin>, RefCell<T>), (), SR>,
 }
 
 impl<
@@ -85,7 +84,7 @@ impl<
 		Self {
 			signal: RawSignal::with_runtime(
 				(
-					Mutex::new(on_subscribed_change_fn_pin),
+					RefCell::new(on_subscribed_change_fn_pin),
 					RefCell::new(initial_value),
 				),
 				runtime,
@@ -116,19 +115,19 @@ impl<
 		T: ?Sized,
 		HandlerFnPin: FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 		SR: SignalsRuntimeRef,
-	> Callbacks<(Mutex<HandlerFnPin>, RefCell<T>), (), SR> for E
+	> Callbacks<(RefCell<HandlerFnPin>, RefCell<T>), (), SR> for E
 {
 	const UPDATE: Option<
 		fn(
-			eager: Pin<&(Mutex<HandlerFnPin>, RefCell<T>)>,
+			eager: Pin<&(RefCell<HandlerFnPin>, RefCell<T>)>,
 			lazy: Pin<&()>,
 		) -> isoprenoid_unsend::runtime::Propagation,
 	> = None;
 
 	const ON_SUBSCRIBED_CHANGE: Option<
 		fn(
-			signal: Pin<&RawSignal<(Mutex<HandlerFnPin>, RefCell<T>), (), SR>>,
-			eager: Pin<&(Mutex<HandlerFnPin>, RefCell<T>)>,
+			signal: Pin<&RawSignal<(RefCell<HandlerFnPin>, RefCell<T>), (), SR>>,
+			eager: Pin<&(RefCell<HandlerFnPin>, RefCell<T>)>,
 			lazy: Pin<&()>,
 			subscribed: <<SR as SignalsRuntimeRef>::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus,
 		) -> Propagation,
@@ -137,8 +136,8 @@ impl<
 			T: ?Sized,
 			HandlerFnPin: FnMut(&T, <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation,
 			SR: SignalsRuntimeRef,
-		>(_: Pin<&RawSignal<(Mutex<HandlerFnPin>, RefCell<T>), (), SR>>, eager: Pin<&(Mutex<HandlerFnPin>, RefCell<T>)>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation{
-			eager.0.lock().unwrap()(&*eager.1.borrow(), status)
+		>(_: Pin<&RawSignal<(RefCell<HandlerFnPin>, RefCell<T>), (), SR>>, eager: Pin<&(RefCell<HandlerFnPin>, RefCell<T>)>, _ :Pin<&()>, status: <SR::CallbackTableTypes as CallbackTableTypes>::SubscribedStatus) -> Propagation{
+			eager.0.try_borrow_mut().unwrap()(&*eager.1.borrow(), status)
 		}
 
 		Some(on_subscribed_change_fn_pin::<T,HandlerFnPin,SR>)
@@ -263,14 +262,14 @@ impl<
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f = self.update_eager({
 			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
 				};
-				let mut r = r.try_lock().unwrap();
+				let mut r = r.try_borrow_mut().unwrap();
 				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 				if *value == new_value {
 					*r = Some(Ok(Err(new_value)));
@@ -291,7 +290,6 @@ impl<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		}))
 	}
 
@@ -309,14 +307,14 @@ impl<
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f = self.update_eager({
 			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
 				};
-				let mut r = r.try_lock().unwrap();
+				let mut r = r.try_borrow_mut().unwrap();
 				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 				if *value == new_value {
 					*r = Some(Ok(Err(new_value)));
@@ -337,7 +335,6 @@ impl<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		}))
 	}
 
@@ -352,14 +349,14 @@ impl<
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f = self.update_eager({
 			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
 				};
-				let mut r = r.try_lock().unwrap();
+				let mut r = r.try_borrow_mut().unwrap();
 				let new_value = r.take().unwrap().unwrap_err();
 				*r = Some(Ok(*value = new_value));
 				(Propagation::Propagate, ())
@@ -374,7 +371,6 @@ impl<
 				.map_err(|_| ())
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
-				.expect("unreachable")
 				.expect("unreachable")
 		}))
 	}
@@ -393,14 +389,14 @@ impl<
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f = self.update_eager({
 			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
 				};
-				let mut r = r.try_lock().unwrap();
+				let mut r = r.try_borrow_mut().unwrap();
 				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 				*r = Some(Ok(mem::replace(value, new_value)));
 				(Propagation::Propagate, ())
@@ -415,7 +411,6 @@ impl<
 				.map_err(|_| ())
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
-				.expect("unreachable")
 				.expect("unreachable")
 		}))
 	}
@@ -433,12 +428,12 @@ impl<
 	where
 		Self: 'f + Sized,
 	{
-		let update = Rc::new(Mutex::new(Some(update)));
+		let update = Rc::new(RefCell::new(Some(update)));
 		let f = self.project_ref().signal.update_eager_pin({
 			shadow_clone!(update);
 			move |value, _| {
 				let update = update
-					.try_lock()
+					.try_borrow_mut()
 					.expect("unreachable")
 					.take()
 					.expect("unreachable");
@@ -453,7 +448,6 @@ impl<
 					.map_err(|_| ())
 					.expect("The `Rc`'s clone is dropped in the previous line.")
 					.into_inner()
-					.expect("unreachable")
 					.expect("unreachable")
 			})
 		}))
@@ -471,7 +465,7 @@ impl<
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
 				let r = Rc::downgrade(&r);
@@ -479,7 +473,7 @@ impl<
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
 					};
-					let mut r = r.try_lock().unwrap();
+					let mut r = r.try_borrow_mut().unwrap();
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 					if *value == new_value {
 						*r = Some(Ok(Err(new_value)));
@@ -499,7 +493,6 @@ impl<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		})
 	}
 
@@ -510,7 +503,7 @@ impl<
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
 				let r = Rc::downgrade(&r);
@@ -518,7 +511,7 @@ impl<
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
 					};
-					let mut r = r.try_lock().unwrap();
+					let mut r = r.try_borrow_mut().unwrap();
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 					if *value == new_value {
 						*r = Some(Ok(Err(new_value)));
@@ -538,7 +531,6 @@ impl<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		})
 	}
 
@@ -549,7 +541,7 @@ impl<
 	where
 		T: 'f + Sized,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
 				let r = Rc::downgrade(&r);
@@ -557,7 +549,7 @@ impl<
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
 					};
-					let mut r = r.try_lock().unwrap();
+					let mut r = r.try_borrow_mut().unwrap();
 					let new_value = r.take().unwrap().unwrap_err();
 					*r = Some(Ok(*value = new_value));
 					Propagation::Propagate
@@ -572,7 +564,6 @@ impl<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		})
 	}
 
@@ -583,7 +574,7 @@ impl<
 	where
 		T: 'f + Sized,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
 				let r = Rc::downgrade(&r);
@@ -591,7 +582,7 @@ impl<
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
 					};
-					let mut r = r.try_lock().unwrap();
+					let mut r = r.try_borrow_mut().unwrap();
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 					*r = Some(Ok(mem::replace(value, new_value)));
 					Propagation::Propagate
@@ -606,7 +597,6 @@ impl<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		})
 	}
 
@@ -617,14 +607,14 @@ impl<
 	where
 		T: 'f,
 	{
-		let update = Rc::new(Mutex::new(Some(update)));
+		let update = Rc::new(RefCell::new(Some(update)));
 		let f = self.project_ref().signal.update_eager_pin({
 			let update = Rc::downgrade(&update);
 			move |value, _| {
 				(
 					if let Some(update) = update.upgrade() {
 						let update = update
-							.try_lock()
+							.try_borrow_mut()
 							.expect("unreachable")
 							.take()
 							.expect("unreachable");
@@ -643,7 +633,6 @@ impl<
 						.expect("unreachable")
 						.into_inner()
 						.expect("unreachable")
-						.expect("`Some`")
 				})
 			});
 		unsafe {

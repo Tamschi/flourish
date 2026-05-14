@@ -1,6 +1,6 @@
 #![cfg(feature = "local_signals_runtime")]
 
-use std::sync::Mutex;
+use std::cell::RefCell;
 
 use flourish_unsend::LocalSignalsRuntime;
 
@@ -67,9 +67,9 @@ fn stack() {
 	let (c, c_cell) = Signal::cell(()).into_dyn_read_only_and_self();
 
 	let roundabout = Signal::computed_uncached({
-		let angle = Mutex::new(0);
+		let angle = RefCell::new(0);
 		move || {
-			let mut angle = angle.lock().unwrap();
+			let mut angle = angle.try_borrow_mut().unwrap();
 			match *angle {
 				0 => a.get(),
 				1 => b.get(),

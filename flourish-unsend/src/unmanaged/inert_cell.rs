@@ -7,7 +7,6 @@ use std::{
 	ops::Deref,
 	pin::Pin,
 	rc::Rc,
-	sync::Mutex,
 };
 
 use isoprenoid_unsend::{
@@ -187,14 +186,14 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f = self.update_eager({
 			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
 				};
-				let mut r = r.try_lock().unwrap();
+				let mut r = r.try_borrow_mut().unwrap();
 				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 				if *value == new_value {
 					*r = Some(Ok(Err(new_value)));
@@ -215,7 +214,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		}))
 	}
 
@@ -233,14 +231,14 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 		Self: 'f + Sized,
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f = self.update_eager({
 			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
 				};
-				let mut r = r.try_lock().unwrap();
+				let mut r = r.try_borrow_mut().unwrap();
 				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 				if *value == new_value {
 					*r = Some(Ok(Err(new_value)));
@@ -261,7 +259,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		}))
 	}
 
@@ -276,14 +273,14 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f = self.update_eager({
 			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
 				};
-				let mut r = r.try_lock().unwrap();
+				let mut r = r.try_borrow_mut().unwrap();
 				let new_value = r.take().unwrap().unwrap_err();
 				*r = Some(Ok(*value = new_value));
 				(Propagation::Propagate, ())
@@ -298,7 +295,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 				.map_err(|_| ())
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
-				.expect("unreachable")
 				.expect("unreachable")
 		}))
 	}
@@ -317,14 +313,14 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 		Self: 'f + Sized,
 		T: 'f + Sized,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f = self.update_eager({
 			let r = Rc::downgrade(&r);
 			move |value| {
 				let Some(r) = r.upgrade() else {
 					return (Propagation::Halt, ());
 				};
-				let mut r = r.try_lock().unwrap();
+				let mut r = r.try_borrow_mut().unwrap();
 				let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 				*r = Some(Ok(mem::replace(value, new_value)));
 				(Propagation::Propagate, ())
@@ -339,7 +335,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 				.map_err(|_| ())
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
-				.expect("unreachable")
 				.expect("unreachable")
 		}))
 	}
@@ -357,12 +352,12 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		Self: 'f + Sized,
 	{
-		let update = Rc::new(Mutex::new(Some(update)));
+		let update = Rc::new(RefCell::new(Some(update)));
 		let f = self.project_ref().signal.update_eager_pin({
 			shadow_clone!(update);
 			move |value, _| {
 				let update = update
-					.try_lock()
+					.try_borrow_mut()
 					.expect("unreachable")
 					.take()
 					.expect("unreachable");
@@ -377,7 +372,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 					.map_err(|_| ())
 					.expect("The `Rc`'s clone is dropped in the previous line.")
 					.into_inner()
-					.expect("unreachable")
 					.expect("unreachable")
 			})
 		}))
@@ -395,7 +389,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
 				let r = Rc::downgrade(&r);
@@ -403,7 +397,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
 					};
-					let mut r = r.try_lock().unwrap();
+					let mut r = r.try_borrow_mut().unwrap();
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 					if *value == new_value {
 						*r = Some(Ok(Err(new_value)));
@@ -423,7 +417,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		})
 	}
 
@@ -434,7 +427,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f + Sized + PartialEq,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
 				let r = Rc::downgrade(&r);
@@ -442,7 +435,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
 					};
-					let mut r = r.try_lock().unwrap();
+					let mut r = r.try_borrow_mut().unwrap();
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 					if *value == new_value {
 						*r = Some(Ok(Err(new_value)));
@@ -462,7 +455,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		})
 	}
 
@@ -473,7 +465,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f + Sized,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
 				let r = Rc::downgrade(&r);
@@ -481,7 +473,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
 					};
-					let mut r = r.try_lock().unwrap();
+					let mut r = r.try_borrow_mut().unwrap();
 					let new_value = r.take().unwrap().unwrap_err();
 					*r = Some(Ok(*value = new_value));
 					Propagation::Propagate
@@ -496,7 +488,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		})
 	}
 
@@ -507,7 +498,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f + Sized,
 	{
-		let r = Rc::new(Mutex::new(Some(Err(new_value))));
+		let r = Rc::new(RefCell::new(Some(Err(new_value))));
 		let f: Pin<Box<_>> = self
 			.update_eager_dyn({
 				let r = Rc::downgrade(&r);
@@ -515,7 +506,7 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 					let Some(r) = r.upgrade() else {
 						return Propagation::Halt;
 					};
-					let mut r = r.try_lock().unwrap();
+					let mut r = r.try_borrow_mut().unwrap();
 					let new_value = r.take().unwrap().map(|_| ()).unwrap_err();
 					*r = Some(Ok(mem::replace(value, new_value)));
 					Propagation::Propagate
@@ -530,7 +521,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 				.expect("The `Rc`'s clone is dropped in the previous line.")
 				.into_inner()
 				.expect("unreachable")
-				.expect("unreachable")
 		})
 	}
 
@@ -541,14 +531,14 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 	where
 		T: 'f,
 	{
-		let update = Rc::new(Mutex::new(Some(update)));
+		let update = Rc::new(RefCell::new(Some(update)));
 		let f = self.project_ref().signal.update_eager_pin({
 			let update = Rc::downgrade(&update);
 			move |value, _| {
 				(
 					if let Some(update) = update.upgrade() {
 						let update = update
-							.try_lock()
+							.try_borrow_mut()
 							.expect("unreachable")
 							.take()
 							.expect("unreachable");
@@ -566,7 +556,6 @@ impl<T: ?Sized, SR: SignalsRuntimeRef> UnmanagedSignalCell<T, SR> for InertCell<
 					.expect("unreachable")
 					.into_inner()
 					.expect("unreachable")
-					.expect("`Some`")
 			})
 		})
 	}
