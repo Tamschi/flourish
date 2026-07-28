@@ -401,7 +401,7 @@ impl Debug for GSRSymbol {
 mod global_callback_table_types {
 	use super::ACallbackTableTypes;
 
-	#[allow(unreachable_pub)]
+	#[cfg_attr(not(feature = "global_signals_runtime"), expect(unreachable_pub))]
 	#[repr(transparent)]
 	pub struct GlobalCallbackTableTypes(ACallbackTableTypes);
 }
@@ -557,7 +557,10 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Clone for CallbackTable<T, CTT
 }
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialEq for CallbackTable<T, CTT> {
-	#[expect(unpredictable_function_pointer_comparisons)] // Used only for interning.
+	#[expect(
+		unpredictable_function_pointer_comparisons,
+		reason = "Used only for interning."
+	)]
 	fn eq(&self, other: &Self) -> bool {
 		self.update == other.update && self.on_subscribed_change == other.on_subscribed_change
 	}
@@ -572,7 +575,10 @@ impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> PartialOrd for CallbackTable<T
 }
 
 impl<T: ?Sized, CTT: ?Sized + CallbackTableTypes> Ord for CallbackTable<T, CTT> {
-	#[expect(unpredictable_function_pointer_comparisons)] // Used only for interning.
+	#[expect(
+		unpredictable_function_pointer_comparisons,
+		reason = "Used only for interning."
+	)]
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
 		match self.update.cmp(&other.update) {
 			core::cmp::Ordering::Equal => {}
@@ -639,7 +645,7 @@ mod private {
 
 	use futures_lite::FutureExt;
 
-	#[allow(unreachable_pub)] // Used with "global_signals_runtime".
+	#[cfg_attr(not(feature = "global_signals_runtime"), expect(unreachable_pub))]
 	pub struct DetachedFuture<'f, Output: 'f>(
 		pub(super) Pin<Box<dyn 'f + Send + Future<Output = Output>>>,
 	);
