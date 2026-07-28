@@ -469,5 +469,5 @@ pub trait UnmanagedSignalCell<T: ?Sized + Send, SR: SignalsRuntimeRef>:
 /// > pub trait Guard: Deref + Borrow<Self::Target> {}
 /// > ```
 /// >
-/// > See: <https://github.com/rust-lang/rust/issues/65078>
+/// > See: <https://github.com/rust-lang/rust/issues/40533>
 pub trait Guard<T: ?Sized>: Deref<Target = T> + Borrow<T> {}
