@@ -62,7 +62,7 @@ impl<T: ?Sized, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef> Signa
 	/// Creates a new [`SignalRc`] from the provided [`UnmanagedSignal`].
 	///
 	/// Convenience wrapper for [`SignalRc::new`].
-	#[allow(clippy::new_ret_no_self)]
+	#[expect(clippy::new_ret_no_self)]
 	pub fn new(unmanaged: S) -> SignalRc<T, S, SR>
 	where
 		S: Sized,

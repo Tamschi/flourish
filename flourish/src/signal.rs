@@ -63,7 +63,7 @@ impl<T: ?Sized + Send, S: ?Sized + UnmanagedSignal<T, SR>, SR: SignalsRuntimeRef
 	/// Creates a new [`SignalArc`] from the provided [`UnmanagedSignal`].
 	///
 	/// Convenience wrapper for [`SignalArc::new`].
-	#[allow(clippy::new_ret_no_self)]
+	#[expect(clippy::new_ret_no_self)]
 	pub fn new(unmanaged: S) -> SignalArc<T, S, SR>
 	where
 		S: Sized,
