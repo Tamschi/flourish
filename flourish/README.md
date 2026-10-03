@@ -279,6 +279,7 @@ This mainly affects certain optimisations not being in place yet, but does have 
 |`Pin<Ptr: ?Sized>`|Type-erasure for the aforementioned clean inline-pinning signals.|
 |["`super let`"](https://blog.m-ou.se/super-let/) (or equivalent)|Easier-to-use macros for unmanaged/inline signals.|
 |"`FnPin`" and "`FnPinMut`" closures with simple return type, also implemented by current `FnMut` closures and functions | This could nicely allow safe `\|\| { let x = pin!(…); loop { yield …; } }` closures for the "fn_pin" parameters, where currently only `FnMut` is accepted and any inline pinning requires `unsafe`.|
+|[`StaticAllocator`](https://doc.rust-lang.org/stable/std/alloc/trait.StaticAllocator.html)|Allocator-choice for refcounting handles (which pin inherently).|
 
 ## Open Questions
 
